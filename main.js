@@ -96,15 +96,19 @@ const users = {
     'Pablo': { password: 'Vasco@2025', role: 'admin' },
     'Felipe': { password: 'Flamengo@2025', role: 'admin' },
     'Davi': { password: '080472Fr*', role: 'admin' },
-    'Mayko': { password: '123456', role: 'limited' },
-    'Bruna': { password: '123456', role: 'limited' },
-    'Laiane': { password: '123456', role: 'limited' },
-    'Waleska': { password: '123456', role: 'limited' },
-    'Gomes': { password: '123456', role: 'limited' },
-    'Tatiane': { password: '123456', role: 'limited' },
-    'Natallia': { password: '123456', role: 'limited' },
+    // MODIFICADO: Tatiane e Gomes agora são 'master'
+    'Tatiane': { password: '123456', role: 'master' },
+    'Gomes': { password: '123456', role: 'master' },
+    // MODIFICADO: Usuários 'limited' agora têm um teamId
+    'Mayko': { password: '123456', role: 'limited', teamId: '106' },
+    'Bruna': { password: '123456', role: 'limited', teamId: '85' },
+    'Laiane': { password: '123456', role: 'limited', teamId: '123' },
+    'Waleska': { password: '123456', role: 'limited', teamId: '87' },
+    'Natallia': { password: '123456', role: 'limited', teamId: '106' },// Natallia não tem equipe definida, o filtro ficará normal para ela.
+    // NOVOS USUÁRIOS
+    'Camila': { password: '123456', role: 'limited', teamId: '120' },
+    'Tef': { password: '123456', role: 'limited', teamId: '133' }
 };
-
 let mainWindow;
 let loginWindow;
 let currentUser = null; 
@@ -134,7 +138,12 @@ function createLoginWindow() {
 ipcMain.handle('login-attempt', async (event, username, password, rememberMe) => {
     const user = users[username];
     if (user && user.password === password) {
-        currentUser = { username: username, role: user.role };
+        // Armazena as informações do usuário, incluindo role e teamId
+        currentUser = { 
+            username: username, 
+            role: user.role,
+            teamId: user.teamId || null // Adiciona o teamId, ou null se não existir
+        };
         
         if (rememberMe) {
             store.set('credentials', { username, password });
@@ -230,8 +239,13 @@ app.whenReady().then(async () => {
         const { username, password } = savedCredentials;
         const user = users[username];
 
-        if (user && user.password === password) {
-            currentUser = { username, role: user.role };
+       if (user && user.password === password) {
+            // MODIFICADO: Garante que o teamId seja carregado no auto-login
+            currentUser = { 
+                username, 
+                role: user.role,
+                teamId: user.teamId || null
+            };
             createMainWindow();
         } else {
             const win = createLoginWindow();

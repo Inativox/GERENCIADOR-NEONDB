@@ -9,15 +9,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainTitle = document.getElementById("main-app-title");
     const logoutBtn = document.getElementById('logoutBtn');
 
-    // Armazena o perfil do usuário logado
     let currentUserRole = null;
+    let currentUserTeamId = null;
 
-    // #################################################################
-    // #           LÓGICA DE LOGIN E PERMISSÕES NO RENDERER            #
-    // #################################################################
+    window.electronAPI.onUserInfo(({ username, role, teamId }) => {
+        currentUserRole = role;
+        currentUserTeamId = teamId;
 
-    window.electronAPI.onUserInfo(({ username, role }) => {
-        currentUserRole = role; // Armazena o perfil do usuário
         const currentUserSpan = document.getElementById('currentUser');
         if (currentUserSpan) {
             currentUserSpan.textContent = username;
@@ -25,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (logoutBtn) {
             logoutBtn.style.display = 'inline-flex';
         }
-        setupUIForRole(role);
+        setupUIForRole(role, teamId);
     });
 
     if (logoutBtn) {
@@ -34,16 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function setupUIForRole(role) {
-        // Renderiza os filtros da aba de monitoramento de acordo com o perfil
-        renderApiFilters(role);
+    function setupUIForRole(role, teamId) {
+        renderApiFilters(role, teamId);
 
-        if (role === 'admin') {
-            const adminDefaultTab = document.querySelector('.tab-button[data-tab-name="local"]');
-            if (adminDefaultTab) {
-                adminDefaultTab.click();
-            }
-        } else if (role === 'limited') {
+        if (role === 'limited' || role === 'master') {
             tabButtons.forEach(button => {
                 const tabName = button.dataset.tabName;
                 if (tabName !== 'monitoramento') {
@@ -54,6 +46,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (monitoringTabButton) {
                 monitoringTabButton.click();
             }
+        } else if (role === 'admin') {
+            tabButtons.forEach(button => {
+                button.style.display = 'inline-flex';
+            });
+            const adminDefaultTab = document.querySelector('.tab-button[data-tab-name="local"]');
+            if (adminDefaultTab) {
+                adminDefaultTab.click();
+            }
         }
     }
 
@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateMessageElement.innerText = message;
         }
     });
+
 
     const gridConfigs = {
         'localGrid': 'local-sections',
@@ -334,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (refreshCountBtn) refreshCountBtn.addEventListener('click', updateEnrichedCnpjCount);
     if (downloadEnrichedDataBtn) downloadEnrichedDataBtn.addEventListener('click', async () => { downloadEnrichedDataBtn.disabled = true; downloadEnrichedDataBtn.textContent = 'Preparando download...'; try { const result = await window.electronAPI.downloadEnrichedData(); if (result.success) { appendEnrichmentLog(`✅ ${result.message}`); } else { appendEnrichmentLog(`❌ ${result.message}`); } } catch (error) { appendEnrichmentLog(`❌ Erro no download: ${error.message}`); } finally { downloadEnrichedDataBtn.disabled = false; downloadEnrichedDataBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>Baixar Dados Enriquecidos`; } });
     if (selectMasterFilesBtn) selectMasterFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione as Planilhas Mestras', multi: true }); if (!files?.length) return; enrichmentMasterFiles = files; selectedMasterFilesDiv.innerHTML = ''; files.forEach(file => { addFileToUI(selectedMasterFilesDiv, file, false); }); });
-    
+
     if (startLoadToDbBtn) {
         startLoadToDbBtn.addEventListener('click', () => {
             if (enrichmentMasterFiles.length === 0) {
@@ -346,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!year || isNaN(parseInt(year))) {
                 return appendEnrichmentLog('❌ ERRO: Por favor, insira um ano válido para a base de dados.');
             }
-    
+
             startLoadToDbBtn.disabled = true;
             dbLoadProgressContainer.style.display = 'block';
             dbLoadProgressBarFill.style.width = '0%';
@@ -360,19 +361,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (selectEnrichFilesBtn) selectEnrichFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione Arquivos para Enriquecer', multi: true }); if (!files?.length) return; window.electronAPI.prepareEnrichmentFiles(files); enrichmentEnrichFiles = []; selectedEnrichFilesDiv.innerHTML = ''; enrichmentProgressContainer.innerHTML = ''; files.forEach(file => { const id = `enrich-${enrichmentEnrichFiles.length}`; enrichmentEnrichFiles.push({ path: file, id }); appendEnrichmentLog(`Adicionado para enriquecimento: ${file}`); addFileToUI(selectedEnrichFilesDiv, file, false); enrichmentProgressContainer.innerHTML += `<div class="file-progress" style="margin-bottom: 15px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;"><strong>${getBasename(file)}</strong><span id="eta-${id}" style="font-size: 12px; color: var(--text-secondary);"></span></div><div class="progress-bar-container"><div class="progress-bar-fill" id="${id}"></div></div></div>`; }); });
-    
+
     if (startEnrichmentBtn) {
         startEnrichmentBtn.addEventListener('click', () => {
             if (enrichmentEnrichFiles.length === 0) {
                 return appendEnrichmentLog('❌ ERRO: Selecione pelo menos um arquivo para enriquecer.');
             }
-             // CAPTURA E VALIDA O ANO
+            // CAPTURA E VALIDA O ANO
             const enrichmentYearInput = document.getElementById('enrichment-year-input');
             const year = enrichmentYearInput.value;
             if (!year || isNaN(parseInt(year))) {
                 return appendEnrichmentLog('❌ ERRO: Por favor, insira um ano válido para pesquisar no banco.');
             }
-    
+
             startEnrichmentBtn.disabled = true;
             const strategy = document.querySelector('input[name="enrichStrategy"]:checked').value;
             const backup = document.getElementById('backupCheckbox').checked;
@@ -610,22 +611,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-// Em renderer.js, na seção de lógica da aba de Monitoramento
+    // Em renderer.js, na seção de lógica da aba de Monitoramento
 
-function hasActiveFilter() {
-    // Verifica a barra de pesquisa principal
-    if (monitoringSearchInput && monitoringSearchInput.value.trim() !== '') {
-        return true;
-    }
-    // Procura por qualquer checkbox de filtro avançado que esteja marcado
-    const advancedFilterCheckboxes = document.querySelectorAll('#api-parameters input[type="checkbox"]');
-    for (const checkbox of advancedFilterCheckboxes) {
-        if (checkbox.checked) {
-            return true; // Encontrou pelo menos um filtro ativo
+    function hasActiveFilter() {
+        // Verifica a barra de pesquisa principal
+        if (monitoringSearchInput && monitoringSearchInput.value.trim() !== '') {
+            return true;
         }
+        // Procura por qualquer checkbox de filtro avançado que esteja marcado
+        const advancedFilterCheckboxes = document.querySelectorAll('#api-parameters input[type="checkbox"]');
+        for (const checkbox of advancedFilterCheckboxes) {
+            if (checkbox.checked) {
+                return true; // Encontrou pelo menos um filtro ativo
+            }
+        }
+        return false; // Nenhum filtro ativo foi encontrado
     }
-    return false; // Nenhum filtro ativo foi encontrado
-}
 
 
 
@@ -638,99 +639,124 @@ function hasActiveFilter() {
         { name: 'grupo_operador_id', label: 'Desempenho de equipes' },
     ];
 
-    function renderApiFilters(role) {
+    // MODIFICADO: Função agora recebe role e teamId para aplicar a lógica de permissão
+
+   function renderApiFilters(role, teamId) {
         const isAdmin = role === 'admin';
+        const isMaster = role === 'master';
         apiParametersContainer.innerHTML = '';
 
         const filtersToHideForLimited = ['chave', 'fone_origem', 'sentido', 'tronco_id', 'resultado', 'operacao_id', 'tipoServico', 'servico_id','cpf','nome'];
 
-        const visibleParams = isAdmin ? apiParams : apiParams.filter(p => !filtersToHideForLimited.includes(p.name));
+        const visibleParams = (isAdmin || isMaster) ? apiParams : apiParams.filter(p => !filtersToHideForLimited.includes(p.name));
 
         visibleParams.forEach(param => {
             const paramItem = document.createElement('div');
             paramItem.className = 'param-item';
-
-            let inputHtml;
+            let inputHtml = '';
             const isSelectable = ['operador_id', 'servico_id', 'grupo_operador_id'].includes(param.name);
+            const containerId = `input-container-${param.name}`;
 
-            if (param.name === 'digitado' && !isAdmin) {
-                inputHtml = `
-                    <div id="digitado-radio-container" class="radio-group-container hidden">
-                        <label>
-                            <input type="radio" name="digitado_radio" value="S">
-                            <span class="radio-circle"></span>
-                            Cliente digitou 1
-                        </label>
-                        <label>
-                            <input type="radio" name="digitado_radio" value="" checked>
-                            <span class="radio-circle"></span>
-                            Não digitou nada
-                        </label>
-                    </div>`;
-            } else if (param.name === 'tabulacao_id' && !isAdmin) {
-                inputHtml = `
-                    <div id="tabulacao_id-multi-select-container" class="multi-select-container hidden">
-                        <button class="multi-select-button" id="tabulacao-multi-select-btn">Selecionar Tabulações...</button>
-                        <input type="hidden" id="input-${param.name}">
-                    </div>`;
+            if (param.name === 'grupo_operador_id' && role === 'limited' && teamId) {
+                const team = gruposOperador.find(g => g.id === teamId);
+                const teamName = team ? team.name : `Equipe ID ${teamId}`;
+                inputHtml = `<div id="${containerId}" class="custom-select-container"><input type="text" value="${teamName}" readonly style="cursor: not-allowed; background-color: var(--bg-dark);"><input type="hidden" id="input-${param.name}" value="${teamId}"></div>`;
+            } else if (param.name === 'tabulacao_id') {
+                inputHtml = `<div id="${containerId}" class="multi-select-container"><button class="multi-select-button" id="tabulacao-multi-select-btn">Selecionar Tabulações...</button><input type="hidden" id="input-${param.name}"></div>`;
             } else if (isSelectable) {
-                inputHtml = `
-                    <div id="${param.name}-select-container" class="custom-select-container hidden">
-                        <input type="text" id="${param.name}-search" readonly placeholder="Clique para selecionar..." style="cursor: pointer;">
-                        <input type="hidden" id="input-${param.name}">
-                    </div>`;
+                inputHtml = `<div id="${containerId}" class="custom-select-container"><input type="text" id="${param.name}-search" readonly placeholder="Clique para selecionar..." style="cursor: pointer;"><input type="hidden" id="input-${param.name}"></div>`;
             } else {
-                inputHtml = `<input type="text" id="input-${param.name}" class="hidden" placeholder="Valor...">`;
+                inputHtml = `<input type="text" id="${containerId}" placeholder="Valor...">`;
             }
 
-            paramItem.innerHTML = `
-                <div class="toggle-switch">
-                    <label class="switch">
-                        <input type="checkbox" id="check-${param.name}" data-param-name="${param.name}">
-                        <span class="slider"></span>
-                    </label>
-                    <span class="toggle-label">${param.label}</span>
-                </div>
-                ${inputHtml}
-            `;
+            const toggleHtml = `<div class="toggle-switch"><label class="switch"><input type="checkbox" id="check-${param.name}" data-param-name="${param.name}"><span class="slider"></span></label><span class="toggle-label">${param.label}</span></div>`;
+
+            paramItem.innerHTML = toggleHtml + inputHtml;
             apiParametersContainer.appendChild(paramItem);
 
             const checkbox = document.getElementById(`check-${param.name}`);
-            if (!checkbox) return;
-            const inputContainerId = (param.name === 'digitado' && !isAdmin) ? 'digitado-radio-container'
-                : (param.name === 'tabulacao_id' && !isAdmin) ? 'tabulacao_id-multi-select-container'
-                    : isSelectable ? `${param.name}-select-container`
-                        : `input-${param.name}`;
-            const inputElement = document.getElementById(inputContainerId);
+            const inputContainer = document.getElementById(containerId);
 
-            checkbox.addEventListener('change', () => {
-                inputElement.classList.toggle('hidden', !checkbox.checked);
-            });
+            // --- LÓGICA DE EVENTOS CORRIGIDA ---
 
-            if (param.name === 'tabulacao_id' && !isAdmin) {
-                document.getElementById('tabulacao-multi-select-btn').addEventListener('click', () => {
-                    openMultiSelectionModal({
+            // 1. Esconde todos os inputs por padrão
+            if (inputContainer) {
+                inputContainer.classList.add('hidden');
+            }
+
+            // 2. Caso especial: usuário 'limited' com equipe definida
+            if (param.name === 'grupo_operador_id' && role === 'limited' && teamId) {
+                if (inputContainer) inputContainer.classList.remove('hidden');
+                if (checkbox) {
+                    checkbox.checked = true;
+                    checkbox.disabled = true;
+                }
+            }
+
+            // 3. Adiciona o listener para mostrar/esconder e LIMPAR o input
+            if (checkbox && !checkbox.disabled) {
+                checkbox.addEventListener('change', () => {
+                    const isChecked = checkbox.checked;
+                    if (inputContainer) {
+                        inputContainer.classList.toggle('hidden', !isChecked);
+                    }
+
+                    // Se o switch for DESATIVADO, limpa os valores
+                    if (!isChecked) {
+                        // Limpa o input de texto visível (para selects)
+                        const searchInput = document.getElementById(`${param.name}-search`);
+                        if (searchInput) searchInput.value = '';
+
+                        // Limpa o input oculto que guarda o ID
+                        const hiddenInput = document.getElementById(`input-${param.name}`);
+                        if (hiddenInput) hiddenInput.value = '';
+
+                        // Limpa inputs de texto simples
+                        if (inputContainer && inputContainer.tagName === 'INPUT') {
+                            inputContainer.value = '';
+                        }
+                        
+                        // Reseta o texto do botão de tabulações
+                        if (param.name === 'tabulacao_id') {
+                            const btn = document.getElementById('tabulacao-multi-select-btn');
+                            if (btn) btn.textContent = 'Selecionar Tabulações...';
+                        }
+                    }
+                });
+            }
+
+            // 4. Adiciona os listeners de clique para abrir os modais
+            if (param.name === 'tabulacao_id') {
+                const btn = document.getElementById('tabulacao-multi-select-btn');
+                if (btn) {
+                    btn.addEventListener('click', () => openMultiSelectionModal({
                         title: 'Selecionar Tabulações',
                         data: tabulacoes,
                         hiddenInputEl: document.getElementById('input-tabulacao_id'),
-                        displayEl: document.getElementById('tabulacao-multi-select-btn'),
-                    });
-                });
+                        displayEl: btn,
+                    }));
+                }
             } else if (isSelectable) {
-                const searchEl = document.getElementById(`${param.name}-search`);
-                searchEl.addEventListener('click', () => {
-                    if (!checkbox.checked) return;
-                    let data, type;
-                    if (param.name === 'operador_id') { data = operadores; type = 'operador'; }
-                    else if (param.name === 'servico_id') { data = servicos; type = 'servico'; }
-                    else { data = gruposOperador; type = 'grupo_operador'; }
-                    openSelectionModal({
-                        type: type, title: `Selecionar ${param.label}`, data: data,
-                        searchEl: searchEl, hiddenInputEl: document.getElementById(`input-${param.name}`)
-                    });
-                });
+                if (!(param.name === 'grupo_operador_id' && role === 'limited' && teamId)) {
+                    const searchEl = document.getElementById(`${param.name}-search`);
+                    if (searchEl) {
+                        searchEl.addEventListener('click', () => {
+                            if (!checkbox.checked) return;
+                            let data, type;
+                            if (param.name === 'operador_id') { data = operadores; type = 'operador'; }
+                            else if (param.name === 'servico_id') { data = servicos; type = 'servico'; }
+                            else { data = gruposOperador; type = 'grupo_operador'; }
+                            openSelectionModal({
+                                type: type, title: `Selecionar ${param.label}`, data: data,
+                                searchEl: searchEl, hiddenInputEl: document.getElementById(`input-${param.name}`)
+                            });
+                        });
+                    }
+                }
             }
         });
+    
+    
 
         if (monitoringSearchInput) {
             const foneDestinoCheckbox = document.getElementById('check-fone_destino');
@@ -752,90 +778,90 @@ function hasActiveFilter() {
     const getApiDate = (dateString) => { if (!dateString) return ''; const [year, month, day] = dateString.split('-'); return `${day}/${month}/${year}`; }
     if (dateFilterMenu) { dateFilterMenu.addEventListener('click', (e) => { if (e.target.tagName === 'LI') { const period = e.target.dataset.period; const today = new Date(); let startDate, endDate = new Date(); switch (period) { case 'today': startDate = today; endDate = today; break; case 'yesterday': startDate = new Date(today); startDate.setDate(today.getDate() - 1); endDate = startDate; break; case 'this_week': startDate = new Date(today); const dayOfWeek = today.getDay(); startDate.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); endDate = today; break; case 'last_week': startDate = new Date(today); startDate.setDate(today.getDate() - today.getDay() - 6); endDate = new Date(startDate); endDate.setDate(startDate.getDate() + 6); break; case 'this_month': startDate = new Date(today.getFullYear(), today.getMonth(), 1); endDate = today; break; } if (dataInicioInput) dataInicioInput.value = getHtmlDate(startDate); if (dataFimInput) dataFimInput.value = getHtmlDate(endDate); e.target.closest('details').removeAttribute('open'); } }); }
 
-  if (generateReportBtn) {
-    generateReportBtn.addEventListener('click', async () => {
-        // --- NOVA VALIDAÇÃO ADICIONADA AQUI ---
-        // Verifica se há pelo menos um filtro ativo antes de continuar.
-        if (!hasActiveFilter()) {
-            // Se não houver, mostra um popup e interrompe a execução.
-            alert('Selecione pelo menos 1 filtro ou preencha o campo de pesquisa.');
-            return;
-        }
-        // --- FIM DA NOVA VALIDAÇÃO ---
+    if (generateReportBtn) {
+        generateReportBtn.addEventListener('click', async () => {
+            // --- NOVA VALIDAÇÃO ADICIONADA AQUI ---
+            // Verifica se há pelo menos um filtro ativo antes de continuar.
+            if (!hasActiveFilter()) {
+                // Se não houver, mostra um popup e interrompe a execução.
+                alert('Selecione pelo menos 1 filtro ou preencha o campo de pesquisa.');
+                return;
+            }
+            // --- FIM DA NOVA VALIDAÇÃO ---
 
 
-        // ETAPA 1: Preparação (código existente, sem alterações)
-        generateReportBtn.disabled = true;
-        monitoringLog.innerHTML = '> 🌀 Gerando relatório de chamadas... Por favor, aguarde.';
-        dashboardSummary.innerHTML = '';
-        dashboardDetails.innerHTML = '';
-        operatorTimesContainer.style.display = 'none';
-        operatorTimesTableWrapper.innerHTML = '';
+            // ETAPA 1: Preparação (código existente, sem alterações)
+            generateReportBtn.disabled = true;
+            monitoringLog.innerHTML = '> 🌀 Gerando relatório de chamadas... Por favor, aguarde.';
+            dashboardSummary.innerHTML = '';
+            dashboardDetails.innerHTML = '';
+            operatorTimesContainer.style.display = 'none';
+            operatorTimesTableWrapper.innerHTML = '';
 
-        // ETAPA 2: Montagem da URL principal (código existente, sem alterações)
-        let baseUrl = 'https://mbfinance.fastssl.com.br/api/relatorio/captura_valores_analitico.php?';
-        let params = [];
-        const isAdmin = currentUserRole === 'admin';
-        const allPossibleParams = apiParams.map(p => p.name);
+            // ETAPA 2: Montagem da URL principal (código existente, sem alterações)
+            let baseUrl = 'https://mbfinance.fastssl.com.br/api/relatorio/captura_valores_analitico.php?';
+            let params = [];
+            const isAdmin = currentUserRole === 'admin';
+            const allPossibleParams = apiParams.map(p => p.name);
 
-        allPossibleParams.forEach(paramName => {
-            const checkbox = document.getElementById(`check-${paramName}`);
-            let value = '';
-            if (checkbox && checkbox.checked) {
-                if (paramName === 'digitado' && !isAdmin) {
-                    const radioChecked = document.querySelector('input[name="digitado_radio"]:checked');
-                    value = radioChecked ? radioChecked.value : '';
-                } else {
-                    const input = document.getElementById(`input-${paramName}`);
-                    if (input) value = input.value;
+            allPossibleParams.forEach(paramName => {
+                const checkbox = document.getElementById(`check-${paramName}`);
+                let value = '';
+                if (checkbox && checkbox.checked) {
+                    if (paramName === 'digitado' && !isAdmin) {
+                        const radioChecked = document.querySelector('input[name="digitado_radio"]:checked');
+                        value = radioChecked ? radioChecked.value : '';
+                    } else {
+                        const input = document.getElementById(`input-${paramName}`);
+                        if (input) value = input.value;
+                    }
                 }
-            }
-            params.push(`${paramName}=${encodeURIComponent(value ?? '')}`);
-        });
+                params.push(`${paramName}=${encodeURIComponent(value ?? '')}`);
+            });
 
-        const dataInicio = getApiDate(dataInicioInput.value);
-        const dataFim = getApiDate(dataFimInput.value);
-        params.push(`data_inicio=${dataInicio}`);
-        params.push(`data_fim=${dataFim}`);
-        params.push('formato=json');
-        const finalUrl = baseUrl + params.join('&');
-        
-        // ETAPA 3: Lógica unificada de requisição (código existente, sem alterações)
-        let payload = {
-            reportUrl: finalUrl,
-            operatorTimesParams: null
-        };
+            const dataInicio = getApiDate(dataInicioInput.value);
+            const dataFim = getApiDate(dataFimInput.value);
+            params.push(`data_inicio=${dataInicio}`);
+            params.push(`data_fim=${dataFim}`);
+            params.push('formato=json');
+            const finalUrl = baseUrl + params.join('&');
 
-        const operadorIdChecked = document.getElementById('check-operador_id')?.checked;
-        const grupoOperadorIdChecked = document.getElementById('check-grupo_operador_id')?.checked;
-
-        if (operadorIdChecked || grupoOperadorIdChecked) {
-            payload.operatorTimesParams = {
-                data_inicio: dataInicio,
-                data_fim: dataFim,
-                operador_id: document.getElementById('input-operador_id')?.value || '',
-                grupo_operador_id: document.getElementById('input-grupo_operador_id')?.value || ''
+            // ETAPA 3: Lógica unificada de requisição (código existente, sem alterações)
+            let payload = {
+                reportUrl: finalUrl,
+                operatorTimesParams: null
             };
-        }
 
-        const result = await window.electronAPI.fetchMonitoringReport(payload);
+            const operadorIdChecked = document.getElementById('check-operador_id')?.checked;
+            const grupoOperadorIdChecked = document.getElementById('check-grupo_operador_id')?.checked;
 
-        if (result.success && result.data) {
-            updateDashboard(result.data);
-            monitoringLog.innerHTML = `> ✅ Relatório de chamadas gerado com sucesso. ${result.data.length} registros encontrados.`;
-            
-            if (result.operatorTimesData) {
-                renderOperatorTimesTable(result.operatorTimesData);
-                monitoringLog.innerHTML += '<br>> ✅ Dados de tempos dos operadores carregados.';
+            if (operadorIdChecked || grupoOperadorIdChecked) {
+                payload.operatorTimesParams = {
+                    data_inicio: dataInicio,
+                    data_fim: dataFim,
+                    operador_id: document.getElementById('input-operador_id')?.value || '',
+                    grupo_operador_id: document.getElementById('input-grupo_operador_id')?.value || ''
+                };
             }
-        } else {
-            monitoringLog.innerHTML = `> ❌ ERRO: ${result.message || 'Falha ao buscar dados da API.'}`;
-        }
 
-        // ETAPA 4: Finalização (código existente, sem alterações)
-        generateReportBtn.disabled = false;
-    });
-}
+            const result = await window.electronAPI.fetchMonitoringReport(payload);
+
+            if (result.success && result.data) {
+                updateDashboard(result.data);
+                monitoringLog.innerHTML = `> ✅ Relatório de chamadas gerado com sucesso. ${result.data.length} registros encontrados.`;
+
+                if (result.operatorTimesData) {
+                    renderOperatorTimesTable(result.operatorTimesData);
+                    monitoringLog.innerHTML += '<br>> ✅ Dados de tempos dos operadores carregados.';
+                }
+            } else {
+                monitoringLog.innerHTML = `> ❌ ERRO: ${result.message || 'Falha ao buscar dados da API.'}`;
+            }
+
+            // ETAPA 4: Finalização (código existente, sem alterações)
+            generateReportBtn.disabled = false;
+        });
+    }
 
     function renderOperatorTimesTable(csvData) {
         if (!csvData) {
@@ -886,22 +912,22 @@ function hasActiveFilter() {
         const detailedTabulations = {};
         let totalDurationSeconds = 0;
         let suspiciousCalls = [];
-        data.forEach(item => { 
-            const tabulacao = item.tabulacao || 'Não Preenchido'; 
-            const duration = getDurationInSeconds(item.tempo_ligacao); 
-            for (const key in aggregators) { 
-                const value = item[key] || 'Não Preenchido'; 
-                aggregators[key][value] = (aggregators[key][value] || 0) + 1; 
-            } 
-            if (!detailedTabulations[tabulacao]) { 
-                detailedTabulations[tabulacao] = []; 
-            } 
+        data.forEach(item => {
+            const tabulacao = item.tabulacao || 'Não Preenchido';
+            const duration = getDurationInSeconds(item.tempo_ligacao);
+            for (const key in aggregators) {
+                const value = item[key] || 'Não Preenchido';
+                aggregators[key][value] = (aggregators[key][value] || 0) + 1;
+            }
+            if (!detailedTabulations[tabulacao]) {
+                detailedTabulations[tabulacao] = [];
+            }
             detailedTabulations[tabulacao].push(item);
-            
-            if (SUSPICIOUS_TABULATIONS.includes(tabulacao) && duration >= SUSPICIOUS_DURATION_SECONDS) { 
-                suspiciousCalls.push(item); 
-            } 
-            totalDurationSeconds += duration; 
+
+            if (SUSPICIOUS_TABULATIONS.includes(tabulacao) && duration >= SUSPICIOUS_DURATION_SECONDS) {
+                suspiciousCalls.push(item);
+            }
+            totalDurationSeconds += duration;
         });
         lastSuspiciousCalls = suspiciousCalls;
         const avgDurationSeconds = totalCalls > 0 ? totalDurationSeconds / totalCalls : 0;
@@ -914,63 +940,63 @@ function hasActiveFilter() {
         dashboardDetails.innerHTML = '';
         const isOperatorFiltered = document.getElementById('check-operador_id')?.checked;
         const createDetailCard = (title, dataObject) => { if (title === 'Top Tabulações' && isOperatorFiltered) { return createInteractiveTabulationCard('Top Tabulações', detailedTabulations); } const sortedData = Object.entries(dataObject).sort(([, a], [, b]) => b - a); let listItems = sortedData.map(([name, count]) => `<li><span class="name" title="${name}">${name}</span><span class="count">${count.toLocaleString('pt-BR')}</span></li>`).join(''); if (!listItems) listItems = '<li>Nenhum dado.</li>'; return `<div class="detail-card"><h3>${title}</h3><ul class="detail-list custom-scrollbar">${listItems}</ul></div>`; }
-        
-       const createInteractiveTabulationCard = (title, detailedDataObject) => {
-    const sortedTabulations = Object.keys(detailedDataObject).sort((a, b) => detailedDataObject[b].length - detailedDataObject[a].length);
 
-    let detailsHtml = sortedTabulations.map(tabulationName => {
-        const calls = detailedDataObject[tabulationName];
-        const isSuspicious = SUSPICIOUS_TABULATIONS.includes(tabulationName);
+        const createInteractiveTabulationCard = (title, detailedDataObject) => {
+            const sortedTabulations = Object.keys(detailedDataObject).sort((a, b) => detailedDataObject[b].length - detailedDataObject[a].length);
 
-        const callListHtml = calls.map((call, index) => {
-            const callId = call.id || '';
-            const chave = call.chave || '';
-            const protocolo = call.protocolo || '';
-            const downloadUrl = `http://mbfinance.fastssl.com.br/api/gravacao/index.php?id=${callId}&chave=${chave}&protocolo=${protocolo}&tipo_download=1&checkout_step=`;
-            
-            const operatorFirstName = (call.nome_operador || '').split(' ')[0];
-            const cnpj = call.cpf || '';
-            let fileName = 'gravacao_desconhecida.mp3';
+            let detailsHtml = sortedTabulations.map(tabulationName => {
+                const calls = detailedDataObject[tabulationName];
+                const isSuspicious = SUSPICIOUS_TABULATIONS.includes(tabulationName);
 
-            if (operatorFirstName && cnpj) {
-                fileName = `${operatorFirstName}_${cnpj}.mp3`;
-            } else if (cnpj) {
-                fileName = `${cnpj}.mp3`;
-            } else if (callId) {
-                fileName = `gravacao_${callId}.mp3`;
-            }
+                const callListHtml = calls.map((call, index) => {
+                    const callId = call.id || '';
+                    const chave = call.chave || '';
+                    const protocolo = call.protocolo || '';
+                    const downloadUrl = `http://mbfinance.fastssl.com.br/api/gravacao/index.php?id=${callId}&chave=${chave}&protocolo=${protocolo}&tipo_download=1&checkout_step=`;
 
-            // ID único para o botão de download
-            const downloadButtonId = `download-btn-${tabulationName.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`;
-            
-            // Adiciona o event listener de forma assíncrona para garantir que o elemento exista no DOM
-            setTimeout(() => {
-                const btn = document.getElementById(downloadButtonId);
-                if (btn) {
-                    btn.addEventListener('click', async () => {
-                        const originalContent = btn.innerHTML;
-                        // Mostra um spinner e desabilita o botão durante o download
-                        btn.disabled = true;
-                        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="animation: spin 1s linear infinite;"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>`;
-                        
-                        appendLog(`Solicitando download para: ${fileName}`);
-                        try {
-                            // Chama a função do main.js via preload
-                            const result = await window.electronAPI.downloadRecording(downloadUrl, fileName);
-                            appendLog(`✅ ${result.message}`);
-                        } catch (err) {
-                            appendLog(`❌ Erro no processo de download: ${err.message}`);
-                        } finally {
-                            // Restaura o botão ao estado original
-                            btn.disabled = false;
-                            btn.innerHTML = originalContent;
+                    const operatorFirstName = (call.nome_operador || '').split(' ')[0];
+                    const cnpj = call.cpf || '';
+                    let fileName = 'gravacao_desconhecida.mp3';
+
+                    if (operatorFirstName && cnpj) {
+                        fileName = `${operatorFirstName}_${cnpj}.mp3`;
+                    } else if (cnpj) {
+                        fileName = `${cnpj}.mp3`;
+                    } else if (callId) {
+                        fileName = `gravacao_${callId}.mp3`;
+                    }
+
+                    // ID único para o botão de download
+                    const downloadButtonId = `download-btn-${tabulationName.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`;
+
+                    // Adiciona o event listener de forma assíncrona para garantir que o elemento exista no DOM
+                    setTimeout(() => {
+                        const btn = document.getElementById(downloadButtonId);
+                        if (btn) {
+                            btn.addEventListener('click', async () => {
+                                const originalContent = btn.innerHTML;
+                                // Mostra um spinner e desabilita o botão durante o download
+                                btn.disabled = true;
+                                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="animation: spin 1s linear infinite;"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>`;
+
+                                appendLog(`Solicitando download para: ${fileName}`);
+                                try {
+                                    // Chama a função do main.js via preload
+                                    const result = await window.electronAPI.downloadRecording(downloadUrl, fileName);
+                                    appendLog(`✅ ${result.message}`);
+                                } catch (err) {
+                                    appendLog(`❌ Erro no processo de download: ${err.message}`);
+                                } finally {
+                                    // Restaura o botão ao estado original
+                                    btn.disabled = false;
+                                    btn.innerHTML = originalContent;
+                                }
+                            });
                         }
-                    });
-                }
-            }, 0);
+                    }, 0);
 
-            // Retorna o HTML do item da lista com um <button> em vez de <a href>
-            return `
+                    // Retorna o HTML do item da lista com um <button> em vez de <a href>
+                    return `
                 <li>
                     <div class="call-info">
                         <span class="call-cnpj">CNPJ: ${call.cpf || 'N/A'}</span>
@@ -983,9 +1009,9 @@ function hasActiveFilter() {
                         </button>
                     </div>
                 </li>`;
-        }).join('');
+                }).join('');
 
-        return `
+                return `
             <details>
                 <summary class="${isSuspicious ? 'suspicious-summary' : ''}">
                     <span>${tabulationName}</span>
@@ -993,16 +1019,16 @@ function hasActiveFilter() {
                 </summary>
                 <ul class="tabulation-call-list custom-scrollbar">${callListHtml}</ul>
             </details>`;
-    }).join('');
+            }).join('');
 
-    return `
+            return `
         <div class="detail-card interactive-tabulation">
             <h3>${title} (Detalhado)</h3>
             <div class="custom-scrollbar" style="max-height: 400px; overflow-y: auto; padding-right: 5px;">
                 ${detailsHtml}
             </div>
         </div>`;
-};
+        };
 
         dashboardDetails.innerHTML += createDetailCard('Top Tabulações', aggregators.tabulacao);
         dashboardDetails.innerHTML += createDetailCard('Resultados por Chamada', aggregators.resultado);
