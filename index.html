@@ -1006,16 +1006,19 @@
                             <button class="section-control-btn hide-section" title="Ocultar">👁</button>
                         </div>
                     </div>
-                    <p style="font-size: 14px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
-                        Use esta função para enviar planilhas mestras e popular o banco de dados de enriquecimento.
-                    </p>
-                    <button id="selectMasterFilesBtn">1. Selecionar Planilhas Mestras</button>
-                    <div id="selectedMasterFiles" class="files"></div>
-                    <button id="startLoadToDbBtn">2. Iniciar Carga para o BD</button>
-                    <div class="input-group" style="margin-bottom: 10px;">
+             <p style="font-size: 14px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
+    Use esta função para enviar planilhas mestras e popular o banco de dados de enriquecimento.
+</p>
+<button id="selectMasterFilesBtn">1. Selecionar Planilhas Mestras</button>
+<div id="selectedMasterFiles" class="files"></div>
+
+<div class="input-group" style="margin-top: 15px; margin-bottom: 10px;">
     <label for="master-file-year-input">Ano da Base de Dados (Obrigatório)</label>
-    <input type="number" id="master-file-year-input" placeholder="Ex: 2024" required>
+    <input type="number" id="master-file-year-input" placeholder="Ex: 2024" required style="width: 100%; padding: 10px;">
 </div>
+
+<button id="startLoadToDbBtn">2. Iniciar Carga para o BD</button>
+   
                     
                     <div id="dbLoadProgressContainer" style="display: none; margin-top: 20px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -1055,9 +1058,9 @@
                            <label for="enrichStrategyIgnore">Ignorar</label>
                         </div>
                     </div>
-                    <div class="input-group" style="margin-bottom: 10px;">
+                 <div class="input-group" style="margin-top: 15px; margin-bottom: 10px;">
     <label for="enrichment-year-input">Ano para Pesquisa no Banco (Obrigatório)</label>
-    <input type="number" id="enrichment-year-input" placeholder="Ex: 2024" required>
+    <input type="number" id="enrichment-year-input" placeholder="Ex: 2024" required style="width: 100%; padding: 10px;">
 </div>
                     <button id="startEnrichmentBtn" style="margin-top: 10px;">2. Iniciar Enriquecimento</button>
                 </div>

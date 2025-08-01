@@ -327,7 +327,7 @@ ipcMain.handle("download-enriched-data", async () => {
     }
 });
 
-ipcMain.on("start-db-load", async (event, { masterFiles }) => {
+ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
     if (!isAdmin()) {
         event.sender.send("enrichment-log", "❌ Acesso negado.");
         event.sender.send("db-load-finished");
@@ -335,27 +335,43 @@ ipcMain.on("start-db-load", async (event, { masterFiles }) => {
     }
     const log = (msg) => event.sender.send("enrichment-log", msg);
     const progress = (current, total, fileName, cnpjsProcessed) => event.sender.send("db-load-progress", { current, total, fileName, cnpjsProcessed });
-    
-    log(`--- Iniciando Carga para o Banco de Dados de Enriquecimento ---`);
+
+    console.log('--- [DEBUG] Função start-db-load iniciada ---'); // LOG 1
+
+    if (!year) {
+        log('❌ ERRO CRÍTICO: O ano não foi fornecido para a carga no banco de dados.');
+        console.log('--- [DEBUG] ERRO: Ano não fornecido ---'); // LOG 2
+        event.sender.send("db-load-finished");
+        return;
+    }
+
+    log(`--- Iniciando Carga para o Banco de Dados (Ano: ${year}) ---`);
     let totalCnpjsProcessed = 0;
 
     const saveChunkToDb = async (dataMap, filePath) => {
-        if (dataMap.size === 0) return;
+        console.log(`--- [DEBUG] saveChunkToDb chamada com ${dataMap.size} CNPJs ---`); // LOG 7
+        if (dataMap.size === 0) {
+            console.log('--- [DEBUG] saveChunkToDb: dataMap está vazio, retornando. ---');
+            return;
+        }
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-
             const uniqueCnpjs = Array.from(dataMap.keys());
-            // 1. Insere todos os CNPJs novos na tabela 'empresas'
-            const insertEmpresasQuery = `INSERT INTO empresas (cnpj) SELECT unnest($1::text[]) ON CONFLICT (cnpj) DO NOTHING`;
-            await client.query(insertEmpresasQuery, [uniqueCnpjs]);
+            console.log('--- [DEBUG] saveChunkToDb: Tentando inserir/atualizar empresas... ---'); // LOG 8
+            const insertEmpresasQuery = `
+                INSERT INTO empresas (cnpj, ano)
+                SELECT unnest($1::text[]), $2
+                ON CONFLICT (cnpj) DO UPDATE
+                SET ano = EXCLUDED.ano;
+            `;
+            await client.query(insertEmpresasQuery, [uniqueCnpjs, year]);
+            console.log('--- [DEBUG] saveChunkToDb: Empresas inseridas/atualizadas com sucesso. ---'); // LOG 9
 
-            // 2. Busca os IDs de todos os CNPJs (novos e existentes) do lote
             const getEmpresasQuery = `SELECT id, cnpj FROM empresas WHERE cnpj = ANY($1::text[])`;
             const result = await client.query(getEmpresasQuery, [uniqueCnpjs]);
             const empresaIdMap = new Map(result.rows.map(row => [row.cnpj, row.id]));
 
-            // 3. Prepara os dados para a tabela 'telefones'
             const phoneValues = [];
             for (const [cnpj, phones] of dataMap.entries()) {
                 const empresaId = empresaIdMap.get(cnpj);
@@ -365,10 +381,11 @@ ipcMain.on("start-db-load", async (event, { masterFiles }) => {
                 }
             }
 
-            // 4. Insere os telefones em lotes para evitar sobrecarga
             if (phoneValues.length > 0) {
-                 const insertTelefonesQuery = `INSERT INTO telefones (empresa_id, numero) SELECT (d.v->>'empresa_id')::int, d.v->>'numero' FROM jsonb_array_elements($1::jsonb) d(v) ON CONFLICT DO NOTHING`;
+                 console.log(`--- [DEBUG] saveChunkToDb: Tentando inserir ${phoneValues.length} telefones... ---`); // LOG 10
+                 const insertTelefonesQuery = `INSERT INTO telefones (empresa_id, numero) SELECT (d.v->>'empresa_id')::int, d.v->>'numero' FROM jsonb_array_elements($1::jsonb) d(v) ON CONFLICT (empresa_id, numero) DO NOTHING`;
                  await client.query(insertTelefonesQuery, [JSON.stringify(phoneValues)]);
+                 console.log('--- [DEBUG] saveChunkToDb: Telefones inseridos com sucesso. ---'); // LOG 11
             }
 
             await client.query('COMMIT');
@@ -376,21 +393,23 @@ ipcMain.on("start-db-load", async (event, { masterFiles }) => {
         } catch (error) {
             await client.query('ROLLBACK');
             log(`❌ ERRO no lote do arquivo ${path.basename(filePath)}: ${error.message}`);
+            console.error('--- [DEBUG] ERRO DENTRO DE saveChunkToDb ---', error); // LOG 12
         } finally {
             client.release();
         }
     };
 
     try {
+        console.log(`--- [DEBUG] Processando ${masterFiles.length} arquivos mestres... ---`); // LOG 3
         for (let fileIndex = 0; fileIndex < masterFiles.length; fileIndex++) {
             const filePath = masterFiles[fileIndex];
             const fileName = path.basename(filePath);
             progress(fileIndex + 1, masterFiles.length, fileName, totalCnpjsProcessed);
             log(`\nProcessando arquivo mestre: ${fileName}`);
+            console.log(`--- [DEBUG] Lendo arquivo: ${fileName} ---`); // LOG 4
             try {
-                // (O código de leitura do Excel permanece o mesmo)
-                const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; if (!worksheet || worksheet.rowCount === 0) { log(`⚠️ Arquivo ${fileName} vazio ou inválido. Pulando.`); continue; } const headerMap = new Map(); worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNum) => headerMap.set(colNum, String(cell.value || "").trim().toLowerCase())); let cnpjColIdx = [...headerMap.entries()].find(([_, h]) => h === "cpf" || h === "cnpj")?.[0] ?? -1; const phoneColIdxs = [...headerMap.entries()].filter(([_, h]) => /^(fone|telefone|celular)/.test(h)).map(([colNum]) => colNum); if (cnpjColIdx === -1 || phoneColIdxs.length === 0) { log(`❌ ERRO: Colunas de documento ou telefone não encontradas. Pulando.`); continue; }
-
+                const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; if (!worksheet || worksheet.rowCount === 0) { log(`⚠️ Arquivo ${fileName} vazio ou inválido. Pulando.`); continue; } const headerMap = new Map(); worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNum) => headerMap.set(colNum, String(cell.value || "").trim().toLowerCase())); let cnpjColIdx = [...headerMap.entries()].find(([_, h]) => h === "cpf" || h === "cnpj")?.[0] ?? -1; const phoneColIdxs = [...headerMap.entries()].filter(([_, h]) => /^(fone|telefone|celular)/.test(h)).map(([colNum]) => colNum); if (cnpjColIdx === -1 || phoneColIdxs.length === 0) { log(`❌ ERRO: Colunas de documento ou telefone não encontradas. Pulando.`); console.log(`--- [DEBUG] Colunas não encontradas em ${fileName}. Pulando. ---`); continue; }
+                console.log(`--- [DEBUG] Colunas encontradas em ${fileName}. Iniciando leitura das linhas... ---`); // LOG 5
                 let cnpjsToUpdate = new Map();
                 for (let i = 2; i <= worksheet.rowCount; i++) {
                     const row = worksheet.getRow(i);
@@ -401,31 +420,44 @@ ipcMain.on("start-db-load", async (event, { masterFiles }) => {
                     if (phones.length > 0) cnpjsToUpdate.set(cnpj, [...(cnpjsToUpdate.get(cnpj) || []),...phones]);
                     
                     if (i % 5000 === 0) {
+                        console.log(`--- [DEBUG] Atingido o lote de 5000. Chamando saveChunkToDb... ---`); // LOG 6
                         await saveChunkToDb(cnpjsToUpdate, filePath);
                         cnpjsToUpdate.clear();
                         progress(fileIndex + 1, masterFiles.length, fileName, totalCnpjsProcessed);
                     }
                 }
-                if (cnpjsToUpdate.size > 0) await saveChunkToDb(cnpjsToUpdate, filePath);
+                if (cnpjsToUpdate.size > 0) {
+                    console.log(`--- [DEBUG] Lote final com ${cnpjsToUpdate.size} itens. Chamando saveChunkToDb... ---`);
+                    await saveChunkToDb(cnpjsToUpdate, filePath);
+                }
 
             } catch (err) {
                 log(`❌ ERRO ao processar ${fileName}: ${err.message}`);
+                console.error(`--- [DEBUG] ERRO ao processar o arquivo ${fileName}:`, err);
             }
         }
     } catch (err) {
         log(`❌ Um erro crítico ocorreu: ${err.message}`);
+        console.error('--- [DEBUG] ERRO CRÍTICO NA FUNÇÃO start-db-load ---', err);
     } finally {
         log(`\n✅ Carga finalizada. Total de ${totalCnpjsProcessed} CNPJs únicos processados.`);
+        console.log('--- [DEBUG] Função start-db-load finalizada. ---');
         event.sender.send("db-load-finished");
     }
 });
-
 function formatEta(totalSeconds) { if (!isFinite(totalSeconds) || totalSeconds < 0) return "Calculando..."; const m = Math.floor(totalSeconds / 60); const s = Math.floor(totalSeconds % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; }
 
-async function runEnrichmentProcess({ filesToEnrich, strategy, backup }, log, progress, onFinish) {
+async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, log, progress, onFinish) { // Recebe o 'year'
     if (!isAdmin()){ log("❌ Acesso negado."); if(onFinish) onFinish(); return; }
 
-    log("--- Iniciando Processo de Enriquecimento por Lotes ---");
+    // Validação do ano
+    if (!year) {
+        log('❌ ERRO CRÍTICO: O ano não foi fornecido para o enriquecimento.');
+        if (onFinish) onFinish();
+        return;
+    }
+
+    log(`--- Iniciando Processo de Enriquecimento por Lotes (Ano de Busca: ${year}) ---`);
     let totalEnrichedRowsOverall = 0, totalProcessedRowsOverall = 0, totalNotFoundInDbOverall = 0;
     const BATCH_SIZE = 2000;
     try {
@@ -454,21 +486,22 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup }, log, pr
                     log(`Lote ${currentBatchNum}/${totalBatches}: Processando ${cnpjsInBatch.size} CNPJs...`);
                     
                     // NOVO: Busca dados de enriquecimento no PostgreSQL
-                    const enrichmentDataForBatch = new Map();
-                    const cnpjKeys = Array.from(cnpjsInBatch.keys());
-                    if (cnpjKeys.length > 0) {
-                        const query = `
-                            SELECT e.cnpj, array_agg(t.numero) as telefones
-                            FROM empresas e
-                            LEFT JOIN telefones t ON e.id = t.empresa_id
-                            WHERE e.cnpj = ANY($1::text[])
-                            GROUP BY e.id, e.cnpj;
-                        `;
-                        const result = await pool.query(query, [cnpjKeys]);
-                        result.rows.forEach(row => enrichmentDataForBatch.set(row.cnpj, row.telefones || []));
-                    }
-                    
-                    log(`Lote ${currentBatchNum}/${totalBatches}: ${enrichmentDataForBatch.size} CNPJs encontrados no BD. Atualizando planilha...`);
+                  const enrichmentDataForBatch = new Map();
+                const cnpjKeys = Array.from(cnpjsInBatch.keys());
+                if (cnpjKeys.length > 0) {
+                    const query = `
+                        SELECT e.cnpj, array_agg(t.numero) as telefones
+                        FROM empresas e
+                        JOIN telefones t ON e.id = t.empresa_id
+                        WHERE e.cnpj = ANY($1::text[]) AND e.ano = $2
+                        GROUP BY e.id, e.cnpj;
+                    `;
+                    // Passa o ano como segundo parâmetro da consulta
+                    const result = await pool.query(query, [cnpjKeys, year]);
+                    result.rows.forEach(row => enrichmentDataForBatch.set(row.cnpj, row.telefones || []));
+                }
+                
+                log(`Lote ${currentBatchNum}/${totalBatches}: ${enrichmentDataForBatch.size} CNPJs encontrados no BD para o ano ${year}. Atualizando planilha...`);
 
                     // (O resto da lógica de atualização da planilha permanece o mesmo)
                     for (const [cnpj, { row }] of cnpjsInBatch.entries()) { let rowWasEnriched = false; if (enrichmentDataForBatch.has(cnpj)) { const phonesFromDb = enrichmentDataForBatch.get(cnpj); const existingPhones = phoneCols.map(idx => row.getCell(idx).value).filter(Boolean); const shouldProcess = (strategy === "overwrite") || (strategy === "append" && existingPhones.length < phoneCols.length) || (strategy === "ignore" && existingPhones.length === 0); if (shouldProcess) { rowWasEnriched = true; if (strategy === "overwrite") phoneCols.forEach(idx => row.getCell(idx).value = null); let phonesToWrite = [...phonesFromDb]; phoneCols.forEach(idx => { if (strategy === "append" && row.getCell(idx).value) return; if (phonesToWrite.length > 0) row.getCell(idx).value = phonesToWrite.shift(); }); } } else { if (cnpj) notFoundInFile++; } row.getCell(statusCol).value = rowWasEnriched ? "Enriquecido" : "Pobre"; if (rowWasEnriched) enrichedInFile++; }
@@ -496,7 +529,13 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup }, log, pr
 
 ipcMain.on("start-enrichment", async (event, options) => {
     if (!isAdmin()) { event.sender.send("enrichment-log", "❌ Acesso negado."); event.sender.send("enrichment-finished"); return; }
-    await runEnrichmentProcess(options, (msg) => event.sender.send("enrichment-log", msg), (id, pct, eta) => event.sender.send("enrichment-progress", { id, progress: pct, eta }), () => event.sender.send("enrichment-finished"));
+    // A chamada agora passa o objeto 'options' inteiro, que já contém o ano
+    await runEnrichmentProcess(
+        options,
+        (msg) => event.sender.send("enrichment-log", msg),
+        (id, pct, eta) => event.sender.send("enrichment-progress", { id, progress: pct, eta }),
+        () => event.sender.send("enrichment-finished")
+    );
 });
 
 // --- FUNÇÕES DA ABA MONITORAMENTO, LOGIN, ETC (Sem alterações relevantes ao DB) ---

@@ -334,9 +334,54 @@ document.addEventListener('DOMContentLoaded', () => {
     if (refreshCountBtn) refreshCountBtn.addEventListener('click', updateEnrichedCnpjCount);
     if (downloadEnrichedDataBtn) downloadEnrichedDataBtn.addEventListener('click', async () => { downloadEnrichedDataBtn.disabled = true; downloadEnrichedDataBtn.textContent = 'Preparando download...'; try { const result = await window.electronAPI.downloadEnrichedData(); if (result.success) { appendEnrichmentLog(`✅ ${result.message}`); } else { appendEnrichmentLog(`❌ ${result.message}`); } } catch (error) { appendEnrichmentLog(`❌ Erro no download: ${error.message}`); } finally { downloadEnrichedDataBtn.disabled = false; downloadEnrichedDataBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>Baixar Dados Enriquecidos`; } });
     if (selectMasterFilesBtn) selectMasterFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione as Planilhas Mestras', multi: true }); if (!files?.length) return; enrichmentMasterFiles = files; selectedMasterFilesDiv.innerHTML = ''; files.forEach(file => { addFileToUI(selectedMasterFilesDiv, file, false); }); });
-    if (startLoadToDbBtn) startLoadToDbBtn.addEventListener('click', () => { if (enrichmentMasterFiles.length === 0) return appendEnrichmentLog('❌ ERRO: Selecione pelo menos uma planilha mestra.'); startLoadToDbBtn.disabled = true; dbLoadProgressContainer.style.display = 'block'; dbLoadProgressBarFill.style.width = '0%'; dbLoadProgressPercent.textContent = '0%'; dbLoadProgressText.textContent = 'Iniciando...'; dbLoadProgressStats.textContent = ''; appendEnrichmentLog('Iniciando carga para o banco de dados...'); window.electronAPI.startDbLoad({ masterFiles: enrichmentMasterFiles }); });
+    
+    if (startLoadToDbBtn) {
+        startLoadToDbBtn.addEventListener('click', () => {
+            if (enrichmentMasterFiles.length === 0) {
+                return appendEnrichmentLog('❌ ERRO: Selecione pelo menos uma planilha mestra.');
+            }
+            // CAPTURA E VALIDA O ANO
+            const masterFileYearInput = document.getElementById('master-file-year-input');
+            const year = masterFileYearInput.value;
+            if (!year || isNaN(parseInt(year))) {
+                return appendEnrichmentLog('❌ ERRO: Por favor, insira um ano válido para a base de dados.');
+            }
+    
+            startLoadToDbBtn.disabled = true;
+            dbLoadProgressContainer.style.display = 'block';
+            dbLoadProgressBarFill.style.width = '0%';
+            dbLoadProgressPercent.textContent = '0%';
+            dbLoadProgressText.textContent = 'Iniciando...';
+            dbLoadProgressStats.textContent = '';
+            appendEnrichmentLog(`Iniciando carga para o banco de dados para o ano de ${year}...`);
+            // ENVIA O ANO PARA O MAIN PROCESS
+            window.electronAPI.startDbLoad({ masterFiles: enrichmentMasterFiles, year: parseInt(year) });
+        });
+    }
+
     if (selectEnrichFilesBtn) selectEnrichFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione Arquivos para Enriquecer', multi: true }); if (!files?.length) return; window.electronAPI.prepareEnrichmentFiles(files); enrichmentEnrichFiles = []; selectedEnrichFilesDiv.innerHTML = ''; enrichmentProgressContainer.innerHTML = ''; files.forEach(file => { const id = `enrich-${enrichmentEnrichFiles.length}`; enrichmentEnrichFiles.push({ path: file, id }); appendEnrichmentLog(`Adicionado para enriquecimento: ${file}`); addFileToUI(selectedEnrichFilesDiv, file, false); enrichmentProgressContainer.innerHTML += `<div class="file-progress" style="margin-bottom: 15px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;"><strong>${getBasename(file)}</strong><span id="eta-${id}" style="font-size: 12px; color: var(--text-secondary);"></span></div><div class="progress-bar-container"><div class="progress-bar-fill" id="${id}"></div></div></div>`; }); });
-    if (startEnrichmentBtn) startEnrichmentBtn.addEventListener('click', () => { if (enrichmentEnrichFiles.length === 0) return appendEnrichmentLog('❌ ERRO: Selecione pelo menos um arquivo para enriquecer.'); startEnrichmentBtn.disabled = true; const strategy = document.querySelector('input[name="enrichStrategy"]:checked').value; const backup = document.getElementById('backupCheckbox').checked; appendEnrichmentLog(`Iniciando enriquecimento com a estratégia: ${strategy.toUpperCase()}`); window.electronAPI.startEnrichment({ filesToEnrich: enrichmentEnrichFiles, strategy, backup }); });
+    
+    if (startEnrichmentBtn) {
+        startEnrichmentBtn.addEventListener('click', () => {
+            if (enrichmentEnrichFiles.length === 0) {
+                return appendEnrichmentLog('❌ ERRO: Selecione pelo menos um arquivo para enriquecer.');
+            }
+             // CAPTURA E VALIDA O ANO
+            const enrichmentYearInput = document.getElementById('enrichment-year-input');
+            const year = enrichmentYearInput.value;
+            if (!year || isNaN(parseInt(year))) {
+                return appendEnrichmentLog('❌ ERRO: Por favor, insira um ano válido para pesquisar no banco.');
+            }
+    
+            startEnrichmentBtn.disabled = true;
+            const strategy = document.querySelector('input[name="enrichStrategy"]:checked').value;
+            const backup = document.getElementById('backupCheckbox').checked;
+            appendEnrichmentLog(`Iniciando enriquecimento com a estratégia: ${strategy.toUpperCase()} usando dados do ano ${year}`);
+            // ENVIA O ANO PARA O MAIN PROCESS
+            window.electronAPI.startEnrichment({ filesToEnrich: enrichmentEnrichFiles, strategy, backup, year: parseInt(year) });
+        });
+    }
+
     window.electronAPI.onEnrichmentLog((msg) => appendEnrichmentLog(msg));
     window.electronAPI.onEnrichmentProgress(({ id, progress, eta }) => { const bar = document.getElementById(id); if (bar) bar.style.width = `${progress}%`; const etaElement = document.getElementById(`eta-${id}`); if (etaElement) { etaElement.textContent = eta ? `ETA: ${eta}` : ''; if (progress === 100) { etaElement.textContent = 'Concluído!'; } } });
     window.electronAPI.onDbLoadProgress(({ current, total, fileName, cnpjsProcessed }) => { const percent = Math.round((current / total) * 100); dbLoadProgressBarFill.style.width = `${percent}%`; dbLoadProgressPercent.textContent = `${percent}%`; dbLoadProgressText.textContent = `Processando: ${fileName}`; dbLoadProgressStats.textContent = `${cnpjsProcessed} CNPJs processados`; });
@@ -689,7 +734,7 @@ function hasActiveFilter() {
 
         if (monitoringSearchInput) {
             const foneDestinoCheckbox = document.getElementById('check-fone_destino');
-            const foneDestinoInput = document.getElementById('input-fone_destino');
+            const foneDestinoInput = document.getElementById('input_fone_destino');
             if (foneDestinoCheckbox && foneDestinoInput) {
                 monitoringSearchInput.addEventListener('input', () => {
                     const searchTerm = monitoringSearchInput.value.trim();
@@ -934,7 +979,7 @@ function hasActiveFilter() {
                     <div class="call-actions">
                         <span class="call-duration">Duração: ${call.tempo_ligacao || '00:00:00'}</span>
                         <button id="${downloadButtonId}" class="download-link" title="Baixar gravação: ${fileName}">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#ffffff viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#ffffff" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>
                         </button>
                     </div>
                 </li>`;
