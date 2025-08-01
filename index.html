@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Gerenciador de Bases</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <style>
+        /* --- TEMA PADRÃO (AZUL MODERNO) --- */
+        :root {
+            --bg-dark: #0a0b0f;
+            --bg-light: #1a1d23;
+            --bg-lighter: #252932;
+            --bg-card: #2a2f3a;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --accent-light: #60a5fa;
+            --accent-text: #ffffff;
+            --danger-color: #ef4444;
+            --danger-hover: #dc2626;
+            --success-color: #10b981;
+            --success-hover: #059669;
+            --warning-color: #f59e0b;
+            --border-color: #374151;
+            --border-light: #4b5563;
+            --shadow-color: rgba(0, 0, 0, 0.4);
+            --shadow-accent: rgba(59, 130, 246, 0.25);
+            --shadow-danger: rgba(239, 68, 68, 0.25);
+            --shadow-success: rgba(16, 185, 129, 0.25);
+            --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            --gradient-secondary: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            --gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        /* --- TEMA C6 BANK (PREMIUM) --- */
+        .c6-theme {
+            --bg-dark: #0d0d0d;
+            --bg-light: #1a1a1a;
+            --bg-lighter: #262626;
+            --bg-card: #2d2d2d;
+            --text-primary: #ffffff;
+            --text-secondary: #d4d4d8;
+            --text-muted: #a1a1aa;
+            --accent-color: #fbbf24;
+            --accent-hover: #f59e0b;
+            --accent-light: #fcd34d;
+            --accent-text: #0d0d0d;
+            --border-color: #404040;
+            --border-light: #525252;
+            --shadow-accent: rgba(251, 191, 36, 0.3);
+            --gradient-primary: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            --gradient-secondary: linear-gradient(135deg, #fcd34d 0%, #fbbf24 100%);
+        }
+        
+        /* --- TEMA ENRIQUECIMENTO (ROXO ELEGANTE) --- */
+        .enrichment-theme {
+            --bg-dark: #0f0a14;
+            --bg-light: #1c1625;
+            --bg-lighter: #2a2332;
+            --bg-card: #332940;
+            --text-primary: #f1f0f3;
+            --text-secondary: #c4b5d1;
+            --text-muted: #9b8aa8;
+            --accent-color: #8b5cf6;
+            --accent-hover: #7c3aed;
+            --accent-light: #a78bfa;
+            --accent-text: #ffffff;
+            --border-color: #4c3a5c;
+            --border-light: #5d4a6d;
+            --shadow-accent: rgba(139, 92, 246, 0.3);
+            --gradient-primary: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            --gradient-secondary: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+        }
+        
+        /* --- TEMA MONITORAMENTO (VERDE & PRETO) --- */
+        .monitoring-theme {
+            --bg-dark: #0d0d0d;
+            --bg-light: #1a1a1a;
+            --bg-lighter: #262626;
+            --bg-card: #283a34; 
+            --text-primary: #ffffff;
+            --text-secondary: #d4d4d8;
+            --text-muted: #a1a1aa;
+            --accent-color: #34d399; 
+            --accent-hover: #10b981;
+            --accent-light: #6ee7b7;
+            --accent-text: #ffffff;
+            --border-color: #404040;
+            --border-light: #525252;
+            --shadow-accent: rgba(52, 211, 153, 0.3);
+            --gradient-primary: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+            --gradient-secondary: linear-gradient(135deg, #6ee7b7 0%, #34d399 100%);
+        }
+
+        * { 
+            box-sizing: border-box; 
+            margin: 0;
+            padding: 0;
+        }
+
+        body, .section, .files, .file-item, .logs, select, input, .slider, button, .tab-button, .progress-bar-fill, .container {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #0f1419 100%);
+            color: var(--text-primary); 
+            margin: 0; 
+            padding: 24px;
+            min-height: 100vh;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+/* Adicione estas novas regras */
+.collapsible-filters summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.2s ease;
+}
+
+.collapsible-filters summary:hover {
+    color: var(--accent-light);
+}
+
+.collapsible-filters summary::after {
+    content: '▼';
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    transition: transform 0.3s ease, color 0.2s ease;
+    padding-right: 10px;
+}
+
+.collapsible-filters[open] > summary::after {
+    transform: rotate(-180deg);
+}
+
+.collapsible-filters[open] > summary {
+    color: var(--accent-light);
+}
+        .container { 
+            animation: containerFadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            max-width: 1400px; 
+            margin: 0 auto; 
+            background: var(--bg-light);
+            backdrop-filter: blur(20px);
+            border-radius: 20px; 
+            box-shadow: 
+                0 25px 50px -12px var(--shadow-color),
+                0 0 0 1px var(--border-color),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            padding: 40px; 
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
+            opacity: 0.6;
+        }
+
+        .tab-content { 
+            display: none; 
+            animation: tabContentSlide 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .tab-content.active { display: block; }
+        .file-item.new-item { animation: fileItemSlide 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        @keyframes containerFadeIn { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes tabContentSlide { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fileItemSlide { from { opacity: 0; transform: translateX(-20px) scale(0.95); } to { opacity: 1; transform: translateX(0) scale(1); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+        h1, h2 { text-align: center; color: var(--text-primary); font-weight: 700; letter-spacing: -0.025em; }
+        h1 { font-size: 2.2rem; margin-bottom: 24px; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; position: relative; }
+        h2 { font-size: 1.3rem; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-top: 0; margin-bottom: 20px; position: relative; }
+        h2::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 60px; height: 2px; background: var(--gradient-primary); border-radius: 1px; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 24px; }
+        
+        .section { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 28px; box-shadow: 0 10px 25px -5px var(--shadow-color), 0 0 0 1px rgba(255, 255, 255, 0.05); position: relative; overflow: hidden; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--accent-color), transparent); opacity: 0.3; }
+        .section:hover { transform: translateY(-2px); box-shadow: 0 20px 40px -10px var(--shadow-color), 0 0 0 1px rgba(255, 255, 255, 0.1); }
+        .section.sortable-ghost { opacity: 0.4; transform: rotate(5deg); }
+        .section.sortable-drag { transform: rotate(5deg); box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3); z-index: 1000; }
+        .section.sortable-chosen { cursor: grabbing; }
+
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .section-controls { display: flex; gap: 8px; opacity: 0; transition: opacity 0.3s ease; }
+        .section:hover .section-controls { opacity: 1; }
+        .section-control-btn { width: 28px; height: 28px; border: none; border-radius: 6px; background: var(--bg-lighter); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; font-size: 14px; }
+        .section-control-btn:hover { background: var(--accent-color); color: var(--accent-text); transform: scale(1.1); }
+        .drag-handle { cursor: grab; }
+        .drag-handle:active { cursor: grabbing; }
+        .section.hidden { min-height: auto; }
+        .section.hidden > *:not(.section-header) { display: none; }
+        .section.hidden .section-header { opacity: 0.6; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 0; }
+        .section.hidden .section-header h2 { font-size: 14px; color: var(--text-secondary); }
+        .full-width { grid-column: 1 / -1; }
+
+        hr { border: none; height: 1px; background: linear-gradient(90deg, transparent, var(--border-color), transparent); margin: 28px 0; }
+
+        .tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 28px; background: var(--bg-lighter); border-radius: 12px 12px 0 0; padding: 8px; gap: 4px; }
+        .tab-button { padding: 14px 20px; cursor: pointer; border: none; background: transparent; font-size: 14px; font-weight: 600; color: var(--text-secondary); position: relative; border-radius: 8px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .tab-button.active { color: var(--accent-text); background: var(--gradient-primary); box-shadow: 0 4px 12px var(--shadow-accent); }
+        .tab-button:hover:not(.active) { color: var(--accent-light); background: rgba(59, 130, 246, 0.1); }
+
+        button { background: var(--gradient-primary); color: var(--accent-text); border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; margin: 4px 4px 4px 0; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px var(--shadow-accent), inset 0 1px 0 rgba(255, 255, 255, 0.2); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden; }
+        button::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent); transition: left 0.5s; }
+        button:hover::before { left: 100%; }
+        button:hover { transform: translateY(-1px) scale(1.01); box-shadow: 0 6px 20px var(--shadow-accent), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+        button:active { transform: translateY(0) scale(0.99); transition-duration: 0.1s; }
+        button:disabled { background: var(--bg-lighter); color: var(--text-muted); cursor: not-allowed; transform: none; box-shadow: none; }
+        button:disabled svg { fill: var(--text-muted); }
+        .btn-danger { background: var(--gradient-danger); box-shadow: 0 4px 12px var(--shadow-danger); }
+        .btn-danger svg { fill: #fff; }
+        .btn-danger:hover { box-shadow: 0 6px 20px var(--shadow-danger); }
+        
+        label { margin-right: 8px; font-weight: 500; color: var(--text-secondary); display: inline-block; margin-bottom: 6px; font-size: 13px; }
+        .strategy-group label { margin-right: 20px; }
+        select, input[type="text"], input[type="date"] { background: var(--bg-dark); color: var(--text-primary); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 13px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1); }
+        select:focus, input[type="text"]:focus, input[type="date"]:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 2px var(--shadow-accent), inset 0 2px 4px rgba(0, 0, 0, 0.1); transform: translateY(-1px); }
+
+        .files { min-height: 40px; padding: 14px; background: var(--bg-dark); border-radius: 10px; margin-top: 10px; margin-bottom: 16px; border: 1px solid var(--border-color); position: relative; overflow: hidden; }
+        .files:empty::after { content: 'Nenhum arquivo selecionado'; color: var(--text-muted); font-style: italic; font-size: 13px; }
+        .file-item { background: var(--bg-lighter); color: var(--text-primary); padding: 10px 14px; border-radius: 6px; margin-top: 6px; font-size: 12px; border-left: 3px solid var(--accent-color); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .file-item:hover { transform: translateX(3px); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15); }
+        
+        .logs { height: 200px; background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 10px; padding: 16px; overflow-y: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; white-space: pre-wrap; margin-top: 10px; line-height: 1.5; box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.2); }
+        
+        .progress-bar-container { width: 100%; background: var(--bg-dark); border-radius: 6px; height: 12px; margin-top: 16px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2); position: relative; }
+        .progress-bar-fill { width: 0%; height: 100%; background: var(--gradient-primary); border-radius: 6px; position: relative; overflow: hidden; transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .progress-bar-fill::after { content: ''; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent); animation: shimmer 2s infinite; }
+        
+        .tool-group { padding-top: 20px; border-top: 1px solid var(--border-color); margin-top: 20px; }
+        .tool-group:first-child { padding-top: 0; border-top: none; margin-top: 0; }
+        
+       .toggle-switch {
+  display: inline-flex; /* Usa inline-flex para se alinhar bem com outros elementos na linha */
+  align-items: center;
+  vertical-align: middle; /* Garante alinhamento vertical consistente */
+  gap: 12px; /* Substitui o margin-left no texto para um espaçamento mais moderno */
+}
+
+/* O container do switch, que é uma label para acessibilidade.
+   A especificidade aumentada (.toggle-switch .switch) o protege de regras globais. */
+.toggle-switch .switch {
+  position: relative;
+  display: inline-block;
+  
+  /* Variáveis para fácil customização de tamanho */
+  --switch-width: 44px;
+  --switch-height: 24px;
+  --switch-padding: 3px;
+  --handle-size: calc(var(--switch-height) - (var(--switch-padding) * 2));
+  --handle-travel-distance: calc(var(--switch-width) - var(--handle-size) - (var(--switch-padding) * 2));
+
+  width: var(--switch-width);
+  height: var(--switch-height);
+  margin: 0; /* Anula margens indesejadas que possam vir de regras globais para 'label' */
+}
+
+/* Esconde o checkbox padrão, mas o mantém funcional e acessível */
+.toggle-switch .switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* O fundo do switch (a 'pista' onde o círculo desliza) */
+.toggle-switch .slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--text-muted);
+  border-radius: var(--switch-height); /* Raio sempre perfeito, baseado na altura */
+  transition: background-color 0.3s ease;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* O círculo/puxador do switch */
+.toggle-switch .slider:before {
+  position: absolute;
+  content: "";
+  height: var(--handle-size);
+  width: var(--handle-size);
+  left: var(--switch-padding);
+  bottom: var(--switch-padding);
+  background-color: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- ESTADOS DO SWITCH --- */
+
+/* Estado ATIVADO (checked) */
+.toggle-switch input:checked + .slider {
+  background: var(--gradient-success); /* Usando o gradiente do seu tema */
+}
+
+.toggle-switch input:checked + .slider:before {
+  transform: translateX(var(--handle-travel-distance));
+}
+
+/* Estado de FOCO (para acessibilidade, aparece ao navegar com Tab) */
+.toggle-switch input:focus-visible + .slider {
+  box-shadow: 0 0 0 3px var(--shadow-accent), inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* O texto ao lado do switch */
+.toggle-switch .toggle-label {
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 13px;
+  user-select: none;
+  /* A propriedade 'margin-left' foi substituída por 'gap' no container .toggle-switch */
+}
+        #apiDropzone { border: 2px dashed var(--border-color); border-radius: 12px; padding: 30px; text-align: center; margin-bottom: 20px; background: var(--bg-dark); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; overflow: hidden; }
+        #apiDropzone:hover { border-color: var(--accent-color); background: rgba(59, 130, 246, 0.05); transform: translateY(-1px); }
+        #apiDropzone.dragover { border-color: var(--accent-color); background: rgba(59, 130, 246, 0.1); box-shadow: 0 0 15px var(--shadow-accent); }
+
+        footer { text-align: center; margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.85em; position: relative; z-index: 10; }
+        footer p { margin: 0; }
+        #header-content { text-align: center; margin-bottom: 16px; min-height: 70px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        #current-tab-title { margin-bottom: 4px; color: var(--accent-color); font-size: 1.6em; font-weight: 700; }
+        #current-tab-description { color: var(--text-secondary); font-size: 1em; max-width: 80%; margin-left: auto; margin-right: auto; }
+        h1.hidden { display: none; }
+        #update-message { font-size: 11px; color: var(--accent-light); margin-top: 8px; }
+
+        /* --- ESTILOS DE MONITORAMENTO MODIFICADOS --- */
+        .monitoring-filter-bar {
+            background: var(--bg-lighter);
+            padding: 16px 20px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border-color);
+        }
+        .filter-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .filter-row:last-child { margin-bottom: 0; }
+        .filter-row label { margin: 0; }
+        .date-inputs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .date-quick-select details { position: relative; }
+        .date-quick-select summary {
+             background: var(--bg-dark); color: var(--text-secondary); border: 1px solid var(--border-color); box-shadow: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; list-style: none;
+        }
+        .date-quick-select summary::-webkit-details-marker { display: none; }
+        .date-quick-select details[open] summary { background: var(--bg-card); }
+        .date-quick-select ul {
+            position: absolute;
+            top: 105%;
+            left: 0;
+            z-index: 100;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            list-style: none;
+            padding: 6px;
+            margin: 0;
+            width: 180px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+        .date-quick-select li { padding: 8px 12px; border-radius: 6px; cursor: pointer; }
+        .date-quick-select li:hover { background: var(--accent-color); color: var(--accent-text); }
+        
+        .collapsible-filters { width: 100%; }
+        .collapsible-filters summary { font-weight: 600; color: var(--text-secondary); padding: 10px 0; cursor: pointer; list-style: none; }
+
+        #generateReportBtn { flex-shrink: 0; margin-left: auto; }
+        #monitoringSearchInput {
+            width: 100%;
+            padding-left: 45px;
+            background-color: var(--bg-dark);
+            font-size: 14px;
+        }
+        .search-icon-svg {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            fill: var(--text-muted);
+        }
+
+        #api-parameters {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 12px 24px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+        }
+        .param-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .param-item .toggle-label { flex-shrink: 0;}
+        .param-item input[type="text"], .param-item .custom-select-container, .param-item .radio-group-container, .param-item .multi-select-container { flex-grow: 1; }
+        .param-item input[text].hidden, .param-item .custom-select-container.hidden, .param-item .radio-group-container.hidden, .param-item .multi-select-container.hidden { display: none; }
+
+        .monitoring-dashboard {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+        
+        #dashboard-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+        .summary-card { background: var(--bg-lighter); border-radius: 12px; padding: 20px; text-align: center; border-left: 4px solid var(--accent-color); }
+        .summary-card-button { cursor: pointer; }
+        .summary-card-button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .summary-card-title { font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+        .summary-card-value { font-size: 28px; font-weight: 700; color: var(--text-primary); }
+        .summary-card-value.warning { color: var(--warning-color); }
+        
+        #dashboard-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+        .detail-card { background: var(--bg-lighter); border-radius: 12px; padding: 20px; }
+        .detail-card h3 { font-size: 16px; color: var(--accent-light); margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;}
+        .detail-list { list-style: none; padding: 0; max-height: 250px; overflow-y: auto; }
+        .detail-list li { display: flex; justify-content: space-between; padding: 8px 5px; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+        .detail-list li:last-child { border-bottom: none; }
+        .detail-list li .name {
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-shrink: 1;
+            min-width: 0;
+        }
+        .detail-list li .count { font-weight: 600; background: var(--bg-card); padding: 2px 8px; border-radius: 6px; color: var(--accent-color);}
+
+        .interactive-tabulation details { margin-bottom: 5px; }
+        .interactive-tabulation summary {
+            padding: 8px 10px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            justify-content: space-between;
+        }
+        .interactive-tabulation details[open] summary { background: var(--bg-card); }
+        .interactive-tabulation summary.suspicious-summary { border-left: 3px solid var(--warning-color); }
+        .tabulation-call-list {
+            list-style: none;
+            padding: 8px;
+            margin-top: 4px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        /* ================= INÍCIO DOS NOVOS ESTILOS ================= */
+        .tabulation-call-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center; /* Centraliza verticalmente */
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 12px;
+        }
+
+        .tabulation-call-list li:last-child {
+            border: none;
+        }
+
+        .call-info {
+            display: flex;
+            flex-direction: column; /* Empilha CNPJ e telefone */
+            gap: 2px;
+        }
+
+        .call-cnpj {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .call-phone {
+            color: var(--text-secondary);
+            font-size: 11px;
+        }
+
+        .call-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0; /* Impede que os botões encolham */
+        }
+        
+        .call-duration {
+            font-weight: 600;
+            color: var(--accent-light);
+            background-color: var(--bg-dark);
+            padding: 3px 8px;
+            border-radius: 5px;
+        }
+
+        .download-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-color);
+            text-decoration: none;
+            background-color: var(--bg-dark);
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        .download-link:hover {
+            background-color: var(--accent-color);
+            color: var(--accent-text);
+            transform: scale(1.1);
+        }
+        /* ================= FIM DOS NOVOS ESTILOS ================= */
+
+        /* --- ESTILOS PARA SELETORES PESQUISÁVEIS --- */
+        .custom-select-container {
+            position: relative;
+            flex-grow: 1;
+        }
+        .custom-select-container input[type="text"] {
+            cursor: pointer;
+        }
+        .custom-select-container.hidden {
+            display: none;
+        }
+        .custom-select-list .group-header {
+            font-weight: 600;
+            color: var(--accent-light);
+            padding: 10px 8px 5px;
+            font-size: 12px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 5px;
+            cursor: default;
+        }
+        .custom-select-list li:not(.group-header):hover {
+            background: var(--accent-color);
+            color: var(--accent-text);
+        }
+
+        /* --- ESTILOS PARA O MODAL DE SELEÇÃO E OUTROS MODAIS --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 11, 15, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay:not(.hidden) {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .modal-content {
+            background: var(--bg-light);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay:not(.hidden) .modal-content {
+            transform: scale(1);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .modal-title {
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            margin: 0;
+        }
+        .modal-close-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 2rem;
+            font-weight: 300;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            line-height: 1;
+            box-shadow: none;
+        }
+        .modal-close-btn:hover {
+            color: var(--text-primary);
+            transform: scale(1.1);
+        }
+        .modal-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+        .modal-search-container {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        #modal-search-input {
+            width: 100%;
+            font-size: 1rem;
+        }
+        #modal-list-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        #modal-list-container .custom-select-list {
+            position: static;
+            display: block;
+            border: none;
+            max-height: none;
+            overflow-y: visible;
+            margin-top: 0;
+            padding: 0;
+        }
+        #modal-list-container .custom-select-list li {
+            padding: 12px 16px;
+        }
+        .modal-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .modal-table th, .modal-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .modal-table th {
+            font-weight: 600;
+            color: var(--accent-light);
+        }
+
+
+        /* --- ESTILOS DA SCROLLBAR CUSTOMIZADA --- */
+        .custom-scrollbar::-webkit-scrollbar,
+        .logs::-webkit-scrollbar,
+        .detail-list::-webkit-scrollbar,
+        .tabulation-call-list::-webkit-scrollbar,
+        .modal-body::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track,
+        .logs::-webkit-scrollbar-track,
+        .detail-list::-webkit-scrollbar-track,
+        .tabulation-call-list::-webkit-scrollbar-track,
+        .modal-body::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb,
+        .logs::-webkit-scrollbar-thumb,
+        .detail-list::-webkit-scrollbar-thumb,
+        .tabulation-call-list::-webkit-scrollbar-thumb,
+        .modal-body::-webkit-scrollbar-thumb {
+            background-color: var(--accent-color);
+            border-radius: 4px;
+            border: 2px solid var(--bg-dark);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+        .logs::-webkit-scrollbar-thumb:hover,
+        .detail-list::-webkit-scrollbar-thumb:hover,
+        .tabulation-call-list::-webkit-scrollbar-thumb:hover,
+        .modal-body::-webkit-scrollbar-thumb:hover {
+            background-color: var(--accent-hover);
+        }
+        
+        /* --- AJUSTES DE RESPONSIVIDADE --- */
+        .two-column-tools {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        
+        /* --- NOVO: ESTILOS PARA FILTROS MODIFICADOS E MODAL MULTI-SELEÇÃO --- */
+        .radio-group-container { display: flex; align-items: center; gap: 15px; flex-grow: 1; }
+        .radio-group-container label { display: flex; align-items: center; cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+        .radio-group-container input[type="radio"] { display: none; }
+        .radio-group-container input[type="radio"] + .radio-circle { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border-light); background: var(--bg-dark); margin-right: 8px; position: relative; transition: all 0.2s; }
+        .radio-group-container input[type="radio"] + .radio-circle::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-color); position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0); transition: transform 0.2s; }
+        .radio-group-container input[type="radio"]:checked + .radio-circle { border-color: var(--accent-color); }
+        .radio-group-container input[type="radio"]:checked + .radio-circle::after { transform: translate(-50%, -50%) scale(1); }
+        .multi-select-container { flex-grow: 1; }
+        .multi-select-button { background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-primary); text-align: left; justify-content: space-between; width: 100%; }
+        .multi-select-button:hover { background: var(--bg-lighter); }
+        .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; background-color: var(--bg-dark); }
+        .modal-list-multi li { display: flex; align-items: center; padding: 10px 16px; cursor: pointer; border-radius: 6px; }
+        .modal-list-multi li:hover { background: var(--bg-card); }
+        .modal-list-multi input[type="checkbox"] { margin-right: 15px; width: 18px; height: 18px; accent-color: var(--accent-color); }
+        .modal-list-multi label { width: 100%; cursor: pointer; }
+
+        /* --- NOVO: ESTILOS PARA A TABELA DE TEMPOS DO OPERADOR --- */
+        #operator-times-container {
+            grid-column: 1 / -1; /* Ocupa a largura total */
+        }
+        .operator-times-table-wrapper {
+            width: 100%;
+            overflow-x: auto; /* Permite rolagem horizontal se necessário */
+        }
+        .operator-times-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            white-space: nowrap; /* Impede que o texto quebre */
+        }
+        .operator-times-table th, 
+        .operator-times-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .operator-times-table th {
+            background-color: var(--bg-lighter);
+            font-weight: 600;
+            color: var(--accent-light);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .operator-times-table tbody tr:hover {
+            background-color: var(--bg-card);
+        }
+
+        @media (max-width: 1200px) { 
+            .grid, .two-column-tools { 
+                grid-template-columns: 1fr; 
+                gap: 20px; 
+            } 
+        }
+        @media (max-width: 768px) { 
+            body { padding: 12px; } 
+            .container { padding: 20px; border-radius: 12px; } 
+            h1 { font-size: 1.8rem; } 
+            .tabs { flex-direction: column; gap: 2px; } 
+            .tab-button { padding: 10px 14px; text-align: left; }
+            .modal-content {
+                width: 95%;
+                height: 90%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="main-app-title">Gerenciador de Bases</h1>
+        <div id="header-content">
+            <h2 id="current-tab-title"></h2>
+            <p id="current-tab-description"></p>
+        </div>
+        <div class="tabs">
+            <button class="tab-button" data-tab-name="local">Limpeza Local</button>
+            <button class="tab-button" data-tab-name="api">Consulta CNPJ (API)</button>
+            <button class="tab-button" data-tab-name="enriquecimento">Enriquecimento</button>
+            <button class="tab-button" data-tab-name="monitoramento">Monitoramento</button>
+        </div>
+
+        <div id="local" class="tab-content">
+             <div class="grid" id="localGrid">
+                <div class="section" data-section-id="limpeza-lista-raiz">
+                    <div class="section-header">
+                        <h2>Limpeza por Lista Raiz</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    <button id="selectRootBtn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>1. Sel. Lista Raiz</button>
+                    <button id="autoRootBtn">Auto Raiz: OFF</button>
+                    <button id="feedRootBtn">Alimentar Raiz</button>
+                    <div id="rootFilePath" class="files"></div>
+                    <label for="rootCol">Coluna Raiz:</label>
+                    <select id="rootCol"><option value="A" selected>A</option><option value="B">B</option><option value="C">C</option></select>
+                    <hr>
+                    <button id="addCleanFileBtn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 6.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7a.5.5 0 0 1 .5-.5z"/><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/></svg>2. Adicionar Arquivos</button>
+                    <div id="selectedCleanFiles" class="files"></div>
+                    <label for="destCol">Coluna de Destino:</label>
+                    <select id="destCol"><option value="A">A</option><option value="B" selected>B</option><option value="C">C</option></select>
+                    <hr>
+                    <button id="startCleaningBtn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10.854 8.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708 0z"/><path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 2a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z"/><path d="M2.5 4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z"/></svg>3. Iniciar Limpeza</button>
+                    <button id="resetLocalBtn" class="btn-danger"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>Reiniciar</button>
+                    <br><br>
+                    <label class="toggle-switch" style="justify-content: flex-start;"><input type="checkbox" id="backupCheckbox"><span class="toggle-label">Criar Backup</span></label>
+                </div>
+                
+                <div class="section" data-section-id="ferramentas-adicionais">
+                    <div class="section-header">
+                        <h2>Ferramentas Adicionais</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    <div class="two-column-tools">
+                        <div class="tool-column">
+                            <div class="tool-group">
+                                <button id="updateBlocklistBtn">Atualizar Raiz com Blocklist</button>
+                            </div>
+        
+                            <div class="tool-group">
+                                <div class="db-options">
+                                    <div class="toggle-switch">
+                                        <label class="switch"><input type="checkbox" id="checkDbCheckbox"><span class="slider"></span></label>
+                                        <span class="toggle-label">Consultar CNPJs no BD</span>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <label class="switch"><input type="checkbox" id="saveToDbCheckbox"><span class="slider"></span></label>
+                                        <span class="toggle-label">Salvar novos CNPJs no BD</span>
+                                    </div>
+                                </div>
+                                <button id="consultDbBtn">Consulta Apenas pelo BD</button>
+                                <button id="saveStoredCnpjsBtn">Salvar Histórico em Excel</button>
+                            </div>
+        
+                            <div class="tool-group">
+                                <label for="batchIdInput">ID do Lote para Exclusão</label>
+                                <input type="text" id="batchIdInput" placeholder="Cole o ID do lote aqui" style="width: 100%; margin-bottom: 10px;">
+                                <button id="deleteBatchBtn" class="btn-danger">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16">
+                                       <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                       <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                    </svg>
+                                    Excluir Lote
+                                </button>
+                            </div>
+                        </div>
+                        <div class="tool-column">
+                            <div class="tool-group">
+                                <div class="toggle-switch">
+                                    <label class="switch"><input type="checkbox" id="autoAdjustPhonesCheckbox"><span class="slider"></span></label>
+                                    <span class="toggle-label">Ajustar Fones Pós-Limpeza</span>
+                                </div>
+                                <button id="adjustPhonesBtn">Ajustar Fones (Manual)</button>
+                            </div>
+                            
+                            <div class="tool-group">
+                                <button id="selectMergeFilesBtn">Selecionar Arquivos para Mesclar</button>
+                                <button id="startMergeBtn">Mesclar</button>
+                                <div id="selectedMergeFiles" class="files"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section full-width" data-section-id="logs-progresso-limpeza">
+                    <div class="section-header">
+                        <h2>Logs e Progresso da Limpeza</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    <div id="progressContainer"></div>
+                    <div id="uploadProgressContainer" style="display: none; margin-top: 20px;">
+                        <strong id="uploadProgressTitle"></strong>
+                        <div class="progress-bar-container" style="height: 14px;">
+                            <div class="progress-bar-fill" id="uploadProgressBarFill" style="background: var(--success-color);"></div>
+                        </div>
+                        <span id="uploadProgressText" style="font-size: 13px; color: var(--text-secondary);"></span>
+                    </div>
+                    <div id="log" class="logs custom-scrollbar">Aguardando início do sistema...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="api" class="tab-content">
+            <div class="grid" id="apiGrid">
+                <div class="section" data-section-id="fila-processamento-api">
+                    <div class="section-header">
+                        <h2>Fila de Processamento da API</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    <div id="apiDropzone">
+                        <p style="margin:0; font-size: 16px; font-weight: 600;">Arraste e solte as planilhas aqui</p>
+                        <p style="font-size: 14px; margin: 12px 0; color: var(--text-muted);">ou</p>
+                        <button id="selectApiFileBtn">Selecione os Arquivos</button>
+                    </div>
+                    <div id="apiQueueContainer">
+                        <h4>Em Processamento:</h4>
+                        <div id="apiProcessing" class="files"><span style="color:var(--text-secondary)">Nenhum</span></div>
+                        <h4>Fila de Espera:</h4>
+                        <div id="apiPending" class="files"><span style="color:var(--text-secondary)">Nenhum arquivo na fila</span></div>
+                        <h4>Concluídos:</h4>
+                        <div id="apiCompleted" class="files"><span style="color:var(--text-secondary)">Nenhum arquivo concluído</span></div>
+                    </div>
+                </div>
+                <div class="section" data-section-id="configuracoes-acoes-api">
+                    <div class="section-header">
+                        <h2>Configurações e Ações</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                      <label for="apiKeySelection">Perfil de Chaves:</label>
+                      <select id="apiKeySelection">
+                        <option value="chave1" selected>Chave 1 (Padrão)</option>
+                        <option value="chave2">Chave 2 (Alternativa)</option>
+                        <option value="intercalar">Intercalar Chaves (Automático)</option>
+                      </select>
+                    </div>
+                    <hr>
+                    <button id="startApiBtn" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>Iniciar Fila</button>
+                    <button id="resetApiBtn" class="btn-danger"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>Limpar Fila</button>
+                    <p style="margin-top: 20px;"><strong>Status Geral:</strong> <span id="apiStatus">Aguardando</span></p>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" id="apiProgressBarFill"></div>
+                    </div>
+                    <h3 style="margin-top: 20px;">Log da Operação Atual</h3>
+                    <div id="apiLog" class="logs custom-scrollbar"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="enriquecimento" class="tab-content">
+            <div class="grid" id="enrichmentGrid">
+                <div class="section" data-section-id="estatisticas-banco-dados">
+                    <div class="section-header">
+                        <h2>Estatísticas do Banco de Dados</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    <div style="background: var(--bg-dark); border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                            <span style="font-size: 16px; font-weight: 600; color: var(--text-primary);">Total de CNPJs Enriquecidos:</span>
+                            <span id="enrichedCnpjCount" style="font-size: 24px; font-weight: 700; color: var(--accent-color);">Carregando...</span>
+                        </div>
+                        <button id="refreshCountBtn" style="background: var(--bg-lighter); color: var(--text-primary); border: 1px solid var(--border-color); padding: 8px 16px; font-size: 12px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                            </svg>
+                            Atualizar
+                        </button>
+                        <button id="downloadEnrichedDataBtn" style="margin-left: 10px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+                            </svg>
+                            Baixar Dados Enriquecidos
+                        </button>
+                    </div>
+                </div>
+                <div class="section" data-section-id="alimentar-banco-dados">
+                    <div class="section-header">
+                        <h2>Alimentar Banco de Dados</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    <p style="font-size: 14px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
+                        Use esta função para enviar planilhas mestras e popular o banco de dados de enriquecimento.
+                    </p>
+                    <button id="selectMasterFilesBtn">1. Selecionar Planilhas Mestras</button>
+                    <div id="selectedMasterFiles" class="files"></div>
+                    <button id="startLoadToDbBtn">2. Iniciar Carga para o BD</button>
+                    <div class="input-group" style="margin-bottom: 10px;">
+    <label for="master-file-year-input">Ano da Base de Dados (Obrigatório)</label>
+    <input type="number" id="master-file-year-input" placeholder="Ex: 2024" required>
+</div>
+                    
+                    <div id="dbLoadProgressContainer" style="display: none; margin-top: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <strong id="dbLoadProgressTitle">Alimentando Banco de Dados...</strong>
+                            <span id="dbLoadProgressPercent" style="font-size: 14px; color: var(--text-secondary);">0%</span>
+                        </div>
+                        <div class="progress-bar-container" style="height: 16px;">
+                            <div class="progress-bar-fill" id="dbLoadProgressBarFill" style="background: var(--gradient-success);"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
+                            <span id="dbLoadProgressText">Preparando...</span>
+                            <span id="dbLoadProgressStats"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="section" data-section-id="enriquecer-planilhas">
+                    <div class="section-header">
+                        <h2>Enriquecer Planilhas</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                     <p style="font-size: 14px; color: var(--text-secondary); margin-top: -10px; margin-bottom: 15px;">
+                        Carregue suas listas para adicionar os telefones a partir do banco de dados.
+                    </p>
+                    <button id="selectEnrichFilesBtn">1. Selecionar Arquivos para Enriquecer</button>
+                    <div id="selectedEnrichFiles" class="files"></div>
+                    <div style="margin-top: 15px;">
+                        <label>Estratégia de Preenchimento:</label>
+                        <div class="strategy-group" style="display: inline-block;">
+                           <input type="radio" id="enrichStrategyAppend" name="enrichStrategy" value="append" checked>
+                           <label for="enrichStrategyAppend">Anexar</label>
+                           <input type="radio" id="enrichStrategyOverwrite" name="enrichStrategy" value="overwrite">
+                           <label for="enrichStrategyOverwrite">Sobrescrever</label>
+                           <input type="radio" id="enrichStrategyIgnore" name="enrichStrategy" value="ignore">
+                           <label for="enrichStrategyIgnore">Ignorar</label>
+                        </div>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 10px;">
+    <label for="enrichment-year-input">Ano para Pesquisa no Banco (Obrigatório)</label>
+    <input type="number" id="enrichment-year-input" placeholder="Ex: 2024" required>
+</div>
+                    <button id="startEnrichmentBtn" style="margin-top: 10px;">2. Iniciar Enriquecimento</button>
+                </div>
+            </div>
+             <div class="section full-width" data-section-id="logs-progresso-enriquecimento">
+                <div class="section-header">
+                    <h2>Logs e Progresso do Enriquecimento</h2>
+                    <div class="section-controls">
+                        <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                        <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                <div id="enrichmentProgressContainer"></div>
+                <div id="enrichmentLog" class="logs custom-scrollbar">Aguardando início...</div>
+            </div>
+        </div>
+
+        <div id="monitoramento" class="tab-content">
+            <div class="monitoring-filter-bar">
+                <div class="filter-row">
+                    <div class="search-bar-container" style="position: relative; flex-grow: 1;">
+                         <svg class="search-icon-svg" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                        </svg>
+                        <input type="text" id="monitoringSearchInput" placeholder="Pesquisar por Fone Destino...">
+                    </div>
+                    <div class="date-inputs">
+                        <label for="data_inicio_monitor">De:</label>
+                        <input type="date" id="data_inicio_monitor">
+                        <label for="data_fim_monitor">Até:</label>
+                        <input type="date" id="data_fim_monitor">
+                    </div>
+                    <div class="date-quick-select">
+                        <details>
+                            <summary>Períodos</summary>
+                            <ul id="date-filter-menu">
+                                <li data-period="today">Hoje</li>
+                                <li data-period="yesterday">Ontem</li>
+                                <li data-period="this_week">Esta Semana</li>
+                                <li data-period="last_week">Semana Passada</li>
+                                <li data-period="this_month">Mês Atual</li>
+                            </ul>
+                        </details>
+                    </div>
+                    <button id="generateReportBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>
+                        Gerar Relatório
+                    </button>
+                </div>
+                 <details class="collapsible-filters">
+                    <summary>Filtros Avançados</summary>
+                    <div id="api-parameters">
+                        </div>
+                </details>
+            </div>
+    
+            <div class="monitoring-dashboard">
+                <div id="dashboard-summary" class="section">
+                     </div>
+                <div id="dashboard-details" class="section">
+                     </div>
+                <div id="operator-times-container" class="section full-width" style="display: none;">
+                    <h3>Tempos dos Operadores</h3>
+                    <div id="operator-times-table-wrapper" class="operator-times-table-wrapper custom-scrollbar">
+                        </div>
+                </div>
+                <div id="monitoring-log" class="logs custom-scrollbar section">
+                    OBSERVAÇÃO: SE FOR BUSCAR DESEMPENHO DE CAMPANHA, QUANTO MENOS FILTRO, MAIS DEMORADO!! APLIQUE FILTROS PARA SER RÁPIDO...
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="selection-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 600px; height: 80%; max-height: 700px;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-title"></h3>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-search-container">
+                <input type="text" id="modal-search-input" placeholder="Pesquisar...">
+            </div>
+            <div id="modal-list-container" class="modal-body custom-scrollbar">
+            </div>
+        </div>
+    </div>
+
+    <div id="multi-selection-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 700px; height: 85%; max-height: 750px;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="multi-modal-title">Selecionar Tabulações</h3>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-search-container">
+                <input type="text" id="multi-modal-search-input" placeholder="Pesquisar tabulações...">
+            </div>
+            <div id="multi-modal-list-container" class="modal-body custom-scrollbar">
+                </div>
+            <div class="modal-footer">
+                <button id="multi-modal-cancel-btn" class="btn-danger">Cancelar</button>
+                <button id="multi-modal-confirm-btn">Confirmar Seleção</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="suspicious-calls-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Detalhes das Chamadas Suspeitas</h3>
+                <button class="modal-close-btn">&times;</button>
+            </div>
+            <div id="suspicious-calls-list" class="modal-body custom-scrollbar">
+            </div>
+        </div>
+    </div>
+
+
+    <script src="renderer.js"></script>
+    <footer>
+        <div style="display: flex; justify-content: center; align-items: center; gap: 20px;">
+            <p>Usuário: <span id="currentUser" style="font-weight: bold;"></span></p>
+            <button id="logoutBtn" class="btn-danger" style="padding: 4px 10px; font-size: 12px; display: none;">Sair</button>
+        </div>
+        <p>Criador: Davi Abraão | Versão: 2.1.8</p>
+        <div id="update-message"></div>
+    </footer>
+</body>
+</html>

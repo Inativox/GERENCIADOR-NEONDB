@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Gerenciador de Bases</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0b0f;
+            --bg-secondary: #1a1d23;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+            --accent-primary: #00d4ff;
+            --accent-secondary: #8b5cf6;
+            --danger: #ef4444;
+            --success: #10b981;
+            --glow-primary: rgba(0, 212, 255, 0.3);
+            --glow-secondary: rgba(139, 92, 246, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, #0f1419 50%, #1a0f2e 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Animated Background */
+        .bg-animation {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+            opacity: 0.6;
+        }
+
+        .particle:nth-child(odd) {
+            background: var(--accent-secondary);
+            animation-duration: 8s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+
+        .grid-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(0, 212, 255, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 212, 255, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 20s linear infinite;
+            opacity: 0.3;
+        }
+
+        @keyframes gridMove {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        /* Login Container */
+        .login-container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            position: relative;
+            z-index: 10;
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            animation: slideIn 0.8s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .login-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+            animation: scanLine 3s ease-in-out infinite;
+        }
+
+        @keyframes scanLine {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+
+        /* Header */
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .login-title {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from { filter: drop-shadow(0 0 5px var(--glow-primary)); }
+            to { filter: drop-shadow(0 0 15px var(--glow-secondary)); }
+        }
+
+        .login-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 400;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 24px;
+            position: relative;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 
+                0 0 0 3px var(--glow-primary),
+                0 4px 12px rgba(0, 0, 0, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .form-input:focus + .form-label {
+            color: var(--accent-primary);
+        }
+
+        .form-input::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        /* --- NOVO: Estilos para "Manter Logado" --- */
+        .form-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .remember-me input {
+            margin-right: 8px;
+            accent-color: var(--accent-primary);
+        }
+        
+        #logout-link {
+            font-size: 0.875rem;
+            color: var(--accent-primary);
+            text-decoration: none;
+            cursor: pointer;
+            display: none; /* Oculto por padrão */
+        }
+
+        #logout-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Button */
+        .login-button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border: none;
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .login-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 8px 25px var(--glow-primary),
+                0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .login-button:active {
+            transform: translateY(0);
+        }
+
+        .login-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .login-button:hover::before {
+            left: 100%;
+        }
+
+        .login-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid var(--text-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Error Message */
+        .error-message {
+            color: var(--danger);
+            font-size: 0.875rem;
+            text-align: center;
+            min-height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        /* Success Message */
+        .success-message {
+            color: var(--success);
+            font-size: 0.875rem;
+            text-align: center;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 480px) {
+            .login-container {
+                margin: 20px;
+                padding: 30px 24px;
+                max-width: none;
+            }
+            
+            .login-title {
+                font-size: 1.75rem;
+            }
+        }
+
+        /* Accessibility */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation">
+        <div class="grid-overlay"></div>
+    </div>
+
+    <div class="login-container">
+        <div class="login-header">
+            <h1 class="login-title">Acesso Seguro</h1>
+            <p class="login-subtitle">Entre com suas credenciais</p>
+        </div>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username" class="form-label">Usuário</label>
+                <input 
+                    type="text" 
+                    id="username" 
+                    class="form-input" 
+                    placeholder="Digite seu usuário"
+                    required
+                    autocomplete="username"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="password" class="form-label">Senha</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    class="form-input" 
+                    placeholder="Digite sua senha"
+                    required
+                    autocomplete="current-password"
+                >
+            </div>
+            
+            <div class="form-options">
+                <label class="remember-me">
+                    <input type="checkbox" id="remember-me">
+                    Manter-me logado
+                </label>
+                <a id="logout-link">Fazer logout?</a>
+            </div>
+
+
+            <button type="submit" id="login-btn" class="login-button">
+                <span class="spinner" id="spinner"></span>
+                <span id="button-text">Entrar</span>
+            </button>
+
+            <div id="message" class="error-message"></div>
+        </form>
+    </div>
+
+    <script>
+        // Criar partículas animadas
+        function createParticles() {
+            const bgAnimation = document.querySelector('.bg-animation');
+            const particleCount = 50;
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.top = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 6 + 's';
+                particle.style.animationDuration = (Math.random() * 4 + 4) + 's';
+                bgAnimation.appendChild(particle);
+            }
+        }
+
+        // Inicializar partículas
+        createParticles();
+
+        // Elementos do formulário
+        const loginForm = document.getElementById('login-form');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const rememberMeCheckbox = document.getElementById('remember-me');
+        const loginBtn = document.getElementById('login-btn');
+        const spinner = document.getElementById('spinner');
+        const buttonText = document.getElementById('button-text');
+        const messageDiv = document.getElementById('message');
+        const logoutLink = document.getElementById('logout-link');
+
+        // Função de login
+        async function attemptLogin(event) {
+            event.preventDefault();
+            
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+            const rememberMe = rememberMeCheckbox.checked;
+            
+            // Limpar mensagens anteriores
+            messageDiv.textContent = '';
+            messageDiv.className = 'error-message';
+
+            // Validação básica
+            if (!username || !password) {
+                showMessage('Preencha todos os campos.', 'error');
+                return;
+            }
+
+            // Estado de loading
+            setLoadingState(true);
+
+            try {
+                // Simular delay de rede
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Verificar se existe a API do Electron
+                if (window.electronAPI && window.electronAPI.loginAttempt) {
+                    const result = await window.electronAPI.loginAttempt(username, password, rememberMe);
+                    
+                    if (result.success) {
+                        showMessage('Login realizado com sucesso!', 'success');
+                        // A janela será fechada pelo processo principal
+                    } else {
+                        showMessage(result.message || 'Credenciais inválidas.', 'error');
+                    }
+                } else {
+                    // Fallback para teste sem Electron
+                    if (username === 'admin' && password === 'admin') {
+                        showMessage('Login realizado com sucesso!', 'success');
+                        setTimeout(() => {
+                            alert('Login bem-sucedido! (Modo de demonstração)');
+                        }, 1000);
+                    } else {
+                        showMessage('Credenciais inválidas. Tente admin/admin', 'error');
+                    }
+                }
+            } catch (error) {
+                showMessage('Erro de conexão. Tente novamente.', 'error');
+                console.error('Erro no login:', error);
+            } finally {
+                setLoadingState(false);
+            }
+        }
+
+        // Mostrar mensagem
+        function showMessage(text, type) {
+            messageDiv.textContent = text;
+            messageDiv.className = type === 'success' ? 'success-message' : 'error-message';
+        }
+
+        // Estado de loading
+        function setLoadingState(loading) {
+            loginBtn.disabled = loading;
+            spinner.style.display = loading ? 'inline-block' : 'none';
+            buttonText.textContent = loading ? 'Entrando...' : 'Entrar';
+        }
+
+        // Event listeners
+        loginForm.addEventListener('submit', attemptLogin);
+
+        // Efeitos de foco nos inputs
+        [usernameInput, passwordInput].forEach(input => {
+            input.addEventListener('focus', function() {
+                this.parentElement.querySelector('.form-label').style.color = 'var(--accent-primary)';
+            });
+
+            input.addEventListener('blur', function() {
+                if (!this.value) {
+                    this.parentElement.querySelector('.form-label').style.color = 'var(--text-secondary)';
+                }
+            });
+        });
+
+        // Limpar mensagem de erro ao digitar
+        [usernameInput, passwordInput].forEach(input => {
+            input.addEventListener('input', function() {
+                if (messageDiv.textContent && messageDiv.className === 'error-message') {
+                    messageDiv.textContent = '';
+                }
+            });
+        });
+        
+        // NOVO: Listener para o link de logout
+        logoutLink.addEventListener('click', () => {
+            if (window.electronAPI && window.electronAPI.logout) {
+                window.electronAPI.logout();
+            }
+        });
+
+        // NOVO: Listener para receber falha de login automático
+        if (window.electronAPI && window.electronAPI.onAutoLoginFailed) {
+            window.electronAPI.onAutoLoginFailed((message) => {
+                showMessage(message, 'error');
+                logoutLink.style.display = 'inline'; // Mostra o link para limpar credenciais
+            });
+        }
+
+
+        // Animação de entrada
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.style.opacity = '0';
+            setTimeout(() => {
+                document.body.style.transition = 'opacity 0.5s ease';
+                document.body.style.opacity = '1';
+            }, 100);
+        });
+    </script>
+</body>
+</html>
