@@ -2,13 +2,18 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
     // --- Funções de Login e Sessão ---
-    loginAttempt: (username, password, rememberMe) => ipcRenderer.invoke('login-attempt', username, password, rememberMe), // MODIFICADO: Adicionado 'rememberMe'
-    logout: () => ipcRenderer.send('logout'), // NOVO: Função para o botão de sair
+    loginAttempt: (username, password, rememberMe) => ipcRenderer.invoke('login-attempt', username, password, rememberMe),
+    logout: () => ipcRenderer.send('logout'),
     onUserInfo: (callback) => ipcRenderer.on('user-info', (event, ...args) => callback(...args)),
 
+    // --- NOVO: Funções de Configuração do BD ---
+    getDbConnectionString: () => ipcRenderer.invoke('get-db-connection-string'),
+    saveAndTestDbConnection: (connectionString) => ipcRenderer.invoke('save-and-test-db-connection', connectionString),
+    // --- FIM DA MODIFICAÇÃO ---
+
     // --- Funções da Aba de Monitoramento ---
-    fetchMonitoringReport: (payload) => ipcRenderer.invoke('fetch-monitoring-report', payload), // NOVO: Função que faltava para a 2ª API
-    downloadRecording: (url, fileName) => ipcRenderer.invoke('download-recording', url, fileName), // NOVO: Função para baixar gravações
+    fetchMonitoringReport: (payload) => ipcRenderer.invoke('fetch-monitoring-report', payload),
+    downloadRecording: (url, fileName) => ipcRenderer.invoke('download-recording', url, fileName),
 
     // --- Funções da Limpeza Local ---
     selectFile: (options) => ipcRenderer.invoke("select-file", options),

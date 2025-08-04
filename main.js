@@ -1,4 +1,4 @@
-console.log('--- MAIN.JS CARREGADO - VERSÃO NOVA (NEON DB) ---');
+console.log('--- MAIN.JS CARREGADO - VERSÃO NOVA (NEON DB COM CHAVE EXTERNA) ---');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
@@ -9,7 +9,7 @@ const ExcelJS = require("exceljs");
 const axios = require("axios");
 const os = require('os');
 const Store = require('electron-store');
-const { Pool } = require('pg'); // NOVO: Driver do PostgreSQL
+const { Pool } = require('pg');
 
 autoUpdater.logger = require("electron-log");
 autoUpdater.logger.transports.file.level = "info";
@@ -17,74 +17,31 @@ autoUpdater.logger.transports.file.level = "info";
 const store = new Store();
 
 // #################################################################
-// #           CONFIGURAÇÃO DO BANCO DE DADOS (NEON DB)            #
+// #           CONFIGURAÇÃO DO BANCO DE DADOS (DINÂMICA)           #
 // #################################################################
 
-// IMPORTANTE: Substitua pela sua connection string do Neon DB.
-// Ela se parece com: "postgresql://user:password@host:port/dbname?sslmode=require"
-const NEON_CONNECTION_STRING = "postgresql://neondb_owner:npg_ki2aKHqlnFY9@ep-quiet-night-ac2uu9kc-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require";
+// REMOVIDO: A connection string não é mais fixa no código.
+// const NEON_CONNECTION_STRING = "postgresql://...";
 
-// Pool de conexões para otimizar o acesso ao banco
-const pool = new Pool({
-    connectionString: NEON_CONNECTION_STRING,
-});
+// NOVO: A variável 'pool' será inicializada depois, quando tivermos a chave.
+let pool;
 
-// SQL para criar as tabelas necessárias no seu banco de dados Neon
-/*
--- Tabela para a funcionalidade de "Enriquecimento" (Fornecido por você)
-CREATE TABLE IF NOT EXISTS empresas (
-    id SERIAL PRIMARY KEY,
-    cnpj TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS telefones (
-    id SERIAL PRIMARY KEY,
-    empresa_id INTEGER NOT NULL,
-    numero TEXT NOT NULL,
-    CONSTRAINT fk_empresa
-        FOREIGN KEY(empresa_id) 
-        REFERENCES empresas(id)
-        ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_empresas_cnpj ON empresas(cnpj);
-CREATE INDEX IF NOT EXISTS idx_telefones_empresa_id ON telefones(empresa_id);
-
--- Tabela para a funcionalidade de "Limpeza Local" (histórico de CNPJs)
-CREATE TABLE IF NOT EXISTS limpeza_cnpjs (
-    id SERIAL PRIMARY KEY,
-    cnpj TEXT NOT NULL UNIQUE,
-    batch_id TEXT,
-    adicionado_em TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_limpeza_cnpjs_cnpj ON limpeza_cnpjs(cnpj);
-CREATE INDEX IF NOT EXISTS idx_limpeza_cnpjs_batch_id ON limpeza_cnpjs(batch_id);
-
-
--- Tabela para a funcionalidade "Auto Raiz" e "Alimentar Raiz"
-CREATE TABLE IF NOT EXISTS raiz_cnpjs (
-    id SERIAL PRIMARY KEY,
-    cnpj TEXT NOT NULL UNIQUE,
-    fonte TEXT,
-    lote_id TEXT,
-    adicionado_em TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_raiz_cnpjs_cnpj ON raiz_cnpjs(cnpj);
-
-*/
-
-// Função para testar a conexão com o banco na inicialização
-async function testDbConnection() {
-    try {
-        await pool.query('SELECT NOW()');
-        console.log("✅ Conexão com o banco de dados Neon DB estabelecida com sucesso.");
-    } catch (error) {
-        console.error("❌ ERRO FATAL: Falha ao conectar ao Neon DB.", error);
-        dialog.showErrorBox("Erro Crítico de Conexão", `Não foi possível conectar ao banco de dados: ${error.message}. A aplicação será encerrada.`);
-        if (app) {
-          app.quit();
-        }
+// NOVO: Função para inicializar o pool de conexões e testar a conexão.
+async function initializePool(connectionString) {
+    // Se um pool já existir, encerra as conexões antigas para evitar vazamentos.
+    if (pool) {
+        await pool.end();
+        console.log("Pool de conexões anterior encerrado.");
     }
+    
+    // Cria um novo pool com a connection string fornecida.
+    pool = new Pool({
+        connectionString: connectionString,
+    });
+
+    // Testa a conexão enviando uma query simples. Se falhar, vai gerar um erro.
+    await pool.query('SELECT NOW()');
+    console.log("✅ Conexão com o banco de dados estabelecida com sucesso.");
 }
 
 
@@ -96,16 +53,13 @@ const users = {
     'Pablo': { password: 'Vasco@2025', role: 'admin' },
     'Felipe': { password: 'Flamengo@2025', role: 'admin' },
     'Davi': { password: '080472Fr*', role: 'admin' },
-    // MODIFICADO: Tatiane e Gomes agora são 'master'
     'Tatiane': { password: '123456', role: 'master' },
     'Gomes': { password: '123456', role: 'master' },
-    // MODIFICADO: Usuários 'limited' agora têm um teamId
     'Mayko': { password: '123456', role: 'limited', teamId: '106' },
     'Bruna': { password: '123456', role: 'limited', teamId: '85' },
     'Laiane': { password: '123456', role: 'limited', teamId: '123' },
     'Waleska': { password: '123456', role: 'limited', teamId: '87' },
-    'Natallia': { password: '123456', role: 'limited', teamId: '106' },// Natallia não tem equipe definida, o filtro ficará normal para ela.
-    // NOVOS USUÁRIOS
+    'Natallia': { password: '123456', role: 'limited', teamId: '106' },
     'Camila': { password: '123456', role: 'limited', teamId: '120' },
     'Tef': { password: '123456', role: 'limited', teamId: '133' }
 };
@@ -115,8 +69,8 @@ let currentUser = null;
 
 function createLoginWindow() {
     loginWindow = new BrowserWindow({
-        width: 420,
-        height: 550,
+        width: 480, // Um pouco mais largo para o novo layout
+        height: 650, // Um pouco mais alto
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -135,14 +89,40 @@ function createLoginWindow() {
     return loginWindow;
 }
 
+// NOVO: Handlers para obter, testar e salvar a chave de conexão.
+ipcMain.handle('get-db-connection-string', () => {
+    return store.get('db_connection_string');
+});
+
+ipcMain.handle('save-and-test-db-connection', async (event, connectionString) => {
+    if (!connectionString) {
+        return { success: false, message: 'A chave de conexão não pode estar vazia.' };
+    }
+    try {
+        // Tenta inicializar e conectar com a nova chave.
+        await initializePool(connectionString);
+        // Se a conexão foi bem-sucedida, salva a chave no disco.
+        store.set('db_connection_string', connectionString);
+        return { success: true, message: 'Conexão bem-sucedida e salva!' };
+    } catch (error) {
+        console.error("❌ Falha ao testar/salvar conexão com o BD:", error.message);
+        pool = null; // Reseta o pool em caso de falha
+        return { success: false, message: error.message };
+    }
+});
+
 ipcMain.handle('login-attempt', async (event, username, password, rememberMe) => {
+    // Validação de conexão com o BD antes do login
+    if (!pool) {
+         return { success: false, message: 'A conexão com o banco de dados não foi estabelecida. Valide a chave de conexão primeiro.' };
+    }
+
     const user = users[username];
     if (user && user.password === password) {
-        // Armazena as informações do usuário, incluindo role e teamId
         currentUser = { 
             username: username, 
             role: user.role,
-            teamId: user.teamId || null // Adiciona o teamId, ou null se não existir
+            teamId: user.teamId || null
         };
         
         if (rememberMe) {
@@ -180,13 +160,10 @@ const isAdmin = () => {
 // #################################################################
 // #           LÓGICA DE INICIALIZAÇÃO (COM MODIFICAÇÕES)          #
 // #################################################################
-
-// Variável para armazenar o histórico de CNPJs da limpeza em memória
 let storedCnpjs = new Set();
 
-// NOVO: Carrega os CNPJs do histórico da tabela 'limpeza_cnpjs'
 async function loadStoredCnpjs() {
-    if (!isAdmin()) return;
+    if (!isAdmin() || !pool) return;
     try {
         const result = await pool.query('SELECT cnpj FROM limpeza_cnpjs');
         storedCnpjs = new Set(result.rows.map(row => row.cnpj));
@@ -219,7 +196,7 @@ function createMainWindow() {
             mainWindow.webContents.send('user-info', currentUser);
         }
         if (isAdmin()) { 
-            loadStoredCnpjs(); // Carrega o histórico de CNPJs
+            loadStoredCnpjs();
         }
         autoUpdater.checkForUpdatesAndNotify();
     });
@@ -229,35 +206,51 @@ function createMainWindow() {
     });
 }
 
+// MODIFICADO: A lógica de inicialização agora depende da chave do BD.
 app.whenReady().then(async () => {
-    // Testa a conexão com o banco antes de tudo
-    await testDbConnection(); 
-
+    const dbConnectionString = store.get('db_connection_string');
     const savedCredentials = store.get('credentials');
 
-    if (savedCredentials && savedCredentials.username && savedCredentials.password) {
-        const { username, password } = savedCredentials;
-        const user = users[username];
+    // Se não houver chave de conexão, a única opção é abrir a tela de login.
+    if (!dbConnectionString) {
+        console.log("Nenhuma chave de conexão encontrada. Abrindo tela de login.");
+        createLoginWindow();
+        return;
+    }
 
-       if (user && user.password === password) {
-            // MODIFICADO: Garante que o teamId seja carregado no auto-login
-            currentUser = { 
-                username, 
-                role: user.role,
-                teamId: user.teamId || null
-            };
-            createMainWindow();
+    try {
+        // Tenta conectar ao BD com a chave salva.
+        console.log("Chave de conexão encontrada. Tentando conectar...");
+        await initializePool(dbConnectionString);
+
+        // Se a conexão com o BD for bem-sucedida, tenta o login automático.
+        if (savedCredentials && savedCredentials.username && savedCredentials.password) {
+            const { username, password } = savedCredentials;
+            const user = users[username];
+
+            if (user && user.password === password) {
+                console.log("Login automático bem-sucedido.");
+                currentUser = { 
+                    username, 
+                    role: user.role,
+                    teamId: user.teamId || null
+                };
+                createMainWindow();
+            } else {
+                console.log("Credenciais salvas inválidas. Abrindo tela de login.");
+                createLoginWindow();
+            }
         } else {
-            const win = createLoginWindow();
-            win.webContents.on('did-finish-load', () => {
-                win.webContents.send('auto-login-failed', 'Credenciais salvas inválidas. Faça o login novamente.');
-            });
+             console.log("Nenhuma credencial salva. Abrindo tela de login.");
+             createLoginWindow();
         }
-    } else {
+    } catch (error) {
+        // Se a conexão com o BD falhar (ex: chave expirada), força a tela de login.
+        console.error(`Falha ao conectar com a chave salva: ${error.message}. Abrindo tela de login.`);
+        dialog.showErrorBox("Erro de Conexão", `Não foi possível conectar ao banco de dados com a chave salva. Por favor, verifique-a e tente novamente.\n\nErro: ${error.message}`);
         createLoginWindow();
     }
 });
-
 
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
@@ -265,6 +258,12 @@ app.on("window-all-closed", () => {
     }
 });
 
+// O restante do arquivo main.js (lógica de negócios, etc.) permanece o mesmo...
+// ... (Cole o resto do seu main.js aqui, a partir da seção "LÓGICA DE NEGÓCIOS")
+// #################################################################
+// #           LÓGICA DE NEGÓCIOS (Refatorada para PostgreSQL)     #
+// #################################################################
+// ... (todo o resto do código)
 
 // #################################################################
 // #           LÓGICA DE NEGÓCIOS (Refatorada para PostgreSQL)     #

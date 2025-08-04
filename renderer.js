@@ -9,6 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainTitle = document.getElementById("main-app-title");
     const logoutBtn = document.getElementById('logoutBtn');
 
+     // NOVO: Referência para o título da equipe
+    const monitoringTeamTitle = document.getElementById('monitoring-team-title');
+
+
     let currentUserRole = null;
     let currentUserTeamId = null;
 
@@ -32,10 +36,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function setupUIForRole(role, teamId) {
+   function setupUIForRole(role, teamId) {
+        // Renderiza os filtros da API com base na permissão
         renderApiFilters(role, teamId);
 
+        // Esconde o título da equipe por padrão
+        if (monitoringTeamTitle) {
+            monitoringTeamTitle.style.display = 'none';
+        }
+
         if (role === 'limited' || role === 'master') {
+            // Lógica para esconder abas para 'limited' e 'master'
             tabButtons.forEach(button => {
                 const tabName = button.dataset.tabName;
                 if (tabName !== 'monitoramento') {
@@ -46,7 +57,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (monitoringTabButton) {
                 monitoringTabButton.click();
             }
+
+            // NOVO: Exibe o nome da equipe para o usuário 'limited'
+            if (role === 'limited' && teamId && monitoringTeamTitle) {
+                const team = gruposOperador.find(g => g.id === teamId);
+                const teamName = team ? team.name : `Equipe ID ${teamId}`;
+                monitoringTeamTitle.textContent = `Time: ${teamName}`;
+                monitoringTeamTitle.style.display = 'block';
+            }
+
         } else if (role === 'admin') {
+            // Lógica para admin
             tabButtons.forEach(button => {
                 button.style.display = 'inline-flex';
             });
@@ -56,7 +77,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-
     window.electronAPI.onUpdateMessage((message) => {
         const updateMessageElement = document.getElementById('update-message');
         if (updateMessageElement) {
@@ -641,14 +661,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // MODIFICADO: Função agora recebe role e teamId para aplicar a lógica de permissão
 
-   function renderApiFilters(role, teamId) {
+  function renderApiFilters(role, teamId) {
         const isAdmin = role === 'admin';
         const isMaster = role === 'master';
         apiParametersContainer.innerHTML = '';
 
         const filtersToHideForLimited = ['chave', 'fone_origem', 'sentido', 'tronco_id', 'resultado', 'operacao_id', 'tipoServico', 'servico_id','cpf','nome'];
+        
+        // NOVO: Esconde também o filtro de grupo de operador para o 'limited'
+        if (role === 'limited') {
+            filtersToHideForLimited.push('grupo_operador_id');
+        }
 
         const visibleParams = (isAdmin || isMaster) ? apiParams : apiParams.filter(p => !filtersToHideForLimited.includes(p.name));
+
+        // Adiciona um input oculto para o teamId do usuário 'limited' para que a lógica de busca funcione
+        if (role === 'limited' && teamId) {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.id = 'input-grupo_operador_id';
+            hiddenInput.value = teamId;
+            apiParametersContainer.appendChild(hiddenInput);
+            
+            // Habilita o checkbox correspondente de forma invisível para que seja incluído na busca
+            const hiddenCheckbox = document.createElement('input');
+            hiddenCheckbox.type = 'checkbox';
+            hiddenCheckbox.id = 'check-grupo_operador_id';
+            hiddenCheckbox.checked = true;
+            hiddenCheckbox.style.display = 'none';
+            apiParametersContainer.appendChild(hiddenCheckbox);
+        }
+
 
         visibleParams.forEach(param => {
             const paramItem = document.createElement('div');
@@ -657,11 +700,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const isSelectable = ['operador_id', 'servico_id', 'grupo_operador_id'].includes(param.name);
             const containerId = `input-container-${param.name}`;
 
-            if (param.name === 'grupo_operador_id' && role === 'limited' && teamId) {
-                const team = gruposOperador.find(g => g.id === teamId);
-                const teamName = team ? team.name : `Equipe ID ${teamId}`;
-                inputHtml = `<div id="${containerId}" class="custom-select-container"><input type="text" value="${teamName}" readonly style="cursor: not-allowed; background-color: var(--bg-dark);"><input type="hidden" id="input-${param.name}" value="${teamId}"></div>`;
-            } else if (param.name === 'tabulacao_id') {
+            // A lógica anterior para exibir o campo de equipe foi removida daqui,
+            // pois o filtro não será mais visível para o usuário 'limited'.
+            if (param.name === 'tabulacao_id') {
                 inputHtml = `<div id="${containerId}" class="multi-select-container"><button class="multi-select-button" id="tabulacao-multi-select-btn">Selecionar Tabulações...</button><input type="hidden" id="input-${param.name}"></div>`;
             } else if (isSelectable) {
                 inputHtml = `<div id="${containerId}" class="custom-select-container"><input type="text" id="${param.name}-search" readonly placeholder="Clique para selecionar..." style="cursor: pointer;"><input type="hidden" id="input-${param.name}"></div>`;
@@ -676,47 +717,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const checkbox = document.getElementById(`check-${param.name}`);
             const inputContainer = document.getElementById(containerId);
-
-            // --- LÓGICA DE EVENTOS CORRIGIDA ---
-
-            // 1. Esconde todos os inputs por padrão
+            
             if (inputContainer) {
                 inputContainer.classList.add('hidden');
             }
 
-            // 2. Caso especial: usuário 'limited' com equipe definida
-            if (param.name === 'grupo_operador_id' && role === 'limited' && teamId) {
-                if (inputContainer) inputContainer.classList.remove('hidden');
-                if (checkbox) {
-                    checkbox.checked = true;
-                    checkbox.disabled = true;
-                }
-            }
-
-            // 3. Adiciona o listener para mostrar/esconder e LIMPAR o input
-            if (checkbox && !checkbox.disabled) {
+            if (checkbox) {
                 checkbox.addEventListener('change', () => {
                     const isChecked = checkbox.checked;
                     if (inputContainer) {
                         inputContainer.classList.toggle('hidden', !isChecked);
                     }
-
-                    // Se o switch for DESATIVADO, limpa os valores
                     if (!isChecked) {
-                        // Limpa o input de texto visível (para selects)
+                        // Lógica para limpar os inputs (sem alterações)
                         const searchInput = document.getElementById(`${param.name}-search`);
                         if (searchInput) searchInput.value = '';
-
-                        // Limpa o input oculto que guarda o ID
                         const hiddenInput = document.getElementById(`input-${param.name}`);
                         if (hiddenInput) hiddenInput.value = '';
-
-                        // Limpa inputs de texto simples
                         if (inputContainer && inputContainer.tagName === 'INPUT') {
                             inputContainer.value = '';
                         }
-                        
-                        // Reseta o texto do botão de tabulações
                         if (param.name === 'tabulacao_id') {
                             const btn = document.getElementById('tabulacao-multi-select-btn');
                             if (btn) btn.textContent = 'Selecionar Tabulações...';
