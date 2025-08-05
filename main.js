@@ -869,7 +869,8 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
     const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
     const BATCH_SIZE = 20000;
     const RETRY_MS = 6 * 60 * 1000;
-    const DELAY_SUCESSO_MS = 3 * 60 * 1000;
+//    const DELAY_SUCESSO_MS = 3 * 60 * 1000;
+    const DELAY_SUCESSO_MS = 90 * 1000;
     const MAX_RETRIES = 3;
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const normalizeCnpj = (cnpj) => (String(cnpj).replace(/\D/g, "")).padStart(14, "0");

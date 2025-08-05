@@ -1,6 +1,6 @@
 {
   "name": "gerenciador-de-bases",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "App unificado para limpeza, consulta e enriquecimento de bases.",
   "author": "Davi Abraão",
   "main": "main.js",
