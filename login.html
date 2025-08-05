@@ -129,7 +129,7 @@
         </div>
 
         <form id="login-form">
-            <label for="db-connection-string" class="form-label">Chave de Conexão do Banco de Dados</label>
+            <label for="db-connection-string" class="form-label">Chave de Conexão do Banco de Dados (Opcional)</label>
             <div class="db-connection-group">
                 <div class="form-group">
                     <input 
@@ -137,7 +137,6 @@
                         id="db-connection-string" 
                         class="db-connection-input" 
                         placeholder="postgresql://user:pass@host..."
-                        required
                     >
                 </div>
                 <button type="button" id="test-db-btn" class="test-connection-btn">Testar</button>
@@ -177,7 +176,7 @@
 
             <button type="submit" id="login-btn" class="login-button" disabled>
                 <span class="spinner" id="spinner"></span>
-                <span id="button-text">Conectar ao BD</span>
+                <span id="button-text">Entrar</span>
             </button>
 
             <div id="message" class="error-message"></div>
@@ -185,7 +184,6 @@
     </div>
 
     <script>
-        // Criar partículas (mantido)
         function createParticles() {
             const bgAnimation = document.querySelector('.bg-animation');
             const particleCount = 50;
@@ -201,7 +199,6 @@
         }
         createParticles();
 
-        // Elementos do formulário
         const loginForm = document.getElementById('login-form');
         const usernameInput = document.getElementById('username');
         const passwordInput = document.getElementById('password');
@@ -211,20 +208,15 @@
         const buttonText = document.getElementById('button-text');
         const messageDiv = document.getElementById('message');
         const logoutLink = document.getElementById('logout-link');
-
-        // NOVO: Elementos do BD
         const dbConnectionStringInput = document.getElementById('db-connection-string');
         const testDbBtn = document.getElementById('test-db-btn');
         const dbStatusMessage = document.getElementById('db-status-message');
-
-        // Flag para controlar se a conexão com o BD foi validada
-        let isDbConnected = false;
-
-        // NOVO: Função para testar e salvar a conexão com o BD
-        async function testAndSaveDbConnection() {
+        
+        // MODIFICADO: Função para testar a conexão (não impede mais o login)
+        async function testDbConnection() {
             const connectionString = dbConnectionStringInput.value.trim();
             if (!connectionString) {
-                setDbStatus('Por favor, insira a chave de conexão.', 'error');
+                setDbStatus('Por favor, insira a chave de conexão para testar.', 'error');
                 return;
             }
 
@@ -233,21 +225,16 @@
             setDbStatus('Conectando ao banco de dados...', 'info');
 
             try {
+                // MODIFICADO: A função agora é 'saveAndTestDbConnection' para salvar se for bem-sucedida
                 const result = await window.electronAPI.saveAndTestDbConnection(connectionString);
                 if (result.success) {
                     setDbStatus('Conexão bem-sucedida e chave salva!', 'success');
-                    isDbConnected = true;
-                    loginBtn.disabled = false; // Habilita o botão de login
-                    buttonText.textContent = 'Entrar';
                     dbConnectionStringInput.style.borderColor = 'var(--success)';
                 } else {
                     throw new Error(result.message);
                 }
             } catch (error) {
                 setDbStatus(`Falha na conexão: ${error.message}`, 'error');
-                isDbConnected = false;
-                loginBtn.disabled = true;
-                buttonText.textContent = 'Conectar ao BD';
                 dbConnectionStringInput.style.borderColor = 'var(--danger)';
             } finally {
                 testDbBtn.disabled = false;
@@ -255,14 +242,11 @@
             }
         }
 
-        // Função de login principal
+        // MODIFICADO: Função de login principal
         async function attemptLogin(event) {
             event.preventDefault();
             
-            if (!isDbConnected) {
-                showMessage('Por favor, valide a conexão com o banco de dados primeiro.', 'error');
-                return;
-            }
+            // REMOVIDO: a verificação 'if (!isDbConnected)' foi removida
             
             const username = usernameInput.value.trim();
             const password = passwordInput.value.trim();
@@ -279,15 +263,17 @@
             setLoadingState(true);
 
             try {
+                // A API de login agora só valida o usuário e a senha
                 const result = await window.electronAPI.loginAttempt(username, password, rememberMe);
                 if (result.success) {
                     showMessage('Login realizado com sucesso!', 'success');
+                    // A janela principal será aberta pelo main.js
                 } else {
                     showMessage(result.message || 'Credenciais inválidas.', 'error');
+                    setLoadingState(false); // Só reseta o estado se der erro
                 }
             } catch (error) {
-                showMessage('Erro de conexão. Tente novamente.', 'error');
-            } finally {
+                showMessage('Erro de conexão com o sistema. Tente novamente.', 'error');
                 setLoadingState(false);
             }
         }
@@ -299,7 +285,7 @@
 
         function setDbStatus(text, type) {
             dbStatusMessage.textContent = text;
-            dbStatusMessage.className = 'db-status-message'; // Classe base
+            dbStatusMessage.className = 'db-status-message';
             if (type === 'success') dbStatusMessage.style.color = 'var(--success)';
             else if (type === 'error') dbStatusMessage.style.color = 'var(--danger)';
             else dbStatusMessage.style.color = 'var(--text-secondary)';
@@ -310,23 +296,27 @@
             spinner.style.display = loading ? 'inline-block' : 'none';
             buttonText.textContent = loading ? 'Entrando...' : 'Entrar';
         }
+        
+        // MODIFICADO: Habilita/desabilita o botão de login com base nos campos
+        function checkFormValidity() {
+            const user = usernameInput.value.trim();
+            const pass = passwordInput.value.trim();
+            loginBtn.disabled = !user || !pass;
+        }
 
         // --- Event Listeners ---
         loginForm.addEventListener('submit', attemptLogin);
-        testDbBtn.addEventListener('click', testAndSaveDbConnection);
-
-        // Ao alterar a chave, a conexão precisa ser revalidada
+        testDbBtn.addEventListener('click', testDbConnection);
+        
+        // MODIFICADO: Limpa o status do BD ao digitar uma nova chave
         dbConnectionStringInput.addEventListener('input', () => {
-            isDbConnected = false;
-            loginBtn.disabled = true;
-            buttonText.textContent = 'Conectar ao BD';
             dbConnectionStringInput.style.borderColor = 'var(--glass-border)';
             setDbStatus('', 'info');
         });
 
-        // Limpar mensagem de erro ao digitar
         [usernameInput, passwordInput].forEach(input => {
             input.addEventListener('input', () => {
+                checkFormValidity(); // Checa a validade ao digitar
                 if (messageDiv.textContent && messageDiv.className.includes('error-message')) {
                     messageDiv.textContent = '';
                 }
@@ -339,17 +329,19 @@
 
         // --- Lógica de Inicialização ---
         document.addEventListener('DOMContentLoaded', async () => {
-            // Tenta carregar uma chave de conexão já salva
+            // Tenta carregar uma chave de conexão já salva no campo
             if (window.electronAPI && window.electronAPI.getDbConnectionString) {
                 const savedConnectionString = await window.electronAPI.getDbConnectionString();
                 if (savedConnectionString) {
                     dbConnectionStringInput.value = savedConnectionString;
-                    // Tenta validar a conexão automaticamente
-                    await testAndSaveDbConnection();
+                    setDbStatus('Chave de conexão carregada. Teste-a se necessário.', 'info');
                 } else {
-                    setDbStatus('Insira a chave de conexão do seu banco de dados.', 'info');
+                    setDbStatus('Insira a chave de conexão do BD se for administrador.', 'info');
                 }
             }
+            
+            // Verifica o estado inicial do formulário
+            checkFormValidity();
              
             if (window.electronAPI && window.electronAPI.onAutoLoginFailed) {
                 window.electronAPI.onAutoLoginFailed((message) => {

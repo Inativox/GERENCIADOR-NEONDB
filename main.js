@@ -20,33 +20,42 @@ const store = new Store();
 // #           CONFIGURAÇÃO DO BANCO DE DADOS (DINÂMICA)           #
 // #################################################################
 
-// REMOVIDO: A connection string não é mais fixa no código.
-// const NEON_CONNECTION_STRING = "postgresql://...";
-
-// NOVO: A variável 'pool' será inicializada depois, quando tivermos a chave.
 let pool;
 
-// NOVO: Função para inicializar o pool de conexões e testar a conexão.
-async function initializePool(connectionString) {
-    // Se um pool já existir, encerra as conexões antigas para evitar vazamentos.
+async function initializePool(connectionString, windowToLog) {
     if (pool) {
         await pool.end();
         console.log("Pool de conexões anterior encerrado.");
     }
     
-    // Cria um novo pool com a connection string fornecida.
+    // ADICIONADO: Validação para string de conexão vazia
+    if (!connectionString) {
+        console.log("Chave de conexão não fornecida. A inicialização do pool foi ignorada.");
+        if (windowToLog) windowToLog.webContents.send("log", "⚠️ Chave de conexão do BD não configurada. Funções do BD desabilitadas.");
+        pool = null; // Garante que o pool esteja nulo
+        return;
+    }
+    
     pool = new Pool({
         connectionString: connectionString,
     });
 
-    // Testa a conexão enviando uma query simples. Se falhar, vai gerar um erro.
-    await pool.query('SELECT NOW()');
-    console.log("✅ Conexão com o banco de dados estabelecida com sucesso.");
+    try {
+        await pool.query('SELECT NOW()');
+        console.log("✅ Conexão com o banco de dados estabelecida com sucesso.");
+        if (windowToLog) windowToLog.webContents.send("log", "✅ Conexão com o Banco de Dados estabelecida com sucesso.");
+    } catch (error) {
+        // MODIFICADO: Transforma o erro em um aviso, não impede a execução
+        console.error("❌ Falha ao estabelecer conexão com o banco de dados:", error.message);
+        if (windowToLog) windowToLog.webContents.send("log", `❌ ERRO DE CONEXÃO BD: ${error.message}. Funções do BD podem não funcionar.`);
+        pool = null; // Reseta o pool em caso de falha para desabilitar as features
+        throw error; // Propaga o erro para o handler que chamou, se necessário
+    }
 }
 
 
 // #################################################################
-// #           SISTEMA DE LOGIN E PERMISSÕES (Sem alterações)      #
+// #           SISTEMA DE LOGIN E PERMISSÕES (Com alterações)      #
 // #################################################################
 
 const users = {
@@ -69,8 +78,8 @@ let currentUser = null;
 
 function createLoginWindow() {
     loginWindow = new BrowserWindow({
-        width: 480, // Um pouco mais largo para o novo layout
-        height: 650, // Um pouco mais alto
+        width: 480, 
+        height: 650,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -89,7 +98,6 @@ function createLoginWindow() {
     return loginWindow;
 }
 
-// NOVO: Handlers para obter, testar e salvar a chave de conexão.
 ipcMain.handle('get-db-connection-string', () => {
     return store.get('db_connection_string');
 });
@@ -99,23 +107,19 @@ ipcMain.handle('save-and-test-db-connection', async (event, connectionString) =>
         return { success: false, message: 'A chave de conexão não pode estar vazia.' };
     }
     try {
-        // Tenta inicializar e conectar com a nova chave.
         await initializePool(connectionString);
-        // Se a conexão foi bem-sucedida, salva a chave no disco.
         store.set('db_connection_string', connectionString);
         return { success: true, message: 'Conexão bem-sucedida e salva!' };
     } catch (error) {
         console.error("❌ Falha ao testar/salvar conexão com o BD:", error.message);
-        pool = null; // Reseta o pool em caso de falha
+        pool = null; 
         return { success: false, message: error.message };
     }
 });
 
+// MODIFICADO: Removida a verificação do BD antes do login
 ipcMain.handle('login-attempt', async (event, username, password, rememberMe) => {
-    // Validação de conexão com o BD antes do login
-    if (!pool) {
-         return { success: false, message: 'A conexão com o banco de dados não foi estabelecida. Valide a chave de conexão primeiro.' };
-    }
+    // REMOVIDA A VALIDAÇÃO: if (!pool) { ... }
 
     const user = users[username];
     if (user && user.password === password) {
@@ -144,6 +148,10 @@ ipcMain.handle('login-attempt', async (event, username, password, rememberMe) =>
 ipcMain.on('logout', () => {
     store.delete('credentials');
     currentUser = null;
+    if (pool) {
+        pool.end(); // Encerra a conexão com o BD ao fazer logout
+        pool = null;
+    }
     if (mainWindow) {
         mainWindow.close();
     }
@@ -163,7 +171,14 @@ const isAdmin = () => {
 let storedCnpjs = new Set();
 
 async function loadStoredCnpjs() {
-    if (!isAdmin() || !pool) return;
+    // MODIFICADO: A verificação de 'pool' agora é crucial
+    if (!isAdmin() || !pool) {
+        if (mainWindow && isAdmin()) {
+            mainWindow.webContents.send("log", "⚠️ A conexão com o BD não está ativa. Histórico de CNPJs não carregado.");
+        }
+        return;
+    }
+
     try {
         const result = await pool.query('SELECT cnpj FROM limpeza_cnpjs');
         storedCnpjs = new Set(result.rows.map(row => row.cnpj));
@@ -191,12 +206,23 @@ function createMainWindow() {
     });
     mainWindow.loadFile("index.html");
     
-    mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.on("did-finish-load", async () => {
         if (currentUser) {
             mainWindow.webContents.send('user-info', currentUser);
-        }
-        if (isAdmin()) { 
-            loadStoredCnpjs();
+
+            // ADICIONADO: Tenta conectar ao BD para o admin APÓS o login
+            if (isAdmin()) {
+                const dbConnectionString = store.get('db_connection_string');
+                try {
+                    await initializePool(dbConnectionString, mainWindow);
+                    // Somente carrega os CNPJs se a conexão for bem-sucedida
+                    if (pool) {
+                        await loadStoredCnpjs();
+                    }
+                } catch (error) {
+                    // O erro já é logado dentro de initializePool
+                }
+            }
         }
         autoUpdater.checkForUpdatesAndNotify();
     });
@@ -206,51 +232,33 @@ function createMainWindow() {
     });
 }
 
-// MODIFICADO: A lógica de inicialização agora depende da chave do BD.
+// MODIFICADO: O app inicia mesmo que a conexão com o BD falhe no startup
 app.whenReady().then(async () => {
-    const dbConnectionString = store.get('db_connection_string');
     const savedCredentials = store.get('credentials');
 
-    // Se não houver chave de conexão, a única opção é abrir a tela de login.
-    if (!dbConnectionString) {
-        console.log("Nenhuma chave de conexão encontrada. Abrindo tela de login.");
-        createLoginWindow();
-        return;
-    }
+    // Tenta o login automático primeiro
+    if (savedCredentials && savedCredentials.username && savedCredentials.password) {
+        const { username, password } = savedCredentials;
+        const user = users[username];
 
-    try {
-        // Tenta conectar ao BD com a chave salva.
-        console.log("Chave de conexão encontrada. Tentando conectar...");
-        await initializePool(dbConnectionString);
-
-        // Se a conexão com o BD for bem-sucedida, tenta o login automático.
-        if (savedCredentials && savedCredentials.username && savedCredentials.password) {
-            const { username, password } = savedCredentials;
-            const user = users[username];
-
-            if (user && user.password === password) {
-                console.log("Login automático bem-sucedido.");
-                currentUser = { 
-                    username, 
-                    role: user.role,
-                    teamId: user.teamId || null
-                };
-                createMainWindow();
-            } else {
-                console.log("Credenciais salvas inválidas. Abrindo tela de login.");
-                createLoginWindow();
-            }
+        if (user && user.password === password) {
+            console.log("Login automático bem-sucedido.");
+            currentUser = { 
+                username, 
+                role: user.role,
+                teamId: user.teamId || null
+            };
+            createMainWindow();
         } else {
-             console.log("Nenhuma credencial salva. Abrindo tela de login.");
-             createLoginWindow();
+            console.log("Credenciais salvas inválidas. Abrindo tela de login.");
+            createLoginWindow();
         }
-    } catch (error) {
-        // Se a conexão com o BD falhar (ex: chave expirada), força a tela de login.
-        console.error(`Falha ao conectar com a chave salva: ${error.message}. Abrindo tela de login.`);
-        dialog.showErrorBox("Erro de Conexão", `Não foi possível conectar ao banco de dados com a chave salva. Por favor, verifique-a e tente novamente.\n\nErro: ${error.message}`);
-        createLoginWindow();
+    } else {
+         console.log("Nenhuma credencial salva. Abrindo tela de login.");
+         createLoginWindow();
     }
 });
+
 
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
@@ -258,13 +266,8 @@ app.on("window-all-closed", () => {
     }
 });
 
-// O restante do arquivo main.js (lógica de negócios, etc.) permanece o mesmo...
-// ... (Cole o resto do seu main.js aqui, a partir da seção "LÓGICA DE NEGÓCIOS")
-// #################################################################
-// #           LÓGICA DE NEGÓCIOS (Refatorada para PostgreSQL)     #
-// #################################################################
-// ... (todo o resto do código)
-
+// ... O RESTANTE DO SEU ARQUIVO `main.js` CONTINUA IGUAL ...
+// ... (cole o restante do código a partir daqui)
 // #################################################################
 // #           LÓGICA DE NEGÓCIOS (Refatorada para PostgreSQL)     #
 // #################################################################
@@ -293,7 +296,7 @@ function writeSpreadsheet(workbook, filePath) { XLSX.writeFile(workbook, filePat
 // --- FUNÇÕES DA ABA DE ENRIQUECIMENTO (Refatoradas para PostgreSQL) ---
 
 ipcMain.handle("get-enriched-cnpj-count", async () => {
-    if (!isAdmin()) return 0;
+    if (!isAdmin() || !pool) return 0; // MODIFICADO: Adicionado check !pool
     try {
         const result = await pool.query('SELECT COUNT(*) FROM empresas;');
         return parseInt(result.rows[0].count, 10);
@@ -304,7 +307,7 @@ ipcMain.handle("get-enriched-cnpj-count", async () => {
 });
 
 ipcMain.handle("download-enriched-data", async () => {
-    if (!isAdmin()) return { success: false, message: "Acesso negado." };
+    if (!isAdmin() || !pool) return { success: false, message: "Acesso negado ou conexão com BD inativa." }; // MODIFICADO: Adicionado check !pool
     try {
         const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, { title: "Salvar Dados Enriquecidos", defaultPath: `dados_enriquecidos_${Date.now()}.xlsx`, filters: [ { name: "Excel Files", extensions: ["xlsx"] } ] });
         if (canceled || !filePath) return { success: false, message: "Download cancelado." };
@@ -341,8 +344,8 @@ ipcMain.handle("download-enriched-data", async () => {
 });
 
 ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
-    if (!isAdmin()) {
-        event.sender.send("enrichment-log", "❌ Acesso negado.");
+    if (!isAdmin() || !pool) { // MODIFICADO: Adicionado check !pool
+        event.sender.send("enrichment-log", "❌ Acesso negado ou conexão com BD inativa.");
         event.sender.send("db-load-finished");
         return;
     }
@@ -421,7 +424,7 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
             log(`\nProcessando arquivo mestre: ${fileName}`);
             console.log(`--- [DEBUG] Lendo arquivo: ${fileName} ---`); // LOG 4
             try {
-                const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; if (!worksheet || worksheet.rowCount === 0) { log(`⚠️ Arquivo ${fileName} vazio ou inválido. Pulando.`); continue; } const headerMap = new Map(); worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNum) => headerMap.set(colNum, String(cell.value || "").trim().toLowerCase())); let cnpjColIdx = [...headerMap.entries()].find(([_, h]) => h === "cpf" || h === "cnpj")?.[0] ?? -1; const phoneColIdxs = [...headerMap.entries()].filter(([_, h]) => /^(fone|telefone|celular)/.test(h)).map(([colNum]) => colNum); if (cnpjColIdx === -1 || phoneColIdxs.length === 0) { log(`❌ ERRO: Colunas de documento ou telefone não encontradas. Pulando.`); console.log(`--- [DEBUG] Colunas não encontradas em ${fileName}. Pulando. ---`); continue; }
+                const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; if (!worksheet || worksheet.rowCount === 0) { log(`⚠️ Arquivo ${fileName} vazio ou inválido. Pulando.`); continue; } const headerMap = new Map(); worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNum) => headerMap.set(colNum, String(cell.value || "").trim().toLowerCase())); let cnpjColIdx = [...headerMap.entries()].find(([_, h]) => h === "cpf" || h === "cnpj")?.[0] ?? -1; const phoneColIdxs = [...headerMap.entries()].filter(([_, h]) => /^(fone|telefone|celular)/.test(h)).map(([colNum]) => colNum); if (cnpjColIdx === -1 || phoneColIdxs.length === 0) { log(`❌ ERRO: Colunas de documento ou telefone não encontradas. Pulando.`); console.log(`--- [DEBUG] Colunas não encontradas em ${fileName}. Pulando.`); continue; }
                 console.log(`--- [DEBUG] Colunas encontradas em ${fileName}. Iniciando leitura das linhas... ---`); // LOG 5
                 let cnpjsToUpdate = new Map();
                 for (let i = 2; i <= worksheet.rowCount; i++) {
@@ -461,9 +464,12 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
 function formatEta(totalSeconds) { if (!isFinite(totalSeconds) || totalSeconds < 0) return "Calculando..."; const m = Math.floor(totalSeconds / 60); const s = Math.floor(totalSeconds % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; }
 
 async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, log, progress, onFinish) { // Recebe o 'year'
-    if (!isAdmin()){ log("❌ Acesso negado."); if(onFinish) onFinish(); return; }
+    if (!isAdmin() || !pool){ // MODIFICADO: Adicionado check !pool
+        log("❌ Acesso negado ou conexão com BD inativa."); 
+        if(onFinish) onFinish(); 
+        return; 
+    }
 
-    // Validação do ano
     if (!year) {
         log('❌ ERRO CRÍTICO: O ano não foi fornecido para o enriquecimento.');
         if (onFinish) onFinish();
@@ -481,7 +487,6 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
             progress(id, 0, null);
             if (backup) { const p = path.parse(filePath); fs.copyFileSync(filePath, path.join(p.dir, `${p.name}.backup_enrich_${Date.now()}${p.ext}`)); log(`Backup criado.`); }
             try {
-                // (Código de leitura e identificação de colunas do Excel permanece o mesmo)
                 const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; let cnpjCol = -1, statusCol = -1; const phoneCols = []; worksheet.getRow(1).eachCell((cell, colNum) => { const h = String(cell.value || "").trim().toLowerCase(); if (h === "cpf" || h === "cnpj") cnpjCol = colNum; else if (h.startsWith("fone")) phoneCols.push(colNum); else if (h === "status") statusCol = colNum; }); phoneCols.sort((a, b) => a - b); if (cnpjCol === -1) { log(`❌ ERRO: Coluna 'cpf'/'cnpj' não encontrada. Pulando.`); continue; } if (statusCol === -1) { statusCol = worksheet.columnCount + 1; worksheet.getCell(1, statusCol).value = "status"; }
                 
                 const totalRows = worksheet.rowCount - 1;
@@ -498,7 +503,6 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
 
                     log(`Lote ${currentBatchNum}/${totalBatches}: Processando ${cnpjsInBatch.size} CNPJs...`);
                     
-                    // NOVO: Busca dados de enriquecimento no PostgreSQL
                   const enrichmentDataForBatch = new Map();
                 const cnpjKeys = Array.from(cnpjsInBatch.keys());
                 if (cnpjKeys.length > 0) {
@@ -509,14 +513,12 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
                         WHERE e.cnpj = ANY($1::text[]) AND e.ano = $2
                         GROUP BY e.id, e.cnpj;
                     `;
-                    // Passa o ano como segundo parâmetro da consulta
                     const result = await pool.query(query, [cnpjKeys, year]);
                     result.rows.forEach(row => enrichmentDataForBatch.set(row.cnpj, row.telefones || []));
                 }
                 
                 log(`Lote ${currentBatchNum}/${totalBatches}: ${enrichmentDataForBatch.size} CNPJs encontrados no BD para o ano ${year}. Atualizando planilha...`);
 
-                    // (O resto da lógica de atualização da planilha permanece o mesmo)
                     for (const [cnpj, { row }] of cnpjsInBatch.entries()) { let rowWasEnriched = false; if (enrichmentDataForBatch.has(cnpj)) { const phonesFromDb = enrichmentDataForBatch.get(cnpj); const existingPhones = phoneCols.map(idx => row.getCell(idx).value).filter(Boolean); const shouldProcess = (strategy === "overwrite") || (strategy === "append" && existingPhones.length < phoneCols.length) || (strategy === "ignore" && existingPhones.length === 0); if (shouldProcess) { rowWasEnriched = true; if (strategy === "overwrite") phoneCols.forEach(idx => row.getCell(idx).value = null); let phonesToWrite = [...phonesFromDb]; phoneCols.forEach(idx => { if (strategy === "append" && row.getCell(idx).value) return; if (phonesToWrite.length > 0) row.getCell(idx).value = phonesToWrite.shift(); }); } } else { if (cnpj) notFoundInFile++; } row.getCell(statusCol).value = rowWasEnriched ? "Enriquecido" : "Pobre"; if (rowWasEnriched) enrichedInFile++; }
                     
                     const processedRowsInFile = endIndex - 1;
@@ -541,8 +543,11 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
 }
 
 ipcMain.on("start-enrichment", async (event, options) => {
-    if (!isAdmin()) { event.sender.send("enrichment-log", "❌ Acesso negado."); event.sender.send("enrichment-finished"); return; }
-    // A chamada agora passa o objeto 'options' inteiro, que já contém o ano
+    if (!isAdmin() || !pool) { // MODIFICADO: Adicionado check !pool
+        event.sender.send("enrichment-log", "❌ Acesso negado ou conexão com BD inativa."); 
+        event.sender.send("enrichment-finished"); 
+        return; 
+    }
     await runEnrichmentProcess(
         options,
         (msg) => event.sender.send("enrichment-log", msg),
@@ -560,7 +565,7 @@ async function runPhoneAdjustment(filePath, event, backup) { if (!isAdmin()) { e
 
 // --- FUNÇÃO PARA ALIMENTAR A BASE RAIZ (Refatorada para PostgreSQL) ---
 ipcMain.on("feed-root-database", async (event, filePaths) => {
-    if (!isAdmin()) { log("❌ Acesso negado."); event.sender.send("root-feed-finished"); return; }
+    if (!isAdmin() || !pool) { log("❌ Acesso negado ou conexão com BD inativa."); event.sender.send("root-feed-finished"); return; }
     const log = (msg) => event.sender.send("log", msg);
     log(`--- Iniciando Alimentação da Base Raiz ---`);
 
@@ -626,7 +631,7 @@ ipcMain.on("feed-root-database", async (event, filePaths) => {
 // --- FUNÇÕES DA LIMPEZA LOCAL (Refatoradas para PostgreSQL) ---
 
 ipcMain.handle("save-stored-cnpjs-to-excel", async (event) => {
-    if (!isAdmin()) { return { success: false, message: "Acesso negado." }; }
+    if (!isAdmin() || !pool) { return { success: false, message: "Acesso negado ou conexão com BD inativa." }; }
     if (storedCnpjs.size === 0) { dialog.showMessageBox(mainWindow, { type: "info", title: "Aviso", message: "Nenhum CNPJ armazenado para salvar." }); return { success: false, message: "Nenhum CNPJ armazenado para salvar." }; }
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, { title: "Salvar CNPJs Armazenados", defaultPath: `cnpjs_armazenados_${Date.now()}.xlsx`, filters: [ { name: "Excel Files", extensions: ["xlsx"] } ] });
     if (canceled || !filePath) { return { success: false, message: "Operação de salvar cancelada." }; }
@@ -634,7 +639,7 @@ ipcMain.handle("save-stored-cnpjs-to-excel", async (event) => {
 });
 
 ipcMain.handle("delete-batch", async (event, batchId) => {
-    if (!isAdmin()) { return { success: false, message: "Acesso negado." }; }
+    if (!isAdmin() || !pool) { return { success: false, message: "Acesso negado ou conexão com BD inativa." }; }
     const log = (msg) => event.sender.send("log", msg);
     if (!batchId) { return { success: false, message: "ID do lote inválido." }; }
     log(`Buscando e excluindo documentos do lote "${batchId}" no Neon DB...`);
@@ -658,6 +663,12 @@ ipcMain.handle("update-blocklist", async (event, backup) => { if (!isAdmin()) { 
 ipcMain.on("start-cleaning", async (event, args) => {
     if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado."); return; }
     const log = (msg) => event.sender.send("log", msg);
+    
+    // MODIFICADO: Validação do pool para funções de BD
+    if ((args.isAutoRoot || args.checkDb || args.saveToDb) && !pool) {
+        return log("❌ ERRO: As opções de Banco de Dados estão ativadas, mas a conexão com o BD falhou ou não foi configurada.");
+    }
+
     try {
         const batchId = `batch-${Date.now()}`;
         if (args.saveToDb) log(`Este lote de salvamento terá o ID: ${batchId}`);
@@ -668,7 +679,6 @@ ipcMain.on("start-cleaning", async (event, args) => {
             result.rows.forEach(row => rootSet.add(row.cnpj));
             log(`✅ Raiz do BD carregada. Total de CNPJs na raiz: ${rootSet.size}.`);
         } else {
-            // (Lógica de carregar raiz de arquivo local permanece a mesma)
             if (!args.rootFile || !fs.existsSync(args.rootFile)) { return log(`❌ Arquivo raiz não encontrado: ${args.rootFile}`); } const rootIdx = letterToIndex(args.rootCol); const wbRoot = await readSpreadsheet(args.rootFile); const sheetRoot = wbRoot.Sheets[wbRoot.SheetNames[0]]; const rowsRoot = XLSX.utils.sheet_to_json(sheetRoot, { header: 1 }).map(r => r[rootIdx]).filter(v => v).map(v => String(v).trim()); rowsRoot.forEach(item => rootSet.add(item)); log(`Lista raiz do arquivo carregada com ${rootSet.size} valores.`);
         }
         log(`Histórico de CNPJs em memória com ${storedCnpjs.size} registros.`);
@@ -688,16 +698,13 @@ ipcMain.on("start-cleaning", async (event, args) => {
             log(`\nEnviando ${allNewCnpjs.size} novos CNPJs para o banco de dados...`);
             const cnpjsArray = Array.from(allNewCnpjs);
             
-            // Inserção em massa no PostgreSQL
             const query = `
                 INSERT INTO limpeza_cnpjs (cnpj, batch_id)
                 SELECT d.cnpj, $2 FROM unnest($1::text[]) AS d(cnpj)
                 ON CONFLICT (cnpj) DO NOTHING;
             `;
             const result = await pool.query(query, [cnpjsArray, batchId]);
-            event.sender.send("upload-progress", { current: 1, total: 1 }); // Simplificado para um único lote de envio
-
-            // Atualiza o cache local
+            event.sender.send("upload-progress", { current: 1, total: 1 });
             cnpjsArray.forEach(cnpj => storedCnpjs.add(cnpj));
 
             log(`✅ ${result.rowCount} novos registros adicionados ao banco de dados. Total agora: ${storedCnpjs.size}.`);
@@ -710,21 +717,18 @@ ipcMain.on("start-cleaning", async (event, args) => {
     }
 });
 
-// A função processFile permanece a mesma, pois sua lógica interna não interage com o DB.
 async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, saveToDb, cnpjsHistory) { const file = fileObj.path; const id = fileObj.id; const log = (msg) => event.sender.send("log", msg); const progress = (pct) => event.sender.send("progress", { id, progress: pct }); log(`\nProcessando arquivo de limpeza: ${path.basename(file)}...`); if (!fs.existsSync(file)) return new Set(); if (backup) { const p = path.parse(file); const bkp = path.join(p.dir, `${p.name}.backup_${Date.now()}${p.ext}`); fs.copyFileSync(file, bkp); log(`Backup criado: ${bkp}`); } const wb = await readSpreadsheet(file); const sheet = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }); if (data.length <= 1) { log(`⚠️ Arquivo vazio ou sem dados: ${file}`); return new Set(); } const header = data[0]; const destColIdx = letterToIndex(destCol); const cpfColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "cpf"); if (cpfColIdx === -1) { log(`❌ ERRO: A coluna \"cpf\" não foi encontrada no arquivo ${path.basename(file)}. Pulando este arquivo.`); return new Set(); } const foneIdxs = header.reduce((acc, cell, i) => { if (typeof cell === "string" && cell.trim().toLowerCase().startsWith("fone")) acc.push(i); return acc; }, []); const cleaned = [header]; let removedByRoot = 0; let removedDuplicates = 0; let cleanedPhones = 0; const totalRows = data.length - 1; const newCnpjsInThisFile = new Set(); for (let i = 1; i < data.length; i++) { const row = data[i]; const key = row[destColIdx] ? String(row[destColIdx]).trim() : ""; const cnpj = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : ""; if (checkDb && cnpj && cnpjsHistory.has(cnpj)) { removedDuplicates++; continue; } if (key && rootSet.has(key)) { removedByRoot++; continue; } foneIdxs.forEach(idx => { const v = row[idx] ? String(row[idx]).trim() : ""; if (/^\d{10}$/.test(v)) { row[idx] = ""; cleanedPhones++; } }); cleaned.push(row); if (saveToDb && cnpj && !cnpjsHistory.has(cnpj)) { newCnpjsInThisFile.add(cnpj); } if (i % 2000 === 0) { progress(Math.floor((i / totalRows) * 100)); await new Promise(resolve => setImmediate(resolve)); } } const newWB = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]); writeSpreadsheet(newWB, file); progress(100); log(`Arquivo: ${path.basename(file)}\n • Clientes repetidos (BD): ${removedDuplicates}\n • Removidos pela Raiz: ${removedByRoot}\n • Fones limpos: ${cleanedPhones}\n • Total final: ${cleaned.length - 1}`); return newCnpjsInThisFile; }
 
 ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) => {
-    if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado."); return; }
+    if (!isAdmin() || !pool) { event.sender.send("log", "❌ Acesso negado ou conexão com BD inativa."); return; }
     const log = (msg) => event.sender.send("log", msg);
     const batchId = `batch-${Date.now()}`;
     log(`--- Iniciando Limpeza Apenas pelo Banco de Dados para ${filesToClean.length} arquivo(s) ---`);
     if (saveToDb) log(`Opção \"Salvar no Banco de Dados\" ATIVADA. ID do Lote: ${batchId}`);
     log(`Usando ${storedCnpjs.size} CNPJs do histórico em memória.`);
     const allNewCnpjs = new Set();
-    // A lógica de limpeza de arquivos é a mesma, o que muda é como salvamos no final
     for (const filePath of filesToClean) { log(`\nProcessando: ${path.basename(filePath)}`); try { const wb = await readSpreadsheet(filePath); const sheet = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }); if (data.length <= 1) { log(`⚠️ Arquivo vazio ou sem dados: ${filePath}`); continue; } const header = data[0]; const cpfColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "cpf"); if (cpfColIdx === -1) { log(`❌ ERRO: A coluna \"cpf\" não foi encontrada em ${path.basename(filePath)}. Pulando.`); continue; } let removedCount = 0; const cleaned = [header]; for (let i = 1; i < data.length; i++) { const row = data[i]; const cnpj = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : ""; if (cnpj && storedCnpjs.has(cnpj)) { removedCount++; continue; } cleaned.push(row); if (saveToDb && cnpj) { allNewCnpjs.add(cnpj); } } const newWB = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]); writeSpreadsheet(newWB, filePath); log(`✅ Arquivo ${path.basename(filePath)} concluído. Removidos: ${removedCount}. Total final: ${cleaned.length - 1}`); } catch (err) { log(`❌ Erro ao processar ${path.basename(filePath)}: ${err.message}`); console.error(err); } }
     
-    // Lógica de salvamento no PostgreSQL
     if (saveToDb && allNewCnpjs.size > 0) {
         log(`\nEnviando ${allNewCnpjs.size} novos CNPJs para o banco de dados...`);
         const cnpjsArray = Array.from(allNewCnpjs);
@@ -868,10 +872,10 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
     const TOKEN_URL = "https://crm-leads-p.c6bank.info/querie-partner/token";
     const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
     const BATCH_SIZE = 20000;
-    const RETRY_MS = 6 * 60 * 1000;
+    const RETRY_MS = 2 * 60 * 1000;
 //    const DELAY_SUCESSO_MS = 3 * 60 * 1000;
     const DELAY_SUCESSO_MS = 90 * 1000;
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5;
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const normalizeCnpj = (cnpj) => (String(cnpj).replace(/\D/g, "")).padStart(14, "0");
     try {
