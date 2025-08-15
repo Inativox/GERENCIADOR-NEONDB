@@ -266,8 +266,6 @@ app.on("window-all-closed", () => {
     }
 });
 
-// ... O RESTANTE DO SEU ARQUIVO `main.js` CONTINUA IGUAL ...
-// ... (cole o restante do código a partir daqui)
 // #################################################################
 // #           LÓGICA DE NEGÓCIOS (Refatorada para PostgreSQL)     #
 // #################################################################
@@ -741,18 +739,29 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
     }
     log("\n--- Limpeza Apenas pelo Banco de Dados finalizada. ---");
 });
-ipcMain.on("start-merge", async (event, files) => {
+
+// --- FUNÇÃO DE MESCLAGEM ATUALIZADA ---
+ipcMain.on("start-merge", async (event, options) => {
     if (!isAdmin()) {
         event.sender.send("log", "❌ Acesso negado: Permissão de administrador necessária.");
         return;
     }
+
+    const { files, strategy, customCount, removeDuplicates, shuffle } = options;
     const log = (msg) => event.sender.send("log", msg);
+
     if (!files || files.length < 2) {
         log("❌ Erro: Por favor, selecione pelo menos dois arquivos para mesclar.");
         dialog.showErrorBox("Erro de Mesclagem", "Você precisa selecionar no mínimo dois arquivos para a mesclagem.");
         return;
     }
+
     log(`\n--- Iniciando Mesclagem de ${files.length} arquivos ---`);
+    log(`Estratégia: ${strategy}. Remover Duplicados: ${removeDuplicates}. Embaralhar: ${shuffle}.`);
+    if (strategy === 'custom') {
+        log(`Linhas por arquivo (personalizado): ${customCount}`);
+    }
+
     try {
         const { canceled, filePath: savePath } = await dialog.showSaveDialog(mainWindow, {
             title: "Salvar Arquivo Mesclado",
@@ -764,37 +773,90 @@ ipcMain.on("start-merge", async (event, files) => {
             return;
         }
         log(`Arquivo de destino: ${savePath}`);
+
+        let header = [];
         let allDataRows = [];
-        let totalRows = 0;
-        const firstFilePath = files[0];
-        log(`Lendo arquivo base: ${path.basename(firstFilePath)}`);
-        const firstWb = await readSpreadsheet(firstFilePath);
-        const firstWs = firstWb.Sheets[firstWb.SheetNames[0]];
-        const firstFileData = XLSX.utils.sheet_to_json(firstWs, { header: 1, defval: "" });
-        allDataRows.push(...firstFileData);
-        totalRows += firstFileData.length;
-        log(`Adicionadas ${firstFileData.length} linhas (com cabeçalho) do arquivo base.`);
-        for (let i = 1; i < files.length; i++) {
+
+        for (let i = 0; i < files.length; i++) {
             const filePath = files[i];
-            log(`Lendo arquivo para anexar: ${path.basename(filePath)}`);
+            log(`Lendo arquivo: ${path.basename(filePath)}`);
             const wb = await readSpreadsheet(filePath);
             const ws = wb.Sheets[wb.SheetNames[0]];
-            const fileData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }).slice(1);
-            if (fileData.length > 0) {
-                allDataRows.push(...fileData);
-                totalRows += fileData.length;
-                log(`Adicionadas ${fileData.length} linhas de dados de ${path.basename(filePath)}.`);
+            const fileData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+            if (fileData.length <= 1) {
+                log(`⚠️ Arquivo ${path.basename(filePath)} está vazio ou contém apenas o cabeçalho. Pulando.`);
+                continue;
+            }
+
+            if (i === 0) {
+                header = fileData[0];
+            }
+
+            let dataRows = fileData.slice(1);
+            let rowsToProcess = [];
+
+            switch (strategy) {
+                case 'partial':
+                    const rowsToTake = Math.floor(dataRows.length * 0.25);
+                    rowsToProcess = dataRows.slice(0, rowsToTake);
+                    log(`Adicionando ${rowsToProcess.length} linhas (25%) de ${path.basename(filePath)}.`);
+                    break;
+                case 'custom':
+                    rowsToProcess = dataRows.slice(0, customCount);
+                    log(`Adicionando ${rowsToProcess.length} linhas (personalizado) de ${path.basename(filePath)}.`);
+                    break;
+                case 'all':
+                default:
+                    rowsToProcess = dataRows;
+                    log(`Adicionando ${rowsToProcess.length} linhas (todas) de ${path.basename(filePath)}.`);
+                    break;
+            }
+            allDataRows.push(...rowsToProcess);
+        }
+
+        if (removeDuplicates) {
+            log('Processando remoção de duplicados...');
+            const cnpjColumnIndex = header.findIndex(h => String(h).trim().toLowerCase() === 'cpf' || String(h).trim().toLowerCase() === 'cnpj');
+
+            if (cnpjColumnIndex !== -1) {
+                const seenCnpjs = new Set();
+                const originalCount = allDataRows.length;
+                const uniqueDataRows = allDataRows.filter(row => {
+                    const cnpj = String(row[cnpjColumnIndex] || '').replace(/\D/g, "").trim();
+                    if (!cnpj || seenCnpjs.has(cnpj)) {
+                        return false;
+                    } else {
+                        seenCnpjs.add(cnpj);
+                        return true;
+                    }
+                });
+                allDataRows = uniqueDataRows;
+                log(`✅ ${originalCount - allDataRows.length} registros duplicados removidos. Restaram ${allDataRows.length} linhas.`);
             } else {
-                log(`⚠️ Arquivo ${path.basename(filePath)} não continha dados além do cabeçalho.`);
+                log('⚠️ Opção "Remover Duplicados" selecionada, mas a coluna "cpf" ou "cnpj" não foi encontrada. A remoção foi ignorada.');
             }
         }
-        log(`\nTotal de linhas a serem escritas: ${totalRows}. Criando o arquivo final...`);
+        
+        if (shuffle) {
+            log('Embaralhando o resultado final...');
+            for (let i = allDataRows.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allDataRows[i], allDataRows[j]] = [allDataRows[j], allDataRows[i]];
+            }
+            log('✅ Resultado embaralhado com sucesso.');
+        }
+        
+        const finalSheetData = [header, ...allDataRows];
+        log(`\nTotal de linhas a serem escritas: ${finalSheetData.length}. Criando o arquivo final...`);
         const newWorkbook = XLSX.utils.book_new();
-        const newWorksheet = XLSX.utils.aoa_to_sheet(allDataRows);
+        const newWorksheet = XLSX.utils.aoa_to_sheet(finalSheetData);
         XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Mesclado");
         writeSpreadsheet(newWorkbook, savePath);
+        
         log(`✅ Mesclagem concluída com sucesso! O arquivo foi salvo em: ${savePath}`);
         dialog.showMessageBox(mainWindow, { type: "info", title: "Sucesso", message: `Arquivos mesclados com sucesso!\n\nO resultado foi salvo em:\n${savePath}` });
+
     } catch (err) {
         log(`❌ Erro catastrófico durante a mesclagem: ${err.message}`);
         console.error(err);

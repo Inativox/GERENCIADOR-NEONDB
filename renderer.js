@@ -286,6 +286,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadProgressText = document.getElementById('uploadProgressText');
     const batchIdInput = document.getElementById('batchIdInput');
     const deleteBatchBtn = document.getElementById('deleteBatchBtn');
+    // --- NOVOS ELEMENTOS PARA MESCLAGEM ---
+    const mergeStrategyRadios = document.querySelectorAll('input[name="mergeStrategy"]');
+    const customMergeInputContainer = document.getElementById('customMergeInputContainer');
+    const customMergeCountInput = document.getElementById('customMergeCount');
+    const removeDuplicatesCheckbox = document.getElementById('removeDuplicatesCheckbox');
+    const shuffleResultCheckbox = document.getElementById('shuffleResultCheckbox');
     function addFileToUI(container, filePath, isSingle) { if (isSingle) { container.innerHTML = ''; } const fileDiv = document.createElement('div'); fileDiv.className = 'file-item new-item'; fileDiv.textContent = getBasename(filePath); container.appendChild(fileDiv); setTimeout(() => { fileDiv.classList.remove('new-item'); }, 500); }
     function resetUploadProgress() { if (uploadProgressContainer) uploadProgressContainer.style.display = 'none'; if (uploadProgressBarFill) uploadProgressBarFill.style.width = '0%'; if (uploadProgressText) uploadProgressText.textContent = ''; }
     if (backupCheckbox) backupCheckbox.addEventListener('change', (e) => { backupEnabled = e.target.querySelector('input').checked; });
@@ -303,7 +309,46 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; mergeFiles = []; backupEnabled = false; autoAdjustPhones = false; checkDbEnabled = false; saveToDbEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (selectedMergeFilesDiv) selectedMergeFilesDiv.innerHTML = ''; if (batchIdInput) batchIdInput.value = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.checked = false; if (checkDbCheckbox) checkDbCheckbox.checked = false; if (saveToDbCheckbox) saveToDbCheckbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } resetUploadProgress(); appendLog('Módulo de Limpeza Local reiniciado.'); });
     if (adjustPhonesBtn) adjustPhonesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivo para ajustar fones', multi: false }); if (!files?.length) return appendLog('Nenhum arquivo selecionado.'); window.electronAPI.startAdjustPhones({ filePath: files[0], backup: backupEnabled }); });
     if (selectMergeFilesBtn) selectMergeFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para mesclar', multi: true }); if (!files?.length) return; mergeFiles = files; selectedMergeFilesDiv.innerHTML = ''; files.forEach(f => { addFileToUI(selectedMergeFilesDiv, f, false); }); });
-    if (startMergeBtn) startMergeBtn.addEventListener('click', () => { if (!mergeFiles.length) return appendLog('ERRO: Selecione arquivos para mesclar.'); appendLog('Iniciando mesclagem...'); window.electronAPI.startMerge(mergeFiles); });
+    
+    // --- LÓGICA ATUALIZADA PARA MESCLAGEM ---
+    if (mergeStrategyRadios) {
+        mergeStrategyRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.value === 'custom' && radio.checked) {
+                    customMergeInputContainer.style.display = 'block';
+                } else {
+                    customMergeInputContainer.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    if (startMergeBtn) {
+        startMergeBtn.addEventListener('click', () => {
+            if (mergeFiles.length < 2) {
+                return appendLog('ERRO: Por favor, selecione pelo menos dois arquivos para mesclar.');
+            }
+
+            const strategy = document.querySelector('input[name="mergeStrategy"]:checked').value;
+            const customCount = parseInt(customMergeCountInput.value, 10) || 0;
+
+            if (strategy === 'custom' && (!customCount || customCount <= 0)) {
+                return appendLog('ERRO: Para mesclagem personalizada, insira um número de linhas válido e maior que zero.');
+            }
+
+            const mergeOptions = {
+                files: mergeFiles,
+                strategy: strategy,
+                customCount: customCount,
+                removeDuplicates: removeDuplicatesCheckbox.checked,
+                shuffle: shuffleResultCheckbox.checked
+            };
+            
+            appendLog('Iniciando mesclagem com as opções selecionadas...');
+            window.electronAPI.startMerge(mergeOptions);
+        });
+    }
+
     if (feedRootBtn) feedRootBtn.addEventListener('click', async () => { appendLog('Selecionando arquivos para alimentar a base Raiz...'); const files = await window.electronAPI.selectFile({ title: 'Selecione planilhas com CNPJs para a Raiz', multi: true }); if (!files || files.length === 0) { appendLog('Nenhum arquivo selecionado. Operação cancelada.'); return; } feedRootBtn.disabled = true; appendLog(`Iniciando o processo de alimentação da Raiz com ${files.length} arquivo(s).`); window.electronAPI.feedRootDatabase(files); });
     window.electronAPI.onRootFeedFinished(() => { if (feedRootBtn) feedRootBtn.disabled = false; appendLog('✅ Processo de alimentação da Raiz finalizado.'); });
     window.electronAPI.onLog((msg) => appendLog(msg));
@@ -666,128 +711,104 @@ document.addEventListener('DOMContentLoaded', () => {
         const isMaster = role === 'master';
         apiParametersContainer.innerHTML = '';
 
+        // MODIFICADO: O filtro 'grupo_operador_id' NÃO será mais escondido para o 'limited'.
         const filtersToHideForLimited = ['chave', 'fone_origem', 'sentido', 'tronco_id', 'resultado', 'operacao_id', 'tipoServico', 'servico_id','cpf','nome'];
-        
-        // NOVO: Esconde também o filtro de grupo de operador para o 'limited'
-        if (role === 'limited') {
-            filtersToHideForLimited.push('grupo_operador_id');
-        }
 
         const visibleParams = (isAdmin || isMaster) ? apiParams : apiParams.filter(p => !filtersToHideForLimited.includes(p.name));
-
-        // Adiciona um input oculto para o teamId do usuário 'limited' para que a lógica de busca funcione
-        if (role === 'limited' && teamId) {
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.id = 'input-grupo_operador_id';
-            hiddenInput.value = teamId;
-            apiParametersContainer.appendChild(hiddenInput);
-            
-            // Habilita o checkbox correspondente de forma invisível para que seja incluído na busca
-            const hiddenCheckbox = document.createElement('input');
-            hiddenCheckbox.type = 'checkbox';
-            hiddenCheckbox.id = 'check-grupo_operador_id';
-            hiddenCheckbox.checked = true;
-            hiddenCheckbox.style.display = 'none';
-            apiParametersContainer.appendChild(hiddenCheckbox);
-        }
-
 
         visibleParams.forEach(param => {
             const paramItem = document.createElement('div');
             paramItem.className = 'param-item';
             let inputHtml = '';
-            const isSelectable = ['operador_id', 'servico_id', 'grupo_operador_id'].includes(param.name);
-            const containerId = `input-container-${param.name}`;
-
-            // A lógica anterior para exibir o campo de equipe foi removida daqui,
-            // pois o filtro não será mais visível para o usuário 'limited'.
-            if (param.name === 'tabulacao_id') {
-                inputHtml = `<div id="${containerId}" class="multi-select-container"><button class="multi-select-button" id="tabulacao-multi-select-btn">Selecionar Tabulações...</button><input type="hidden" id="input-${param.name}"></div>`;
-            } else if (isSelectable) {
-                inputHtml = `<div id="${containerId}" class="custom-select-container"><input type="text" id="${param.name}-search" readonly placeholder="Clique para selecionar..." style="cursor: pointer;"><input type="hidden" id="input-${param.name}"></div>`;
-            } else {
-                inputHtml = `<input type="text" id="${containerId}" placeholder="Valor...">`;
-            }
-
-            const toggleHtml = `<div class="toggle-switch"><label class="switch"><input type="checkbox" id="check-${param.name}" data-param-name="${param.name}"><span class="slider"></span></label><span class="toggle-label">${param.label}</span></div>`;
-
-            paramItem.innerHTML = toggleHtml + inputHtml;
-            apiParametersContainer.appendChild(paramItem);
-
-            const checkbox = document.getElementById(`check-${param.name}`);
-            const inputContainer = document.getElementById(containerId);
             
-            if (inputContainer) {
-                inputContainer.classList.add('hidden');
-            }
+            // NOVO: Lógica especial para o filtro de equipe do usuário 'limited'
+            if (param.name === 'grupo_operador_id' && role === 'limited' && teamId) {
+                const team = gruposOperador.find(g => g.id === teamId);
+                const teamName = team ? team.name : `Equipe ID ${teamId}`;
 
-            if (checkbox) {
-                checkbox.addEventListener('change', () => {
-                    const isChecked = checkbox.checked;
-                    if (inputContainer) {
-                        inputContainer.classList.toggle('hidden', !isChecked);
-                    }
-                    if (!isChecked) {
-                        // Lógica para limpar os inputs (sem alterações)
-                        const searchInput = document.getElementById(`${param.name}-search`);
-                        if (searchInput) searchInput.value = '';
-                        const hiddenInput = document.getElementById(`input-${param.name}`);
-                        if (hiddenInput) hiddenInput.value = '';
-                        if (inputContainer && inputContainer.tagName === 'INPUT') {
-                            inputContainer.value = '';
-                        }
-                        if (param.name === 'tabulacao_id') {
-                            const btn = document.getElementById('tabulacao-multi-select-btn');
-                            if (btn) btn.textContent = 'Selecionar Tabulações...';
-                        }
-                    }
-                });
-            }
+                // Cria um campo de texto desabilitado com o nome da equipe
+                const displayInput = `<input type="text" value="${teamName}" readonly disabled style="cursor: not-allowed; background-color: var(--bg-dark);">`;
+                // Cria o input escondido com o ID da equipe para a API
+                const hiddenInput = `<input type="hidden" id="input-grupo_operador_id" value="${teamId}">`;
+                
+                inputHtml = `<div class="custom-select-container">${displayInput}${hiddenInput}</div>`;
+                
+                // Cria o toggle switch já marcado e desabilitado
+                const toggleHtml = `<div class="toggle-switch"><label class="switch"><input type="checkbox" id="check-grupo_operador_id" checked disabled><span class="slider"></span></label><span class="toggle-label">${param.label}</span></div>`;
 
-            // 4. Adiciona os listeners de clique para abrir os modais
-            if (param.name === 'tabulacao_id') {
-                const btn = document.getElementById('tabulacao-multi-select-btn');
-                if (btn) {
-                    btn.addEventListener('click', () => openMultiSelectionModal({
-                        title: 'Selecionar Tabulações',
-                        data: tabulacoes,
-                        hiddenInputEl: document.getElementById('input-tabulacao_id'),
-                        displayEl: btn,
-                    }));
+                paramItem.innerHTML = toggleHtml + inputHtml;
+                apiParametersContainer.appendChild(paramItem);
+
+            } else {
+                // LÓGICA ORIGINAL: Para todos os outros filtros e para admin/master
+                const isSelectable = ['operador_id', 'servico_id', 'grupo_operador_id'].includes(param.name);
+                const containerId = `input-container-${param.name}`;
+
+                if (param.name === 'tabulacao_id') {
+                    inputHtml = `<div id="${containerId}" class="multi-select-container"><button class="multi-select-button" id="tabulacao-multi-select-btn">Selecionar Tabulações...</button><input type="hidden" id="input-${param.name}"></div>`;
+                } else if (isSelectable) {
+                    inputHtml = `<div id="${containerId}" class="custom-select-container"><input type="text" id="${param.name}-search" readonly placeholder="Clique para selecionar..." style="cursor: pointer;"><input type="hidden" id="input-${param.name}"></div>`;
+                } else {
+                    inputHtml = `<input type="text" id="${containerId}" placeholder="Valor...">`;
                 }
-            } else if (isSelectable) {
-                if (!(param.name === 'grupo_operador_id' && role === 'limited' && teamId)) {
-                    const searchEl = document.getElementById(`${param.name}-search`);
-                    if (searchEl) {
-                        searchEl.addEventListener('click', () => {
-                            if (!checkbox.checked) return;
-                            let data, type;
-                            if (param.name === 'operador_id') { data = operadores; type = 'operador'; }
-                            else if (param.name === 'servico_id') { data = servicos; type = 'servico'; }
-                            else { data = gruposOperador; type = 'grupo_operador'; }
-                            openSelectionModal({
-                                type: type, title: `Selecionar ${param.label}`, data: data,
-                                searchEl: searchEl, hiddenInputEl: document.getElementById(`input-${param.name}`)
-                            });
+
+                const toggleHtml = `<div class="toggle-switch"><label class="switch"><input type="checkbox" id="check-${param.name}" data-param-name="${param.name}"><span class="slider"></span></label><span class="toggle-label">${param.label}</span></div>`;
+                
+                paramItem.innerHTML = toggleHtml + inputHtml;
+                apiParametersContainer.appendChild(paramItem);
+
+                const checkbox = document.getElementById(`check-${param.name}`);
+                const inputContainer = document.getElementById(containerId);
+                
+                if (inputContainer) { inputContainer.classList.add('hidden'); }
+
+                if (checkbox) {
+                    checkbox.addEventListener('change', () => {
+                        inputContainer.classList.toggle('hidden', !checkbox.checked);
+                        if (!checkbox.checked) {
+                            // Limpa os inputs se desmarcado
+                            const searchInput = document.getElementById(`${param.name}-search`);
+                            if (searchInput) searchInput.value = '';
+                            const hiddenInput = document.getElementById(`input-${param.name}`);
+                            if (hiddenInput) hiddenInput.value = '';
+                            if (inputContainer.tagName === 'INPUT') inputContainer.value = '';
+                            if (param.name === 'tabulacao_id') document.getElementById('tabulacao-multi-select-btn').textContent = 'Selecionar Tabulações...';
+                        }
+                    });
+                }
+                
+                if (param.name === 'tabulacao_id') {
+                    document.getElementById('tabulacao-multi-select-btn').addEventListener('click', () => openMultiSelectionModal({
+                        title: 'Selecionar Tabulações', data: tabulacoes,
+                        hiddenInputEl: document.getElementById('input-tabulacao_id'),
+                        displayEl: document.getElementById('tabulacao-multi-select-btn'),
+                    }));
+                } else if (isSelectable) {
+                    document.getElementById(`${param.name}-search`).addEventListener('click', () => {
+                        if (!document.getElementById(`check-${param.name}`).checked) return;
+                        let data, type;
+                        if (param.name === 'operador_id') { data = operadores; type = 'operador'; }
+                        else if (param.name === 'servico_id') { data = servicos; type = 'servico'; }
+                        else { data = gruposOperador; type = 'grupo_operador'; }
+                        openSelectionModal({
+                            type, title: `Selecionar ${param.label}`, data,
+                            searchEl: document.getElementById(`${param.name}-search`),
+                            hiddenInputEl: document.getElementById(`input-${param.name}`)
                         });
-                    }
+                    });
                 }
             }
         });
     
-    
-
         if (monitoringSearchInput) {
             const foneDestinoCheckbox = document.getElementById('check-fone_destino');
-            const foneDestinoInput = document.getElementById('input_fone_destino');
+            const foneDestinoInput = document.getElementById('input-container-fone_destino');
             if (foneDestinoCheckbox && foneDestinoInput) {
                 monitoringSearchInput.addEventListener('input', () => {
                     const searchTerm = monitoringSearchInput.value.trim();
                     foneDestinoInput.value = searchTerm;
                     const hasSearchTerm = searchTerm !== '';
                     foneDestinoCheckbox.checked = hasSearchTerm;
-                    foneDestinoCheckbox.dispatchEvent(new Event('change')); // Força a atualização da UI do toggle
                     foneDestinoInput.classList.toggle('hidden', !hasSearchTerm);
                 });
             }
@@ -800,17 +821,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (generateReportBtn) {
         generateReportBtn.addEventListener('click', async () => {
-            // --- NOVA VALIDAÇÃO ADICIONADA AQUI ---
-            // Verifica se há pelo menos um filtro ativo antes de continuar.
+            // --- VALIDAÇÃO (sem alterações) ---
             if (!hasActiveFilter()) {
-                // Se não houver, mostra um popup e interrompe a execução.
                 alert('Selecione pelo menos 1 filtro ou preencha o campo de pesquisa.');
                 return;
             }
-            // --- FIM DA NOVA VALIDAÇÃO ---
 
-
-            // ETAPA 1: Preparação (código existente, sem alterações)
+            // --- ETAPA 1: Preparação (sem alterações) ---
             generateReportBtn.disabled = true;
             monitoringLog.innerHTML = '> 🌀 Gerando relatório de chamadas... Por favor, aguarde.';
             dashboardSummary.innerHTML = '';
@@ -818,7 +835,7 @@ document.addEventListener('DOMContentLoaded', () => {
             operatorTimesContainer.style.display = 'none';
             operatorTimesTableWrapper.innerHTML = '';
 
-            // ETAPA 2: Montagem da URL principal (código existente, sem alterações)
+            // --- ETAPA 2: Montagem da URL principal (sem alterações) ---
             let baseUrl = 'https://mbfinance.fastssl.com.br/api/relatorio/captura_valores_analitico.php?';
             let params = [];
             const isAdmin = currentUserRole === 'admin';
@@ -828,13 +845,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const checkbox = document.getElementById(`check-${paramName}`);
                 let value = '';
                 if (checkbox && checkbox.checked) {
-                    if (paramName === 'digitado' && !isAdmin) {
-                        const radioChecked = document.querySelector('input[name="digitado_radio"]:checked');
-                        value = radioChecked ? radioChecked.value : '';
-                    } else {
-                        const input = document.getElementById(`input-${paramName}`);
-                        if (input) value = input.value;
-                    }
+                    const input = document.getElementById(`input-${paramName}`) || document.getElementById(`input-container-${paramName}`);
+                    if (input) value = input.value;
                 }
                 params.push(`${paramName}=${encodeURIComponent(value ?? '')}`);
             });
@@ -846,13 +858,14 @@ document.addEventListener('DOMContentLoaded', () => {
             params.push('formato=json');
             const finalUrl = baseUrl + params.join('&');
 
-            // ETAPA 3: Lógica unificada de requisição (código existente, sem alterações)
+            // --- ETAPA 3: Lógica unificada de requisição (RESTAURADA) ---
             let payload = {
                 reportUrl: finalUrl,
                 operatorTimesParams: null
             };
 
             const operadorIdChecked = document.getElementById('check-operador_id')?.checked;
+            // Esta verificação agora funcionará para o usuário 'limited', pois o checkbox estará marcado
             const grupoOperadorIdChecked = document.getElementById('check-grupo_operador_id')?.checked;
 
             if (operadorIdChecked || grupoOperadorIdChecked) {
@@ -860,6 +873,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     data_inicio: dataInicio,
                     data_fim: dataFim,
                     operador_id: document.getElementById('input-operador_id')?.value || '',
+                    // O valor correto (teamId) será pego do input hidden para o 'limited'
                     grupo_operador_id: document.getElementById('input-grupo_operador_id')?.value || ''
                 };
             }
@@ -878,7 +892,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 monitoringLog.innerHTML = `> ❌ ERRO: ${result.message || 'Falha ao buscar dados da API.'}`;
             }
 
-            // ETAPA 4: Finalização (código existente, sem alterações)
+            // --- ETAPA 4: Finalização (sem alterações) ---
             generateReportBtn.disabled = false;
         });
     }

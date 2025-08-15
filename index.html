@@ -392,7 +392,7 @@
         
         .two-column-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
         
-        .radio-group-container { display: flex; align-items: center; gap: 15px; flex-grow: 1; }
+        .radio-group-container { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
         .radio-group-container label { display: flex; align-items: center; cursor: pointer; color: var(--text-secondary); font-size: 13px; margin: 0; }
         .radio-group-container input[type="radio"] { display: none; }
         .radio-group-container input[type="radio"] + .radio-circle { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border-light); background: var(--bg-dark); margin-right: 8px; position: relative; transition: all 0.2s; }
@@ -547,8 +547,30 @@
                             
                             <div class="tool-group">
                                 <button id="selectMergeFilesBtn">Selecionar Arquivos para Mesclar</button>
-                                <button id="startMergeBtn">Mesclar</button>
                                 <div id="selectedMergeFiles" class="files"></div>
+                                <hr>
+                                <div id="mergeOptionsContainer">
+                                    <label style="margin-bottom: 10px; font-weight: 600;">Opções de Mesclagem:</label>
+                                    <div class="radio-group-container" style="margin-bottom: 10px;">
+                                       <label><input type="radio" name="mergeStrategy" value="all" checked><span class="radio-circle"></span>Mesclar Tudo</label>
+                                       <label><input type="radio" name="mergeStrategy" value="partial"><span class="radio-circle"></span>Parcial (25%)</label>
+                                       <label><input type="radio" name="mergeStrategy" value="custom"><span class="radio-circle"></span>Personalizado</label>
+                                    </div>
+                                    <div id="customMergeInputContainer" style="display: none; margin-top: 10px; margin-bottom: 15px;">
+                                        <label for="customMergeCount" style="margin-bottom: 5px;">Nº de linhas por arquivo:</label>
+                                        <input type="number" id="customMergeCount" placeholder="Ex: 20000" style="width: 180px;">
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <label class="switch"><input type="checkbox" id="removeDuplicatesCheckbox"><span class="slider"></span></label>
+                                        <span class="toggle-label">Remover CNPJs duplicados após mesclar</span>
+                                    </div>
+                                    <div class="toggle-switch">
+                                        <label class="switch"><input type="checkbox" id="shuffleResultCheckbox"><span class="slider"></span></label>
+                                        <span class="toggle-label">Embaralhar resultado final</span>
+                                    </div>
+                                </div>
+                                <hr>
+                                <button id="startMergeBtn">Iniciar Mesclagem</button>
                             </div>
                         </div>
                     </div>
