@@ -740,27 +740,61 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
     log("\n--- Limpeza Apenas pelo Banco de Dados finalizada. ---");
 });
 
-// --- FUNÇÃO DE MESCLAGEM ATUALIZADA ---
-ipcMain.on("start-merge", async (event, options) => {
-    if (!isAdmin()) {
-        event.sender.send("log", "❌ Acesso negado: Permissão de administrador necessária.");
-        return;
-    }
 
-    const { files, strategy, customCount, removeDuplicates, shuffle } = options;
+// --- LÓGICA DE MESCLAGEM ATUALIZADA ---
+
+/**
+ * Embaralha uma lista de arquivos no local, lendo-os, embaralhando na memória e salvando por cima.
+ * @param {string[]} filePaths - Array com os caminhos dos arquivos a serem embaralhados.
+ * @param {function} log - Função para enviar logs ao renderer.
+ */
+async function shuffleFilesInPlace(filePaths, log) {
+    log(`\n--- Iniciando a fase de embaralhamento para ${filePaths.length} arquivo(s) ---`);
+    for (const filePath of filePaths) {
+        try {
+            log(`Embaralhando o arquivo: ${path.basename(filePath)}...`);
+            
+            const workbook = await readSpreadsheet(filePath);
+            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+            const allData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+
+            if (allData.length <= 1) {
+                log(`⚠️ Arquivo ${path.basename(filePath)} muito pequeno para embaralhar. Pulando.`);
+                continue;
+            }
+
+            const header = allData[0];
+            const dataRows = allData.slice(1);
+
+            // Algoritmo de embaralhamento Fisher-Yates
+            for (let i = dataRows.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [dataRows[i], dataRows[j]] = [dataRows[j], dataRows[i]];
+            }
+
+            const shuffledData = [header, ...dataRows];
+            const newWorkbook = XLSX.utils.book_new();
+            const newWorksheet = XLSX.utils.aoa_to_sheet(shuffledData);
+            XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Mesclado");
+            writeSpreadsheet(newWorkbook, filePath); 
+
+            log(`✅ Arquivo ${path.basename(filePath)} embaralhado com sucesso.`);
+        } catch (err) {
+            log(`❌ Erro ao embaralhar o arquivo ${path.basename(filePath)}: ${err.message}`);
+            console.error(err);
+        }
+    }
+    log(`--- Fase de embaralhamento concluída ---`);
+}
+
+/**
+ * Mescla arquivos usando streaming para baixo uso de memória e segmenta o resultado se exceder o limite.
+ * @returns {Promise<string[]>} Uma promessa que resolve para uma lista de caminhos de arquivos criados.
+ */
+async function mergeAndSegment(event, options) {
+    const { files, strategy, customCount, removeDuplicates } = options;
     const log = (msg) => event.sender.send("log", msg);
-
-    if (!files || files.length < 2) {
-        log("❌ Erro: Por favor, selecione pelo menos dois arquivos para mesclar.");
-        dialog.showErrorBox("Erro de Mesclagem", "Você precisa selecionar no mínimo dois arquivos para a mesclagem.");
-        return;
-    }
-
-    log(`\n--- Iniciando Mesclagem de ${files.length} arquivos ---`);
-    log(`Estratégia: ${strategy}. Remover Duplicados: ${removeDuplicates}. Embaralhar: ${shuffle}.`);
-    if (strategy === 'custom') {
-        log(`Linhas por arquivo (personalizado): ${customCount}`);
-    }
+    const createdFiles = [];
 
     try {
         const { canceled, filePath: savePath } = await dialog.showSaveDialog(mainWindow, {
@@ -769,98 +803,187 @@ ipcMain.on("start-merge", async (event, options) => {
             filters: [{ name: "Planilhas Excel", extensions: ["xlsx"] }]
         });
         if (canceled || !savePath) {
-            log("Operação de mesclagem cancelada pelo usuário.");
-            return;
+            log("Operação de mesclagem cancelada.");
+            return [];
         }
-        log(`Arquivo de destino: ${savePath}`);
 
+        // --- ETAPA 1: Pré-scan para contar o total de linhas ---
+        log("Iniciando pré-scan para contagem de linhas...");
+        let totalDataRows = 0;
+        for (const filePath of files) {
+            const inputWorkbook = new ExcelJS.Workbook();
+            await inputWorkbook.xlsx.readFile(filePath);
+            const inputWorksheet = inputWorkbook.worksheets[0];
+            if (inputWorksheet && inputWorksheet.rowCount > 1) {
+                totalDataRows += (inputWorksheet.rowCount - 1);
+            }
+        }
+        log(`Pré-scan concluído. Total de linhas de dados a processar: ${totalDataRows}`);
+
+        // --- ETAPA 2: Determinar estratégia de segmentação ---
+        const needsSegmentation = totalDataRows > 1000000;
+        const numParts = 4;
+        const rowsPerPart = needsSegmentation ? Math.ceil(totalDataRows / numParts) : Infinity;
+
+        if (needsSegmentation) {
+            log(`Total excede 1 milhão de linhas. O resultado será dividido em ${numParts} partes de aproximadamente ${rowsPerPart} linhas cada.`);
+        }
+
+        // --- ETAPA 3: Processamento e escrita ---
         let header = [];
-        let allDataRows = [];
+        const seenCnpjs = new Set();
+        let cnpjColumnIndex = -1;
+        let totalRowsWritten = 0;
+        let rowsInCurrentPart = 0;
+        let currentPart = 1;
+
+        const { dir, name, ext } = path.parse(savePath);
+        
+        let currentWriter, currentWorksheet;
+
+        const createNewWriter = async () => {
+            const partPath = needsSegmentation 
+                ? path.join(dir, `${name}_parte${currentPart}${ext}`)
+                : savePath;
+            
+            log(`Criando arquivo de saída: ${path.basename(partPath)}`);
+            createdFiles.push(partPath);
+
+            const streamOptions = { filename: partPath, useStyles: false, useSharedStrings: true };
+            currentWriter = new ExcelJS.stream.xlsx.WorkbookWriter(streamOptions);
+            currentWorksheet = currentWriter.addWorksheet('Mesclado');
+
+            if (header.length > 0) {
+                 // Adiciona o cabeçalho se não for a primeira parte do primeiro arquivo
+                currentWorksheet.columns = header.map(h => ({ header: h, key: h, style: {} }));
+            }
+        };
+
+        await createNewWriter();
 
         for (let i = 0; i < files.length; i++) {
             const filePath = files[i];
-            log(`Lendo arquivo: ${path.basename(filePath)}`);
-            const wb = await readSpreadsheet(filePath);
-            const ws = wb.Sheets[wb.SheetNames[0]];
-            const fileData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+            log(`Processando arquivo: ${path.basename(filePath)}`);
 
-            if (fileData.length <= 1) {
-                log(`⚠️ Arquivo ${path.basename(filePath)} está vazio ou contém apenas o cabeçalho. Pulando.`);
+            const inputWorkbook = new ExcelJS.Workbook();
+            await inputWorkbook.xlsx.readFile(filePath);
+            const inputWorksheet = inputWorkbook.worksheets[0];
+
+            if (!inputWorksheet || inputWorksheet.rowCount <= 1) {
+                log(`⚠️ Arquivo ${path.basename(filePath)} vazio. Pulando.`);
                 continue;
             }
 
             if (i === 0) {
-                header = fileData[0];
-            }
-
-            let dataRows = fileData.slice(1);
-            let rowsToProcess = [];
-
-            switch (strategy) {
-                case 'partial':
-                    const rowsToTake = Math.floor(dataRows.length * 0.25);
-                    rowsToProcess = dataRows.slice(0, rowsToTake);
-                    log(`Adicionando ${rowsToProcess.length} linhas (25%) de ${path.basename(filePath)}.`);
-                    break;
-                case 'custom':
-                    rowsToProcess = dataRows.slice(0, customCount);
-                    log(`Adicionando ${rowsToProcess.length} linhas (personalizado) de ${path.basename(filePath)}.`);
-                    break;
-                case 'all':
-                default:
-                    rowsToProcess = dataRows;
-                    log(`Adicionando ${rowsToProcess.length} linhas (todas) de ${path.basename(filePath)}.`);
-                    break;
-            }
-            allDataRows.push(...rowsToProcess);
-        }
-
-        if (removeDuplicates) {
-            log('Processando remoção de duplicados...');
-            const cnpjColumnIndex = header.findIndex(h => String(h).trim().toLowerCase() === 'cpf' || String(h).trim().toLowerCase() === 'cnpj');
-
-            if (cnpjColumnIndex !== -1) {
-                const seenCnpjs = new Set();
-                const originalCount = allDataRows.length;
-                const uniqueDataRows = allDataRows.filter(row => {
-                    const cnpj = String(row[cnpjColumnIndex] || '').replace(/\D/g, "").trim();
-                    if (!cnpj || seenCnpjs.has(cnpj)) {
-                        return false;
-                    } else {
-                        seenCnpjs.add(cnpj);
-                        return true;
+                const headerRow = inputWorksheet.getRow(1).values;
+                header = Array.isArray(headerRow) ? headerRow.slice(1) : Object.values(headerRow);
+                currentWorksheet.columns = header.map(h => ({ header: h, key: h, style: {} }));
+                
+                if (removeDuplicates) {
+                    cnpjColumnIndex = header.findIndex(h => String(h || '').trim().toLowerCase() === 'cpf' || String(h || '').trim().toLowerCase() === 'cnpj');
+                    if (cnpjColumnIndex === -1) {
+                        log('⚠️ Coluna "cpf" ou "cnpj" não encontrada. Remoção de duplicados ignorada.');
                     }
-                });
-                allDataRows = uniqueDataRows;
-                log(`✅ ${originalCount - allDataRows.length} registros duplicados removidos. Restaram ${allDataRows.length} linhas.`);
-            } else {
-                log('⚠️ Opção "Remover Duplicados" selecionada, mas a coluna "cpf" ou "cnpj" não foi encontrada. A remoção foi ignorada.');
+                }
             }
-        }
-        
-        if (shuffle) {
-            log('Embaralhando o resultado final...');
-            for (let i = allDataRows.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [allDataRows[i], allDataRows[j]] = [allDataRows[j], allDataRows[i]];
+            
+            let rowCountInFile = 0;
+            const fileTotalDataRows = inputWorksheet.rowCount - 1;
+
+            for(let rowNum = 2; rowNum <= inputWorksheet.rowCount; rowNum++) {
+                const row = inputWorksheet.getRow(rowNum);
+
+                let shouldAdd = true;
+                switch (strategy) {
+                    case 'partial':
+                        const rowsToTake = Math.floor(fileTotalDataRows * 0.25);
+                        if (rowCountInFile >= rowsToTake) shouldAdd = false;
+                        break;
+                    case 'custom':
+                        if (rowCountInFile >= customCount) shouldAdd = false;
+                        break;
+                }
+                if (!shouldAdd) continue;
+                
+                rowCountInFile++;
+                const rowData = Array.isArray(row.values) ? row.values.slice(1) : Object.values(row.values);
+
+                if (removeDuplicates && cnpjColumnIndex !== -1) {
+                    const cnpj = String(rowData[cnpjColumnIndex] || '').replace(/\D/g, "").trim();
+                    if (cnpj && seenCnpjs.has(cnpj)) {
+                        continue; 
+                    }
+                    if(cnpj) seenCnpjs.add(cnpj);
+                }
+
+                if (needsSegmentation && rowsInCurrentPart >= rowsPerPart) {
+                    await currentWorksheet.commit();
+                    await currentWriter.commit();
+                    log(`Parte ${currentPart} finalizada com ${rowsInCurrentPart} linhas.`);
+                    currentPart++;
+                    rowsInCurrentPart = 0;
+                    await createNewWriter();
+                }
+
+                currentWorksheet.addRow(rowData).commit();
+                rowsInCurrentPart++;
+                totalRowsWritten++;
             }
-            log('✅ Resultado embaralhado com sucesso.');
+            log(`Adicionadas ${rowCountInFile} linhas de ${path.basename(filePath)}.`);
         }
+
+        await currentWorksheet.commit();
+        await currentWriter.commit();
+        log(`Parte final (parte ${currentPart}) finalizada com ${rowsInCurrentPart} linhas.`);
         
-        const finalSheetData = [header, ...allDataRows];
-        log(`\nTotal de linhas a serem escritas: ${finalSheetData.length}. Criando o arquivo final...`);
-        const newWorkbook = XLSX.utils.book_new();
-        const newWorksheet = XLSX.utils.aoa_to_sheet(finalSheetData);
-        XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Mesclado");
-        writeSpreadsheet(newWorkbook, savePath);
+        log(`\n✅ Mesclagem e segmentação concluídas! Total de ${totalRowsWritten} linhas salvas em ${createdFiles.length} arquivo(s).`);
         
-        log(`✅ Mesclagem concluída com sucesso! O arquivo foi salvo em: ${savePath}`);
-        dialog.showMessageBox(mainWindow, { type: "info", title: "Sucesso", message: `Arquivos mesclados com sucesso!\n\nO resultado foi salvo em:\n${savePath}` });
+        return createdFiles;
 
     } catch (err) {
         log(`❌ Erro catastrófico durante a mesclagem: ${err.message}`);
         console.error(err);
         dialog.showErrorBox("Erro de Mesclagem", `Ocorreu um erro inesperado: ${err.message}`);
+        return [];
+    }
+}
+
+
+// ROTEADOR PRINCIPAL DE MESCLAGEM
+ipcMain.on("start-merge", async (event, options) => {
+    if (!isAdmin()) {
+        event.sender.send("log", "❌ Acesso negado: Permissão de administrador necessária.");
+        return;
+    }
+    const { files, shuffle } = options;
+    const log = (msg) => event.sender.send("log", msg);
+
+    if (!files || files.length < 2) {
+        log("❌ Erro: Por favor, selecione pelo menos dois arquivos para mesclar.");
+        return;
+    }
+    
+    log(`\n--- Iniciando Processo de Mesclagem ---`);
+    log(`Estratégia: ${options.strategy}. Remover Duplicados: ${options.removeDuplicates}. Embaralhar: ${options.shuffle}.`);
+    if (options.strategy === 'custom') {
+        log(`Linhas por arquivo (personalizado): ${options.customCount}`);
+    }
+
+    // Etapa 1: Sempre mesclar e segmentar usando o método de baixo consumo de memória.
+    const outputFiles = await mergeAndSegment(event, options);
+
+    // Etapa 2: Se a mesclagem produziu arquivos e a opção de embaralhar foi marcada, embaralhar os arquivos resultantes.
+    if (outputFiles && outputFiles.length > 0 && shuffle) {
+        await shuffleFilesInPlace(outputFiles, log);
+    }
+
+    // Etapa 3: Exibir mensagem final de sucesso.
+    if (outputFiles && outputFiles.length > 0) {
+        const finalMessage = `Processo concluído com sucesso!\n\n${outputFiles.length} arquivo(s) foi(ram) salvo(s) na pasta:\n${path.dirname(outputFiles[0])}`;
+        dialog.showMessageBox(mainWindow, { type: "info", title: "Sucesso", message: finalMessage });
+        log(`\n🎉 Processo de mesclagem finalizado com sucesso!`);
+    } else {
+        log(`\n⚠️ Processo de mesclagem finalizado, mas nenhum arquivo foi gerado.`);
     }
 });
 
