@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isHidden) {
                     section.classList.remove('hidden');
                     e.target.textContent = '👁';
-                    e.target.title = 'Ocultar';
+                    e.target.title = 'Exibir';
                 } else {
                     section.classList.add('hidden');
                     e.target.textContent = '👁‍🗨';
@@ -488,6 +488,47 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
     const tabulacoes = [{ id: '96', name: 'CHAMAR NO WHATSAPP MAQUINA' }, { id: '80', name: 'Confirmação' }, { id: '82', name: 'Conta Ativa' }, { id: '47', name: 'Inapto' }, { id: '33', name: 'MUDO' }, { id: '43', name: 'MUDO/ENCERRAR' }, { id: '95', name: 'Maquina vendida' }, { id: '79', name: 'Promessa' }, { id: '83', name: 'Relacionamento' }, { id: '81', name: 'Retorno' }, { id: '44', name: 'CHAMAR NO WHATSAPP' }, { id: '34', name: 'CLIENTE ABRIU A CONTA' }, { id: '38', name: 'CLIENTE JÁ POSSUI CONTA' }, { id: '69', name: 'Inapto na receita federal' }, { id: '84', name: 'MEI' }, { id: '39', name: 'NÃO TEM INTERESSE' }, { id: '52', name: 'NÃO É O RESPONSAVEL' }, { id: '37', name: 'OUTRO ECE' }, { id: '42', name: 'PROBLEMA NO APLICATIVO' }, { id: '67', name: 'RECUSADA PELO BANCO' }, { id: '41', name: 'REDISCAR CLIENTE/ CAIU A LIGAÇÃO' }, { id: '40', name: 'TELEFONE INCORRETO' }, { id: '36', name: 'BLOCKLIST' }].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
 
+
+
+// Adicione esta função em renderer.js
+function renderComparisonList(fastwayData, bitrixData) {
+    if (!fastwayData || !fastwayData.length) {
+        console.log('Dados do Fastway não disponíveis para comparação.');
+        return;
+    }
+
+    const bitrixMap = new Map(bitrixData.map(item => [item.nome, item.total]));
+    
+    let htmlContent = '<ul class="comparison-list">';
+
+    fastwayData.forEach(fastwayItem => {
+        const fastwayCount = fastwayItem.total;
+        const bitrixCount = bitrixMap.get(fastwayItem.nome) || 0;
+        
+        htmlContent += `
+            <li>
+                <div class="operator-name">${fastwayItem.nome}</div>
+                <div class="call-counts">
+                    <span class="fastway-count">${fastwayCount}</span>
+                    <span class="separator">/</span>
+                    <span class="bitrix-count">${bitrixCount}</span>
+                </div>
+            </li>
+        `;
+    });
+
+    htmlContent += '</ul>';
+
+    const comparisonBox = document.getElementById('comparison-box');
+    if (comparisonBox) {
+        comparisonBox.innerHTML = htmlContent;
+    } else {
+        console.error('Elemento com ID "comparison-box" não encontrado para renderizar a lista.');
+    }
+}
+
+
+
     function renderModalList(items, searchTerm = '') {
         const lowerSearchTerm = searchTerm.toLowerCase();
         const filteredItems = items.filter(item => item.name.toLowerCase().includes(lowerSearchTerm));
@@ -801,7 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderBitrixDetails() {
         if (!bitrixDetailsContainer) return;
-        bitrixDetailsContainer.innerHTML = ''; // Limpa o container
+        bitrixDetailsContainer.innerHTML = '';
     
         if (!bitrixDetailData) {
             bitrixDetailsContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center;">Nenhum dado do Bitrix para exibir.</p>';
@@ -821,6 +862,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         bitrixDetailsContainer.innerHTML = content;
     }
+
+
+
 
     // --- BOTÃO PRINCIPAL DE GERAR RELATÓRIO ---
     if (generateReportBtn) {
@@ -878,7 +922,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let logMessages = [];
             let allowedOperatorNames = null;
 
-            // --- PROCESSAMENTO E FILTRAGEM ---
             if (originalResult.status === 'fulfilled' && originalResult.value.success) {
                 const result = originalResult.value;
                 const { data, operatorTimesData } = result;
@@ -943,7 +986,9 @@ document.addEventListener('DOMContentLoaded', () => {
             dashboardSummary.innerHTML = `<div class="summary-card" id="summary-card-1" style="display: none;"><div class="summary-card-title" id="summary-title-1"></div><div class="summary-card-value" id="summary-value-1"></div></div><div class="summary-card" id="summary-card-2" style="display: none;"><div class="summary-card-title" id="summary-title-2"></div><div class="summary-card-value" id="summary-value-2"></div></div><button class="summary-card summary-card-button" id="summary-card-3" style="display: none;"><div class="summary-card-title">Tabulações Suspeitas</div><div class="summary-card-value warning" id="summary-value-3">0</div></button><div class="summary-card" id="summary-card-4" style="display: none;"><div class="summary-card-title" id="summary-title-4"></div><div class="summary-card-value" id="summary-value-4"></div></div>`;
             document.getElementById('summary-card-3').addEventListener('click', showSuspiciousCallsModal);
             
-            if(fastwaySummaryData && bitrixSummaryData) { summaryToggleBar.style.display = 'flex'; }
+            if(fastwaySummaryData && bitrixSummaryData) { 
+                summaryToggleBar.style.display = 'flex';
+            }
             
             showFastwaySummaryBtn.click();
 

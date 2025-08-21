@@ -721,23 +721,11 @@ const BITRIX_WEBHOOK_URL = "https://mb-finance.bitrix24.com.br/rest/8311";
 const USER_GET_TOKEN = "dv95qyhbyrtu49fn";
 const VOX_GET_TOKEN = "dv95qyhbyrtu49fn";
 
-/**
- * Formata uma data no fuso horário local para o formato ISO 8601 que o Bitrix espera.
- * @param {Date} date O objeto de data a ser formatado.
- * @returns {string} A data formatada como "YYYY-MM-DDTHH:mm:ssZ".
- */
 function formatDateForBitrix(date) {
     if (!date) return null;
     return date.toISOString();
 }
 
-/**
- * Busca todos os resultados de um método Bitrix24 que suporta paginação.
- * @param {string} method O método da API a ser chamado (ex: "user.get").
- * @param {string} token O token de acesso para o método.
- * @param {object} params Parâmetros iniciais para a requisição (ex: FILTER, SORT).
- * @returns {Promise<Array>} Uma promessa que resolve para um array com todos os resultados.
- */
 async function fetchAllBitrixPages(method, token, params = {}) {
     const allResults = [];
     let start = 0;
@@ -1158,6 +1146,7 @@ async function processNextInApiQueue(event, keyMode) {
     processNextInApiQueue(event, keyMode);
 }
 
+// NOVA FUNÇÃO runApiConsultation com lógica de chave "DUPLA"
 async function runApiConsultation(filePath, keyMode, log, progress) {
     const credentials = {
         c6: {
@@ -1173,101 +1162,117 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
     };
     const TOKEN_URL = "https://crm-leads-p.c6bank.info/querie-partner/token";
     const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
-    const BATCH_SIZE = 20000;
+    
+    const BATCH_SIZE_SINGLE = 20000;
+    const BATCH_SIZE_DUAL = 40000;
     const RETRY_MS = 2 * 60 * 1000;
     const DELAY_SUCESSO_MS = 90 * 1000;
     const MAX_RETRIES = 5;
+
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const normalizeCnpj = (cnpj) => (String(cnpj).replace(/\D/g, "")).padStart(14, "0");
+
+    const performApiCall = async (cnpjArray, creds) => {
+        log(`Consultando ${cnpjArray.length} CNPJs com a chave: ${creds.name}`);
+        const tokenParams = new URLSearchParams({ grant_type: "client_credentials", client_id: creds.CLIENT_ID, client_secret: creds.CLIENT_SECRET });
+        const tokenResp = await axios.post(TOKEN_URL, tokenParams.toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 30000 });
+        const token = tokenResp.data.access_token;
+        
+        const consultaResp = await axios.post(CONSULTA_URL, { CNPJ: cnpjArray }, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 30000 });
+        const key = Object.keys(consultaResp.data).find(k => k.toLowerCase().includes("cnpj") && Array.isArray(consultaResp.data[k]));
+        return key ? new Set(consultaResp.data[key].map(normalizeCnpj)) : new Set();
+    };
+
     try {
         log(`Iniciando processo com o modo de chave: '${keyMode}'.`);
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(filePath);
         const worksheet = workbook.worksheets[0];
+        
         const COLUNA_CNPJ = "cpf";
         let cnpjColNumber = -1;
-        worksheet.getRow(1).eachCell({
-            includeEmpty: true
-        }, (cell, colNumber) => {
-            if (cell.value && String(cell.value).trim().toLowerCase() === COLUNA_CNPJ) {
-                cnpjColNumber = colNumber;
-            }
+        worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            if (cell.value && String(cell.value).trim().toLowerCase() === COLUNA_CNPJ) cnpjColNumber = colNumber;
         });
-        if (cnpjColNumber === -1)
-            throw new Error(`A coluna "${COLUNA_CNPJ}" não foi encontrada.`);
+
+        if (cnpjColNumber === -1) throw new Error(`A coluna "${COLUNA_CNPJ}" não foi encontrada.`);
 
         const COLUNA_RESPOSTA_LETTER = "C";
         const registros = [];
-        worksheet.eachRow({
-            includeEmpty: false
-        }, (row, rowNum) => {
+        worksheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
             if (rowNum > 1) {
                 const cnpjCell = row.getCell(cnpjColNumber);
-                const cnpjValue = cnpjCell.value;
                 const respostaCell = row.getCell(COLUNA_RESPOSTA_LETTER);
-                if (!respostaCell.value) {
-                    registros.push({
-                        cnpj: normalizeCnpj(cnpjValue || ""),
-                        rowNum
-                    });
+                if (!respostaCell.value && cnpjCell.value) {
+                    registros.push({ cnpj: normalizeCnpj(cnpjCell.value), rowNum });
                 }
             }
         });
+
         if (registros.length === 0) {
             log("✅ Nenhum registro novo para consultar neste arquivo.");
             return;
         }
+
         log(`Encontrados ${registros.length} registros novos para processar.`);
+        const BATCH_SIZE = keyMode === 'dupla' ? BATCH_SIZE_DUAL : BATCH_SIZE_SINGLE;
         const lotes = [];
         for (let i = 0; i < registros.length; i += BATCH_SIZE) {
             lotes.push(registros.slice(i, i + BATCH_SIZE));
         }
+
         for (let i = 0; i < lotes.length; i++) {
             const lote = lotes[i];
             log(`\n=== Processando Lote ${i + 1}/${lotes.length} (${lote.length} registros) ===`);
             progress(i + 1, lotes.length);
-            let currentCreds;
-            if (keyMode === "intercalar") {
-                currentCreds = i % 2 === 0 ? credentials.c6 : credentials.im;
-                log(`Usando credenciais intercaladas: ${currentCreds.name}`);
-            } else if (keyMode === "chave2") {
-                currentCreds = credentials.im;
-            } else {
-                currentCreds = credentials.c6;
-            }
-            if (keyMode !== "intercalar" && i === 0) {
-                log(`Usando credenciais fixas: ${currentCreds.name}`);
-            }
+
             let sucesso = false;
             let retries = 0;
             while (!sucesso && retries < MAX_RETRIES) {
                 try {
-                    log("Gerando token de acesso...");
-                    const tokenParams = new URLSearchParams({
-                        grant_type: "client_credentials",
-                        client_id: currentCreds.CLIENT_ID,
-                        client_secret: currentCreds.CLIENT_SECRET
-                    });
-                    const tokenResp = await axios.post(TOKEN_URL, tokenParams.toString(), {
-                        headers: {
-                            "Content-Type": "application/x-www-form-urlencoded"
-                        },
-                        timeout: 30000
-                    });
-                    const token = tokenResp.data.access_token;
-                    log("Consultando API...");
-                    const cnpjArray = lote.map(r => r.cnpj);
-                    const consultaResp = await axios.post(CONSULTA_URL, {
-                        CNPJ: cnpjArray
-                    }, {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            "Content-Type": "application/json"
-                        },
-                        timeout: 30000
-                    });
-                    const key = Object.keys(consultaResp.data).find(k => k.toLowerCase().includes("cnpj") && Array.isArray(consultaResp.data[k]));
-                    const encontrados = key ? new Set(consultaResp.data[key].map(normalizeCnpj)) : new Set();
+                    let encontrados = new Set();
+
+                    if (keyMode === 'dupla') {
+                        log("Modo 'Dupla' ativado. Consultando com ambas as chaves simultaneamente.");
+                        const meio = Math.ceil(lote.length / 2);
+                        const lote1 = lote.slice(0, meio);
+                        const lote2 = lote.slice(meio);
+
+                        const [res1, res2] = await Promise.allSettled([
+                            performApiCall(lote1.map(r => r.cnpj), credentials.c6),
+                            performApiCall(lote2.map(r => r.cnpj), credentials.im)
+                        ]);
+
+                        if (res1.status === 'fulfilled') {
+                            res1.value.forEach(cnpj => encontrados.add(cnpj));
+                        } else {
+                            log(`❌ Erro na Chave 1: ${res1.reason.message}`);
+                        }
+                        if (res2.status === 'fulfilled') {
+                            res2.value.forEach(cnpj => encontrados.add(cnpj));
+                        } else {
+                            log(`❌ Erro na Chave 2: ${res2.reason.message}`);
+                        }
+                        if (res1.status === 'rejected' && res2.status === 'rejected') {
+                           throw new Error("Ambas as chaves falharam na consulta.");
+                        }
+
+                    } else { // Modos 'chave1', 'chave2', 'intercalar'
+                        let currentCreds;
+                        if (keyMode === "intercalar") {
+                            currentCreds = i % 2 === 0 ? credentials.c6 : credentials.im;
+                            log(`Usando credenciais intercaladas: ${currentCreds.name}`);
+                        } else if (keyMode === "chave2") {
+                            currentCreds = credentials.im;
+                        } else {
+                            currentCreds = credentials.c6;
+                        }
+                        if (keyMode !== "intercalar" && i === 0) {
+                            log(`Usando credenciais fixas: ${currentCreds.name}`);
+                        }
+                        encontrados = await performApiCall(lote.map(r => r.cnpj), currentCreds);
+                    }
+                    
                     log(`Atualizando planilha em memória...`);
                     let countDisponivel = 0;
                     lote.forEach(({ cnpj, rowNum }) => {
@@ -1278,15 +1283,19 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                             worksheet.getCell(`${COLUNA_RESPOSTA_LETTER}${rowNum}`).value = "cliente";
                         }
                     });
+
                     const countCliente = lote.length - countDisponivel;
                     log(`Resultados do Lote: ${countDisponivel} disponível(is), ${countCliente} cliente(s).`);
                     log(`💾 Salvando progresso do lote ${i + 1} na planilha...`);
+                    
                     const tempFilePath = path.join(path.dirname(filePath), `${path.basename(filePath, ".xlsx")}_temp.xlsx`);
                     await workbook.xlsx.writeFile(tempFilePath);
                     fs.unlinkSync(filePath);
                     fs.renameSync(tempFilePath, filePath);
+                    
                     log(`✅ Progresso salvo com sucesso.`);
                     sucesso = true;
+
                 } catch (err) {
                     retries++;
                     log(`❌ Erro no processamento do lote (tentativa ${retries}/${MAX_RETRIES}): ${err.message}.`);
@@ -1298,7 +1307,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                     }
                 }
             }
-            if (i < lotes.length - 1) {
+            if (sucesso && i < lotes.length - 1) {
                 log(`Aguardando ${DELAY_SUCESSO_MS / 60000} minutos antes do próximo lote...`);
                 await sleep(DELAY_SUCESSO_MS);
             }
