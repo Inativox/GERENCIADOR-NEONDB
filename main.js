@@ -28,11 +28,10 @@ async function initializePool(connectionString, windowToLog) {
         console.log("Pool de conexões anterior encerrado.");
     }
     
-    // ADICIONADO: Validação para string de conexão vazia
     if (!connectionString) {
         console.log("Chave de conexão não fornecida. A inicialização do pool foi ignorada.");
         if (windowToLog) windowToLog.webContents.send("log", "⚠️ Chave de conexão do BD não configurada. Funções do BD desabilitadas.");
-        pool = null; // Garante que o pool esteja nulo
+        pool = null;
         return;
     }
     
@@ -45,11 +44,10 @@ async function initializePool(connectionString, windowToLog) {
         console.log("✅ Conexão com o banco de dados estabelecida com sucesso.");
         if (windowToLog) windowToLog.webContents.send("log", "✅ Conexão com o Banco de Dados estabelecida com sucesso.");
     } catch (error) {
-        // MODIFICADO: Transforma o erro em um aviso, não impede a execução
         console.error("❌ Falha ao estabelecer conexão com o banco de dados:", error.message);
         if (windowToLog) windowToLog.webContents.send("log", `❌ ERRO DE CONEXÃO BD: ${error.message}. Funções do BD podem não funcionar.`);
-        pool = null; // Reseta o pool em caso de falha para desabilitar as features
-        throw error; // Propaga o erro para o handler que chamou, se necessário
+        pool = null;
+        throw error;
     }
 }
 
@@ -117,10 +115,7 @@ ipcMain.handle('save-and-test-db-connection', async (event, connectionString) =>
     }
 });
 
-// MODIFICADO: Removida a verificação do BD antes do login
 ipcMain.handle('login-attempt', async (event, username, password, rememberMe) => {
-    // REMOVIDA A VALIDAÇÃO: if (!pool) { ... }
-
     const user = users[username];
     if (user && user.password === password) {
         currentUser = { 
@@ -149,7 +144,7 @@ ipcMain.on('logout', () => {
     store.delete('credentials');
     currentUser = null;
     if (pool) {
-        pool.end(); // Encerra a conexão com o BD ao fazer logout
+        pool.end();
         pool = null;
     }
     if (mainWindow) {
@@ -171,7 +166,6 @@ const isAdmin = () => {
 let storedCnpjs = new Set();
 
 async function loadStoredCnpjs() {
-    // MODIFICADO: A verificação de 'pool' agora é crucial
     if (!isAdmin() || !pool) {
         if (mainWindow && isAdmin()) {
             mainWindow.webContents.send("log", "⚠️ A conexão com o BD não está ativa. Histórico de CNPJs não carregado.");
@@ -210,12 +204,10 @@ function createMainWindow() {
         if (currentUser) {
             mainWindow.webContents.send('user-info', currentUser);
 
-            // ADICIONADO: Tenta conectar ao BD para o admin APÓS o login
             if (isAdmin()) {
                 const dbConnectionString = store.get('db_connection_string');
                 try {
                     await initializePool(dbConnectionString, mainWindow);
-                    // Somente carrega os CNPJs se a conexão for bem-sucedida
                     if (pool) {
                         await loadStoredCnpjs();
                     }
@@ -232,11 +224,9 @@ function createMainWindow() {
     });
 }
 
-// MODIFICADO: O app inicia mesmo que a conexão com o BD falhe no startup
 app.whenReady().then(async () => {
     const savedCredentials = store.get('credentials');
 
-    // Tenta o login automático primeiro
     if (savedCredentials && savedCredentials.username && savedCredentials.password) {
         const { username, password } = savedCredentials;
         const user = users[username];
@@ -294,7 +284,7 @@ function writeSpreadsheet(workbook, filePath) { XLSX.writeFile(workbook, filePat
 // --- FUNÇÕES DA ABA DE ENRIQUECIMENTO (Refatoradas para PostgreSQL) ---
 
 ipcMain.handle("get-enriched-cnpj-count", async () => {
-    if (!isAdmin() || !pool) return 0; // MODIFICADO: Adicionado check !pool
+    if (!isAdmin() || !pool) return 0;
     try {
         const result = await pool.query('SELECT COUNT(*) FROM empresas;');
         return parseInt(result.rows[0].count, 10);
@@ -305,7 +295,7 @@ ipcMain.handle("get-enriched-cnpj-count", async () => {
 });
 
 ipcMain.handle("download-enriched-data", async () => {
-    if (!isAdmin() || !pool) return { success: false, message: "Acesso negado ou conexão com BD inativa." }; // MODIFICADO: Adicionado check !pool
+    if (!isAdmin() || !pool) return { success: false, message: "Acesso negado ou conexão com BD inativa." };
     try {
         const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, { title: "Salvar Dados Enriquecidos", defaultPath: `dados_enriquecidos_${Date.now()}.xlsx`, filters: [ { name: "Excel Files", extensions: ["xlsx"] } ] });
         if (canceled || !filePath) return { success: false, message: "Download cancelado." };
@@ -342,7 +332,7 @@ ipcMain.handle("download-enriched-data", async () => {
 });
 
 ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
-    if (!isAdmin() || !pool) { // MODIFICADO: Adicionado check !pool
+    if (!isAdmin() || !pool) {
         event.sender.send("enrichment-log", "❌ Acesso negado ou conexão com BD inativa.");
         event.sender.send("db-load-finished");
         return;
@@ -350,11 +340,8 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
     const log = (msg) => event.sender.send("enrichment-log", msg);
     const progress = (current, total, fileName, cnpjsProcessed) => event.sender.send("db-load-progress", { current, total, fileName, cnpjsProcessed });
 
-    console.log('--- [DEBUG] Função start-db-load iniciada ---'); // LOG 1
-
     if (!year) {
         log('❌ ERRO CRÍTICO: O ano não foi fornecido para a carga no banco de dados.');
-        console.log('--- [DEBUG] ERRO: Ano não fornecido ---'); // LOG 2
         event.sender.send("db-load-finished");
         return;
     }
@@ -363,16 +350,13 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
     let totalCnpjsProcessed = 0;
 
     const saveChunkToDb = async (dataMap, filePath) => {
-        console.log(`--- [DEBUG] saveChunkToDb chamada com ${dataMap.size} CNPJs ---`); // LOG 7
         if (dataMap.size === 0) {
-            console.log('--- [DEBUG] saveChunkToDb: dataMap está vazio, retornando. ---');
             return;
         }
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
             const uniqueCnpjs = Array.from(dataMap.keys());
-            console.log('--- [DEBUG] saveChunkToDb: Tentando inserir/atualizar empresas... ---'); // LOG 8
             const insertEmpresasQuery = `
                 INSERT INTO empresas (cnpj, ano)
                 SELECT unnest($1::text[]), $2
@@ -380,7 +364,6 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
                 SET ano = EXCLUDED.ano;
             `;
             await client.query(insertEmpresasQuery, [uniqueCnpjs, year]);
-            console.log('--- [DEBUG] saveChunkToDb: Empresas inseridas/atualizadas com sucesso. ---'); // LOG 9
 
             const getEmpresasQuery = `SELECT id, cnpj FROM empresas WHERE cnpj = ANY($1::text[])`;
             const result = await client.query(getEmpresasQuery, [uniqueCnpjs]);
@@ -396,10 +379,8 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
             }
 
             if (phoneValues.length > 0) {
-                 console.log(`--- [DEBUG] saveChunkToDb: Tentando inserir ${phoneValues.length} telefones... ---`); // LOG 10
                  const insertTelefonesQuery = `INSERT INTO telefones (empresa_id, numero) SELECT (d.v->>'empresa_id')::int, d.v->>'numero' FROM jsonb_array_elements($1::jsonb) d(v) ON CONFLICT (empresa_id, numero) DO NOTHING`;
                  await client.query(insertTelefonesQuery, [JSON.stringify(phoneValues)]);
-                 console.log('--- [DEBUG] saveChunkToDb: Telefones inseridos com sucesso. ---'); // LOG 11
             }
 
             await client.query('COMMIT');
@@ -407,23 +388,19 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
         } catch (error) {
             await client.query('ROLLBACK');
             log(`❌ ERRO no lote do arquivo ${path.basename(filePath)}: ${error.message}`);
-            console.error('--- [DEBUG] ERRO DENTRO DE saveChunkToDb ---', error); // LOG 12
         } finally {
             client.release();
         }
     };
 
     try {
-        console.log(`--- [DEBUG] Processando ${masterFiles.length} arquivos mestres... ---`); // LOG 3
         for (let fileIndex = 0; fileIndex < masterFiles.length; fileIndex++) {
             const filePath = masterFiles[fileIndex];
             const fileName = path.basename(filePath);
             progress(fileIndex + 1, masterFiles.length, fileName, totalCnpjsProcessed);
             log(`\nProcessando arquivo mestre: ${fileName}`);
-            console.log(`--- [DEBUG] Lendo arquivo: ${fileName} ---`); // LOG 4
             try {
-                const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; if (!worksheet || worksheet.rowCount === 0) { log(`⚠️ Arquivo ${fileName} vazio ou inválido. Pulando.`); continue; } const headerMap = new Map(); worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNum) => headerMap.set(colNum, String(cell.value || "").trim().toLowerCase())); let cnpjColIdx = [...headerMap.entries()].find(([_, h]) => h === "cpf" || h === "cnpj")?.[0] ?? -1; const phoneColIdxs = [...headerMap.entries()].filter(([_, h]) => /^(fone|telefone|celular)/.test(h)).map(([colNum]) => colNum); if (cnpjColIdx === -1 || phoneColIdxs.length === 0) { log(`❌ ERRO: Colunas de documento ou telefone não encontradas. Pulando.`); console.log(`--- [DEBUG] Colunas não encontradas em ${fileName}. Pulando.`); continue; }
-                console.log(`--- [DEBUG] Colunas encontradas em ${fileName}. Iniciando leitura das linhas... ---`); // LOG 5
+                const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; if (!worksheet || worksheet.rowCount === 0) { log(`⚠️ Arquivo ${fileName} vazio ou inválido. Pulando.`); continue; } const headerMap = new Map(); worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNum) => headerMap.set(colNum, String(cell.value || "").trim().toLowerCase())); let cnpjColIdx = [...headerMap.entries()].find(([_, h]) => h === "cpf" || h === "cnpj")?.[0] ?? -1; const phoneColIdxs = [...headerMap.entries()].filter(([_, h]) => /^(fone|telefone|celular)/.test(h)).map(([colNum]) => colNum); if (cnpjColIdx === -1 || phoneColIdxs.length === 0) { log(`❌ ERRO: Colunas de documento ou telefone não encontradas. Pulando.`); continue; }
                 let cnpjsToUpdate = new Map();
                 for (let i = 2; i <= worksheet.rowCount; i++) {
                     const row = worksheet.getRow(i);
@@ -434,35 +411,30 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
                     if (phones.length > 0) cnpjsToUpdate.set(cnpj, [...(cnpjsToUpdate.get(cnpj) || []),...phones]);
                     
                     if (i % 5000 === 0) {
-                        console.log(`--- [DEBUG] Atingido o lote de 5000. Chamando saveChunkToDb... ---`); // LOG 6
                         await saveChunkToDb(cnpjsToUpdate, filePath);
                         cnpjsToUpdate.clear();
                         progress(fileIndex + 1, masterFiles.length, fileName, totalCnpjsProcessed);
                     }
                 }
                 if (cnpjsToUpdate.size > 0) {
-                    console.log(`--- [DEBUG] Lote final com ${cnpjsToUpdate.size} itens. Chamando saveChunkToDb... ---`);
                     await saveChunkToDb(cnpjsToUpdate, filePath);
                 }
 
             } catch (err) {
                 log(`❌ ERRO ao processar ${fileName}: ${err.message}`);
-                console.error(`--- [DEBUG] ERRO ao processar o arquivo ${fileName}:`, err);
             }
         }
     } catch (err) {
         log(`❌ Um erro crítico ocorreu: ${err.message}`);
-        console.error('--- [DEBUG] ERRO CRÍTICO NA FUNÇÃO start-db-load ---', err);
     } finally {
         log(`\n✅ Carga finalizada. Total de ${totalCnpjsProcessed} CNPJs únicos processados.`);
-        console.log('--- [DEBUG] Função start-db-load finalizada. ---');
         event.sender.send("db-load-finished");
     }
 });
 function formatEta(totalSeconds) { if (!isFinite(totalSeconds) || totalSeconds < 0) return "Calculando..."; const m = Math.floor(totalSeconds / 60); const s = Math.floor(totalSeconds % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; }
 
-async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, log, progress, onFinish) { // Recebe o 'year'
-    if (!isAdmin() || !pool){ // MODIFICADO: Adicionado check !pool
+async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, log, progress, onFinish) {
+    if (!isAdmin() || !pool){
         log("❌ Acesso negado ou conexão com BD inativa."); 
         if(onFinish) onFinish(); 
         return; 
@@ -541,7 +513,7 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
 }
 
 ipcMain.on("start-enrichment", async (event, options) => {
-    if (!isAdmin() || !pool) { // MODIFICADO: Adicionado check !pool
+    if (!isAdmin() || !pool) {
         event.sender.send("enrichment-log", "❌ Acesso negado ou conexão com BD inativa."); 
         event.sender.send("enrichment-finished"); 
         return; 
@@ -554,8 +526,8 @@ ipcMain.on("start-enrichment", async (event, options) => {
     );
 });
 
+
 // --- FUNÇÕES DA ABA MONITORAMENTO, LOGIN, ETC (Sem alterações relevantes ao DB) ---
-// (Estas seções foram omitidas para brevidade, pois não interagem com o Firebase/Neon)
 ipcMain.handle('fetch-monitoring-report', async (event, { reportUrl, operatorTimesParams }) => { if (!currentUser) { return { success: false, message: 'Acesso negado. Faça o login.' }; } let mainReportResult; try { const response = await axios.get(reportUrl, { timeout: 4000000, headers: { 'User-Agent': 'PostmanRuntime/7.44.1' } }); if (response.status === 200) { const data = (typeof response.data === 'string' && response.data.includes("Nenhum registro encontrado")) ? [] : response.data; mainReportResult = { success: true, data: data, operatorTimesData: null }; } else { return { success: false, message: `A API principal retornou um status inesperado: ${response.status}` }; } } catch (error) { console.error("Erro ao buscar relatório de monitoramento:", error.message); return { success: false, message: `Falha na comunicação com a API principal: ${error.message}` }; } if (mainReportResult.success && operatorTimesParams) { const { data_inicio, data_fim, operador_id, grupo_operador_id } = operatorTimesParams; const baseUrl = 'http://mbfinance.fastssl.com.br/api/relatorio/operador_tempos.php'; const url = `${baseUrl}?data_inicial=${data_inicio}&data_final=${data_fim}&operador_id=${operador_id}&grupo_operador_id=${grupo_operador_id}&servico_id=&operador_ativo=`; try { const timesResponse = await axios.get(url, { timeout: 30000 }); if (timesResponse.status === 200) { mainReportResult.operatorTimesData = timesResponse.data; } else { console.error(`API de tempos retornou status ${timesResponse.status}`); } } catch (error) { console.error('[DEBUG MAIN] ERRO na chamada da API de tempos:', error.message); } } return mainReportResult; });
 ipcMain.handle('download-recording', async (event, url, fileName) => { if (!mainWindow) { return { success: false, message: 'Janela principal não encontrada.' }; } const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, { title: 'Salvar Gravação', defaultPath: fileName, filters: [ { name: 'Áudio MP3', extensions: ['mp3'] } ] }); if (canceled || !filePath) { return { success: true, message: 'Download cancelado pelo usuário.' }; } try { const response = await axios({ method: 'get', url: url, responseType: 'stream', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' } }); const writer = fs.createWriteStream(filePath); response.data.pipe(writer); return new Promise((resolve, reject) => { writer.on('finish', () => resolve({ success: true, message: `Gravação salva em: ${filePath}` })); writer.on('error', (err) => { console.error("Erro ao salvar o arquivo:", err); reject({ success: false, message: `Falha ao salvar o arquivo: ${err.message}` }); }); }); } catch (error) { console.error("Erro no download da gravação:", error); let errorMessage = error.message; if (error.response && error.response.status === 403) { errorMessage = "Acesso negado (403 Forbidden). Verifique a URL ou permissões no servidor."; } return { success: false, message: `Erro ao baixar a gravação: ${errorMessage}` }; } });
 async function runPhoneAdjustment(filePath, event, backup) { if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado: Permissão de administrador necessária."); return; } const log = (msg) => event.sender.send("log", msg); if (!filePath || !fs.existsSync(filePath)) { log(`❌ Erro: Arquivo para ajuste de fones não encontrado em: ${filePath}`); return; } log(`\n--- Iniciando Ajuste de Fones para: ${path.basename(filePath)} ---`); try { if (backup) { const p = path.parse(filePath); const backupPath = path.join(p.dir, `${p.name}.backup_fones_${Date.now()}${p.ext}`); fs.copyFileSync(filePath, backupPath); log(`Backup do arquivo criado em: ${backupPath}`); } const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; const phoneColumns = []; worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => { if (cell.value && typeof cell.value === "string" && cell.value.trim().toLowerCase().startsWith("fone")) { phoneColumns.push(colNumber); } }); phoneColumns.sort((a, b) => a - b); if (phoneColumns.length === 0) { log("⚠️ Nenhuma coluna \"fone\" encontrada. Ajuste pulado."); return; } log(`Ajustando ${phoneColumns.length} colunas de telefone...`); let processedRows = 0; worksheet.eachRow((row, rowNumber) => { if (rowNumber === 1) return; const phoneValuesInRow = phoneColumns.map(colNumber => row.getCell(colNumber).value).filter(v => v !== null && v !== undefined && String(v).trim() !== ""); phoneColumns.forEach((colNumber, index) => { row.getCell(colNumber).value = index < phoneValuesInRow.length ? phoneValuesInRow[index] : null; }); processedRows++; }); await workbook.xlsx.writeFile(filePath); log(`✅ Ajuste de fones concluído. ${processedRows} linhas processadas.`); } catch (err) { log(`❌ Erro catastrófico durante o ajuste de fones: ${err.message}`); console.error(err); } }
@@ -662,7 +634,6 @@ ipcMain.on("start-cleaning", async (event, args) => {
     if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado."); return; }
     const log = (msg) => event.sender.send("log", msg);
     
-    // MODIFICADO: Validação do pool para funções de BD
     if ((args.isAutoRoot || args.checkDb || args.saveToDb) && !pool) {
         return log("❌ ERRO: As opções de Banco de Dados estão ativadas, mas a conexão com o BD falhou ou não foi configurada.");
     }
@@ -741,13 +712,171 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
 });
 
 
-// --- LÓGICA DE MESCLAGEM ATUALIZADA ---
+
+// #################################################################
+// #           NOVA LÓGICA - API BITRIX24 (Monitoramento)          #
+// #################################################################
+
+const BITRIX_WEBHOOK_URL = "https://mb-finance.bitrix24.com.br/rest/8311";
+const USER_GET_TOKEN = "dv95qyhbyrtu49fn";
+const VOX_GET_TOKEN = "dv95qyhbyrtu49fn";
 
 /**
- * Embaralha uma lista de arquivos no local, lendo-os, embaralhando na memória e salvando por cima.
- * @param {string[]} filePaths - Array com os caminhos dos arquivos a serem embaralhados.
- * @param {function} log - Função para enviar logs ao renderer.
+ * Formata uma data no fuso horário local para o formato ISO 8601 que o Bitrix espera.
+ * @param {Date} date O objeto de data a ser formatado.
+ * @returns {string} A data formatada como "YYYY-MM-DDTHH:mm:ssZ".
  */
+function formatDateForBitrix(date) {
+    if (!date) return null;
+    return date.toISOString();
+}
+
+/**
+ * Busca todos os resultados de um método Bitrix24 que suporta paginação.
+ * @param {string} method O método da API a ser chamado (ex: "user.get").
+ * @param {string} token O token de acesso para o método.
+ * @param {object} params Parâmetros iniciais para a requisição (ex: FILTER, SORT).
+ * @returns {Promise<Array>} Uma promessa que resolve para um array com todos os resultados.
+ */
+async function fetchAllBitrixPages(method, token, params = {}) {
+    const allResults = [];
+    let start = 0;
+    const BATCH_SIZE = 50;
+    let hasMore = true;
+
+    console.log(`[Bitrix] Iniciando busca paginada para o método: ${method}`);
+
+    while (hasMore) {
+        try {
+            const fullUrl = `${BITRIX_WEBHOOK_URL}/${token}/${method}.json`;
+            const response = await axios.post(fullUrl, { ...params,
+                start: start
+            });
+
+            const result = response.data.result;
+            if (result && Array.isArray(result) && result.length > 0) {
+                allResults.push(...result);
+                console.log(`[Bitrix] Buscados ${result.length} registros para ${method}. Total acumulado: ${allResults.length}`);
+                if (result.length < BATCH_SIZE) {
+                    hasMore = false;
+                } else {
+                    start += BATCH_SIZE;
+                }
+            } else {
+                hasMore = false;
+            }
+        } catch (error) {
+            console.error(`[Bitrix] Erro ao buscar página para ${method} (start: ${start}):`, error.response ? error.response.data : error.message);
+            throw new Error(`Falha ao comunicar com a API do Bitrix para o método ${method}.`);
+        }
+    }
+    console.log(`[Bitrix] Busca paginada para ${method} concluída. Total de ${allResults.length} registros encontrados.`);
+    return allResults;
+}
+
+
+ipcMain.handle('fetch-bitrix-report', async (event, {
+    startDate: startDateStr,
+    endDate: endDateStr
+}) => {
+    if (!currentUser) {
+        return {
+            success: false,
+            message: 'Acesso negado. Faça o login.'
+        };
+    }
+
+    try {
+        const users = await fetchAllBitrixPages('user.get', USER_GET_TOKEN, {
+            FILTER: {
+                "ACTIVE": true,
+                "USER_TYPE": "employee"
+            },
+            SORT: "ID",
+            ORDER: "ASC"
+        });
+        const userMap = new Map(users.map(user => [user.ID, `${user.NAME || ''} ${user.LAST_NAME || ''}`.trim()]));
+
+        const startDate = new Date(startDateStr);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(endDateStr);
+        endDate.setHours(23, 59, 59, 999);
+
+        const calls = await fetchAllBitrixPages('voximplant.statistic.get', VOX_GET_TOKEN, {
+            FILTER: {
+                ">CALL_DURATION": 70,
+                "=CALL_TYPE": 1,
+                ">=CALL_START_DATE": formatDateForBitrix(startDate),
+                "<=CALL_START_DATE": formatDateForBitrix(endDate),
+            },
+            SORT: "CALL_START_DATE",
+            ORDER: "ASC"
+        });
+
+        if (calls.length === 0) {
+            return {
+                success: true,
+                data: {
+                    generalTma: 0,
+                    totalCalls: 0,
+                    operatorStats: [],
+                    message: "Nenhuma chamada encontrada no Bitrix para o período selecionado."
+                }
+            };
+        }
+
+        let totalDuration = 0;
+        const operatorStats = {};
+
+        calls.forEach(call => {
+            const duration = parseInt(call.CALL_DURATION, 10);
+            const userId = call.PORTAL_USER_ID;
+            const userName = userMap.get(userId) || `ID Desconhecido (${userId})`;
+
+            totalDuration += duration;
+
+            if (!operatorStats[userId]) {
+                operatorStats[userId] = {
+                    userId: userId,
+                    name: userName,
+                    totalDuration: 0,
+                    callCount: 0,
+                };
+            }
+            operatorStats[userId].totalDuration += duration;
+            operatorStats[userId].callCount++;
+        });
+
+        const generalTma = totalDuration / calls.length;
+
+        const finalOperatorStats = Object.values(operatorStats).map(stats => ({
+            ...stats,
+            tma: stats.totalDuration / stats.callCount,
+        }));
+
+        return {
+            success: true,
+            data: {
+                generalTma,
+                totalCalls: calls.length,
+                operatorStats: finalOperatorStats,
+            },
+        };
+
+    } catch (error) {
+        console.error("[Bitrix Report] Erro ao gerar relatório:", error);
+        return {
+            success: false,
+            message: error.message
+        };
+    }
+});
+
+
+
+
+// --- LÓGICA DE MESCLAGEM ATUALIZADA ---
+
 async function shuffleFilesInPlace(filePaths, log) {
     log(`\n--- Iniciando a fase de embaralhamento para ${filePaths.length} arquivo(s) ---`);
     for (const filePath of filePaths) {
@@ -766,7 +895,6 @@ async function shuffleFilesInPlace(filePaths, log) {
             const header = allData[0];
             const dataRows = allData.slice(1);
 
-            // Algoritmo de embaralhamento Fisher-Yates
             for (let i = dataRows.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [dataRows[i], dataRows[j]] = [dataRows[j], dataRows[i]];
@@ -787,10 +915,6 @@ async function shuffleFilesInPlace(filePaths, log) {
     log(`--- Fase de embaralhamento concluída ---`);
 }
 
-/**
- * Mescla arquivos usando streaming para baixo uso de memória e segmenta o resultado se exceder o limite.
- * @returns {Promise<string[]>} Uma promessa que resolve para uma lista de caminhos de arquivos criados.
- */
 async function mergeAndSegment(event, options) {
     const { files, strategy, customCount, removeDuplicates } = options;
     const log = (msg) => event.sender.send("log", msg);
@@ -807,7 +931,6 @@ async function mergeAndSegment(event, options) {
             return [];
         }
 
-        // --- ETAPA 1: Pré-scan para contar o total de linhas ---
         log("Iniciando pré-scan para contagem de linhas...");
         let totalDataRows = 0;
         for (const filePath of files) {
@@ -820,7 +943,6 @@ async function mergeAndSegment(event, options) {
         }
         log(`Pré-scan concluído. Total de linhas de dados a processar: ${totalDataRows}`);
 
-        // --- ETAPA 2: Determinar estratégia de segmentação ---
         const needsSegmentation = totalDataRows > 1000000;
         const numParts = 4;
         const rowsPerPart = needsSegmentation ? Math.ceil(totalDataRows / numParts) : Infinity;
@@ -829,7 +951,6 @@ async function mergeAndSegment(event, options) {
             log(`Total excede 1 milhão de linhas. O resultado será dividido em ${numParts} partes de aproximadamente ${rowsPerPart} linhas cada.`);
         }
 
-        // --- ETAPA 3: Processamento e escrita ---
         let header = [];
         const seenCnpjs = new Set();
         let cnpjColumnIndex = -1;
@@ -854,7 +975,6 @@ async function mergeAndSegment(event, options) {
             currentWorksheet = currentWriter.addWorksheet('Mesclado');
 
             if (header.length > 0) {
-                 // Adiciona o cabeçalho se não for a primeira parte do primeiro arquivo
                 currentWorksheet.columns = header.map(h => ({ header: h, key: h, style: {} }));
             }
         };
@@ -969,15 +1089,12 @@ ipcMain.on("start-merge", async (event, options) => {
         log(`Linhas por arquivo (personalizado): ${options.customCount}`);
     }
 
-    // Etapa 1: Sempre mesclar e segmentar usando o método de baixo consumo de memória.
     const outputFiles = await mergeAndSegment(event, options);
 
-    // Etapa 2: Se a mesclagem produziu arquivos e a opção de embaralhar foi marcada, embaralhar os arquivos resultantes.
     if (outputFiles && outputFiles.length > 0 && shuffle) {
         await shuffleFilesInPlace(outputFiles, log);
     }
 
-    // Etapa 3: Exibir mensagem final de sucesso.
     if (outputFiles && outputFiles.length > 0) {
         const finalMessage = `Processo concluído com sucesso!\n\n${outputFiles.length} arquivo(s) foi(ram) salvo(s) na pasta:\n${path.dirname(outputFiles[0])}`;
         dialog.showMessageBox(mainWindow, { type: "info", title: "Sucesso", message: finalMessage });
@@ -1058,7 +1175,6 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
     const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
     const BATCH_SIZE = 20000;
     const RETRY_MS = 2 * 60 * 1000;
-//    const DELAY_SUCESSO_MS = 3 * 60 * 1000;
     const DELAY_SUCESSO_MS = 90 * 1000;
     const MAX_RETRIES = 5;
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));

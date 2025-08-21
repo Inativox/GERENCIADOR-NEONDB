@@ -98,6 +98,26 @@
             --gradient-secondary: linear-gradient(135deg, #6ee7b7 0%, #34d399 100%);
         }
 
+        /* TEMA AZUL PARA VIEW BITRIX */
+        #monitoramento.bitrix-view-active {
+            --accent-color: #3b82f6;
+            --accent-hover: #2563eb;
+            --accent-light: #60a5fa;
+            --shadow-accent: rgba(59, 130, 246, 0.25);
+            --bg-card: #2a2f3a;
+        }
+
+        /* Regra para ocultar elementos da Fastway na visão do Bitrix */
+        #monitoramento.bitrix-view-active #operator-times-container,
+        #monitoramento.bitrix-view-active #dashboard-details {
+            display: none !important;
+        }
+        
+        #monitoramento:not(.bitrix-view-active) #bitrix-details-container {
+             display: none !important;
+        }
+
+
         * { 
             box-sizing: border-box; 
             margin: 0;
@@ -108,20 +128,27 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        
         body { 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
             background: linear-gradient(135deg, var(--bg-dark) 0%, #0f1419 100%);
             color: var(--text-primary); 
             margin: 0; 
-            padding: 24px;
-            min-height: 100vh;
+            padding: 10px;
             line-height: 1.6;
             font-size: 14px;
+            display: flex;
+            flex-direction: column;
         }
 
         .container { 
             animation: containerFadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-            max-width: 1400px; 
+            width: 100%;
+            max-width: 1600px; 
             margin: 0 auto; 
             background: var(--bg-light);
             backdrop-filter: blur(20px);
@@ -130,10 +157,11 @@
                 0 25px 50px -12px var(--shadow-color),
                 0 0 0 1px var(--border-color),
                 inset 0 1px 0 rgba(255, 255, 255, 0.05);
-            padding: 40px; 
+            padding: 20px 24px;
             border: 1px solid var(--border-color);
             position: relative;
-            overflow: hidden;
+            overflow-y: auto;
+            flex-grow: 1;
         }
 
         .container::before {
@@ -147,7 +175,7 @@
             opacity: 0.6;
         }
 
- #monitoring-team-title {
+        #monitoring-team-title {
             text-align: center;
             color: var(--accent-light);
             font-size: 1.4rem;
@@ -159,7 +187,6 @@
             border: 1px solid var(--border-color);
         }
         
-
         .tab-content { 
             display: none; 
             animation: tabContentSlide 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -179,6 +206,7 @@
         h2::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 60px; height: 2px; background: var(--gradient-primary); border-radius: 1px; }
 
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 24px; }
+        #localGrid { grid-template-columns: 1fr; }
         
         .section { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 28px; box-shadow: 0 10px 25px -5px var(--shadow-color), 0 0 0 1px rgba(255, 255, 255, 0.05); position: relative; overflow: hidden; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         .section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--accent-color), transparent); opacity: 0.3; }
@@ -202,7 +230,7 @@
 
         hr { border: none; height: 1px; background: linear-gradient(90deg, transparent, var(--border-color), transparent); margin: 28px 0; }
 
-        .tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 28px; background: var(--bg-lighter); border-radius: 12px 12px 0 0; padding: 8px; gap: 4px; }
+        .tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 28px; background: var(--bg-lighter); border-radius: 12px 12px 0 0; padding: 8px; gap: 4px; flex-shrink: 0; }
         .tab-button { padding: 14px 20px; cursor: pointer; border: none; background: transparent; font-size: 14px; font-weight: 600; color: var(--text-secondary); position: relative; border-radius: 8px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         .tab-button.active { color: var(--accent-text); background: var(--gradient-primary); box-shadow: 0 4px 12px var(--shadow-accent); }
         .tab-button:hover:not(.active) { color: var(--accent-light); background: rgba(59, 130, 246, 0.1); }
@@ -220,7 +248,6 @@
         
         label { margin-right: 8px; font-weight: 500; color: var(--text-secondary); display: block; margin-bottom: 8px; font-size: 13px; }
         
-        /* ESTILO UNIFICADO PARA INPUTS */
         select, input[type="text"], input[type="date"], input[type="number"] { 
             background: var(--bg-dark); 
             color: var(--text-primary); 
@@ -239,16 +266,8 @@
             box-shadow: 0 0 0 2px var(--shadow-accent), inset 0 2px 4px rgba(0, 0, 0, 0.1); 
             transform: translateY(-1px); 
         }
-        /* Remove as setas do input de número no Chrome, Safari, Edge, Opera */
-        input::-webkit-outer-spin-button,
-        input::-webkit-inner-spin-button {
-          -webkit-appearance: none;
-          margin: 0;
-        }
-        /* Remove as setas do input de número no Firefox */
-        input[type=number] {
-          -moz-appearance: textfield;
-        }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
 
         .files { min-height: 40px; padding: 14px; background: var(--bg-dark); border-radius: 10px; margin-top: 10px; margin-bottom: 16px; border: 1px solid var(--border-color); position: relative; overflow: hidden; }
         .files:empty::after { content: 'Nenhum arquivo selecionado'; color: var(--text-muted); font-style: italic; font-size: 13px; }
@@ -278,7 +297,7 @@
         #apiDropzone:hover { border-color: var(--accent-color); background: rgba(59, 130, 246, 0.05); transform: translateY(-1px); }
         #apiDropzone.dragover { border-color: var(--accent-color); background: rgba(59, 130, 246, 0.1); box-shadow: 0 0 15px var(--shadow-accent); }
 
-        footer { text-align: center; margin-top: 30px; padding-top: 16px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.85em; position: relative; z-index: 10; }
+        footer { text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.85em; flex-shrink: 0; }
         footer p { margin: 0; }
         #header-content { text-align: center; margin-bottom: 16px; min-height: 70px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         #current-tab-title { margin-bottom: 4px; color: var(--accent-color); font-size: 1.6em; font-weight: 700; }
@@ -286,7 +305,6 @@
         h1.hidden { display: none; }
         #update-message { font-size: 11px; color: var(--accent-light); margin-top: 8px; }
 
-        /* --- ESTILOS DE MONITORAMENTO MODIFICADOS --- */
         .monitoring-filter-bar { background: var(--bg-lighter); padding: 16px 20px; border-radius: 16px; margin-bottom: 24px; border: 1px solid var(--border-color); }
         .filter-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
         .filter-row:last-child { margin-bottom: 0; }
@@ -313,19 +331,12 @@
 
          #api-parameters { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px 24px; padding-top: 16px; border-top: 1px solid var(--border-color); }
 
-       .param-item {
-           display: flex; /* Mantém o display flex */
-           align-items: center;
-           gap: 15px; /* Ajustei o gap para um espaçamento melhor */
-       }
-
+       .param-item { display: flex; align-items: center; gap: 15px; }
        .param-item .toggle-label { flex-shrink: 0; }
-       .param-item > *:not(.toggle-switch) { flex-grow: 1; } /* O input ocupa o espaço restante */
-       .param-item input, .param-item .custom-select-container, .param-item .multi-select-container {
-           /* Removi o flex-grow daqui para o container pai */
-           width: 100%; /* Garante que ocupe a largura disponível no flex-grow */
-       }
+       .param-item > *:not(.toggle-switch) { flex-grow: 1; }
+       .param-item input, .param-item .custom-select-container, .param-item .multi-select-container { width: 100%; }
        .param-item input.hidden, .param-item .custom-select-container.hidden, .param-item .multi-select-container.hidden { display: none; }
+        
         .monitoring-dashboard { display: grid; grid-template-columns: 1fr; gap: 24px; }
         
         #dashboard-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
@@ -385,10 +396,10 @@
         .modal-table th, .modal-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
         .modal-table th { font-weight: 600; color: var(--accent-light); }
 
-        .custom-scrollbar::-webkit-scrollbar, .logs::-webkit-scrollbar, .detail-list::-webkit-scrollbar, .tabulation-call-list::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track, .logs::-webkit-scrollbar-track, .detail-list::-webkit-scrollbar-track, .tabulation-call-list::-webkit-scrollbar-track, .modal-body::-webkit-scrollbar-track { background: var(--bg-dark); border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb, .logs::-webkit-scrollbar-thumb, .detail-list::-webkit-scrollbar-thumb, .tabulation-call-list::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb { background-color: var(--accent-color); border-radius: 4px; border: 2px solid var(--bg-dark); }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover, .logs::-webkit-scrollbar-thumb:hover, .detail-list::-webkit-scrollbar-thumb:hover, .tabulation-call-list::-webkit-scrollbar-thumb:hover, .modal-body::-webkit-scrollbar-thumb:hover { background-color: var(--accent-hover); }
+        .custom-scrollbar::-webkit-scrollbar, .container::-webkit-scrollbar, .logs::-webkit-scrollbar, .detail-list::-webkit-scrollbar, .tabulation-call-list::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track, .container::-webkit-scrollbar-track, .logs::-webkit-scrollbar-track, .detail-list::-webkit-scrollbar-track, .tabulation-call-list::-webkit-scrollbar-track, .modal-body::-webkit-scrollbar-track { background: var(--bg-dark); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb, .container::-webkit-scrollbar-thumb, .logs::-webkit-scrollbar-thumb, .detail-list::-webkit-scrollbar-thumb, .tabulation-call-list::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb { background-color: var(--accent-color); border-radius: 4px; border: 2px solid var(--bg-dark); }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover, .container::-webkit-scrollbar-thumb:hover, .logs::-webkit-scrollbar-thumb:hover, .detail-list::-webkit-scrollbar-thumb:hover, .tabulation-call-list::-webkit-scrollbar-thumb:hover, .modal-body::-webkit-scrollbar-thumb:hover { background-color: var(--accent-hover); }
         
         .two-column-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
         
@@ -415,43 +426,34 @@
         .operator-times-table th { background-color: var(--bg-lighter); font-weight: 600; color: var(--accent-light); position: sticky; top: 0; z-index: 10; }
         .operator-times-table tbody tr:hover { background-color: var(--bg-card); }
 
-        /* --- MELHORIAS DE UX PARA ENRIQUECIMENTO --- */
-        .action-group {
-            background: var(--bg-dark);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 20px;
-            margin-top: 20px;
-        }
-        .action-group .input-group {
-            margin-top: 15px;
-            margin-bottom: 15px;
-        }
-        .action-group button:last-of-type {
-            margin-top: 10px;
-        }
+        .action-group { background: var(--bg-dark); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; margin-top: 20px; }
+        .action-group .input-group { margin-top: 15px; margin-bottom: 15px; }
+        .action-group button:last-of-type { margin-top: 10px; }
 
-        @media (max-width: 1200px) { 
-            .grid, .two-column-tools { 
-                grid-template-columns: 1fr; 
-                gap: 20px; 
-            } 
-        }
+        .bitrix-report-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 15px; }
+        .bitrix-report-table th, .bitrix-report-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
+        .bitrix-report-table th { font-weight: 600; color: var(--accent-light); background-color: var(--bg-lighter); }
+        .bitrix-report-table tbody tr:hover { background-color: var(--bg-card); }
+        
+        #summary-toggle-bar { display: none; justify-content: center; align-items: center; gap: 4px; margin-bottom: 20px; background-color: var(--bg-lighter); padding: 6px; border-radius: 10px; width: fit-content; margin-left: auto; margin-right: auto; }
+        .summary-toggle-btn { background: transparent; box-shadow: none; color: var(--text-secondary); font-weight: 500; margin: 0; }
+        .summary-toggle-btn.active { background: var(--bg-card); color: var(--accent-light); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .summary-toggle-btn:hover:not(.active) { background: var(--bg-card); }
+
+
+        @media (max-width: 1200px) { .two-column-tools { grid-template-columns: 1fr; } }
         @media (max-width: 768px) { 
-            body { padding: 12px; } 
-            .container { padding: 20px; border-radius: 12px; } 
+            body { padding: 0; } 
+            .container { padding: 15px; border-radius: 0; height: 100%; border: none; } 
             h1 { font-size: 1.8rem; } 
             .tabs { flex-direction: column; gap: 2px; } 
             .tab-button { padding: 10px 14px; text-align: left; }
-            .modal-content {
-                width: 95%;
-                height: 90%;
-            }
+            .modal-content { width: 95%; height: 90%; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container custom-scrollbar">
         <h1 id="main-app-title">Gerenciador de Bases</h1>
         <div id="header-content">
             <h2 id="current-tab-title"></h2>
@@ -802,10 +804,20 @@
             </div>
     
             <div class="monitoring-dashboard">
+                 <div id="summary-toggle-bar">
+                    <button id="showFastwaySummary" class="summary-toggle-btn active">Resumo Fastway</button>
+                    <button id="showBitrixSummary" class="summary-toggle-btn">Resumo Bitrix</button>
+                </div>
+
                 <div id="dashboard-summary" class="section">
-                     </div>
+                    </div>
+                
+                <div id="bitrix-details-container" class="section full-width">
+                    </div>
+
                 <div id="dashboard-details" class="section">
-                     </div>
+                    </div>
+
                 <div id="operator-times-container" class="section full-width" style="display: none;">
                     <h3>Tempos dos Operadores</h3>
                     <div id="operator-times-table-wrapper" class="operator-times-table-wrapper custom-scrollbar">
@@ -862,9 +874,7 @@
         </div>
     </div>
 
-
-    <script src="renderer.js"></script>
-    <footer>
+    <footer style="flex-shrink: 0;">
         <div style="display: flex; justify-content: center; align-items: center; gap: 20px;">
             <p>Usuário: <span id="currentUser" style="font-weight: bold;"></span></p>
             <button id="logoutBtn" class="btn-danger" style="padding: 4px 10px; font-size: 12px; display: none;">Sair</button>
@@ -872,5 +882,7 @@
         <p>Criador: Davi Abraão | Versão: 2.1.8</p>
         <div id="update-message"></div>
     </footer>
+
+    <script src="renderer.js"></script>
 </body>
 </html>

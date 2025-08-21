@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     // --- Funções da Aba de Monitoramento ---
     fetchMonitoringReport: (payload) => ipcRenderer.invoke('fetch-monitoring-report', payload),
+     fetchBitrixReport: (payload) => ipcRenderer.invoke('fetch-bitrix-report', payload), // ADICIONE ESTA LINHA
     downloadRecording: (url, fileName) => ipcRenderer.invoke('download-recording', url, fileName),
 
     // --- Funções da Limpeza Local ---

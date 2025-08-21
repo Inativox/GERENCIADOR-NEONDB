@@ -9,12 +9,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainTitle = document.getElementById("main-app-title");
     const logoutBtn = document.getElementById('logoutBtn');
 
-     // NOVO: Referência para o título da equipe
     const monitoringTeamTitle = document.getElementById('monitoring-team-title');
-
 
     let currentUserRole = null;
     let currentUserTeamId = null;
+
+    // --- VARIÁVEIS GLOBAIS PARA DADOS ---
+    let fastwaySummaryData = null;
+    let bitrixSummaryData = null;
+    let fastwayDetailData = null;
+    let bitrixDetailData = null;
+
 
     window.electronAPI.onUserInfo(({ username, role, teamId }) => {
         currentUserRole = role;
@@ -36,17 +41,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-   function setupUIForRole(role, teamId) {
-        // Renderiza os filtros da API com base na permissão
+    function setupUIForRole(role, teamId) {
         renderApiFilters(role, teamId);
 
-        // Esconde o título da equipe por padrão
         if (monitoringTeamTitle) {
             monitoringTeamTitle.style.display = 'none';
         }
 
         if (role === 'limited' || role === 'master') {
-            // Lógica para esconder abas para 'limited' e 'master'
             tabButtons.forEach(button => {
                 const tabName = button.dataset.tabName;
                 if (tabName !== 'monitoramento') {
@@ -58,7 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 monitoringTabButton.click();
             }
 
-            // NOVO: Exibe o nome da equipe para o usuário 'limited'
             if (role === 'limited' && teamId && monitoringTeamTitle) {
                 const team = gruposOperador.find(g => g.id === teamId);
                 const teamName = team ? team.name : `Equipe ID ${teamId}`;
@@ -67,7 +68,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } else if (role === 'admin') {
-            // Lógica para admin
             tabButtons.forEach(button => {
                 button.style.display = 'inline-flex';
             });
@@ -286,7 +286,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadProgressText = document.getElementById('uploadProgressText');
     const batchIdInput = document.getElementById('batchIdInput');
     const deleteBatchBtn = document.getElementById('deleteBatchBtn');
-    // --- NOVOS ELEMENTOS PARA MESCLAGEM ---
     const mergeStrategyRadios = document.querySelectorAll('input[name="mergeStrategy"]');
     const customMergeInputContainer = document.getElementById('customMergeInputContainer');
     const customMergeCountInput = document.getElementById('customMergeCount');
@@ -310,7 +309,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (adjustPhonesBtn) adjustPhonesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivo para ajustar fones', multi: false }); if (!files?.length) return appendLog('Nenhum arquivo selecionado.'); window.electronAPI.startAdjustPhones({ filePath: files[0], backup: backupEnabled }); });
     if (selectMergeFilesBtn) selectMergeFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para mesclar', multi: true }); if (!files?.length) return; mergeFiles = files; selectedMergeFilesDiv.innerHTML = ''; files.forEach(f => { addFileToUI(selectedMergeFilesDiv, f, false); }); });
     
-    // --- LÓGICA ATUALIZADA PARA MESCLAGEM ---
     if (mergeStrategyRadios) {
         mergeStrategyRadios.forEach(radio => {
             radio.addEventListener('change', () => {
@@ -328,14 +326,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (mergeFiles.length < 2) {
                 return appendLog('ERRO: Por favor, selecione pelo menos dois arquivos para mesclar.');
             }
-
             const strategy = document.querySelector('input[name="mergeStrategy"]:checked').value;
             const customCount = parseInt(customMergeCountInput.value, 10) || 0;
-
             if (strategy === 'custom' && (!customCount || customCount <= 0)) {
                 return appendLog('ERRO: Para mesclagem personalizada, insira um número de linhas válido e maior que zero.');
             }
-
             const mergeOptions = {
                 files: mergeFiles,
                 strategy: strategy,
@@ -406,13 +401,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (enrichmentMasterFiles.length === 0) {
                 return appendEnrichmentLog('❌ ERRO: Selecione pelo menos uma planilha mestra.');
             }
-            // CAPTURA E VALIDA O ANO
             const masterFileYearInput = document.getElementById('master-file-year-input');
             const year = masterFileYearInput.value;
             if (!year || isNaN(parseInt(year))) {
                 return appendEnrichmentLog('❌ ERRO: Por favor, insira um ano válido para a base de dados.');
             }
-
             startLoadToDbBtn.disabled = true;
             dbLoadProgressContainer.style.display = 'block';
             dbLoadProgressBarFill.style.width = '0%';
@@ -420,7 +413,6 @@ document.addEventListener('DOMContentLoaded', () => {
             dbLoadProgressText.textContent = 'Iniciando...';
             dbLoadProgressStats.textContent = '';
             appendEnrichmentLog(`Iniciando carga para o banco de dados para o ano de ${year}...`);
-            // ENVIA O ANO PARA O MAIN PROCESS
             window.electronAPI.startDbLoad({ masterFiles: enrichmentMasterFiles, year: parseInt(year) });
         });
     }
@@ -432,25 +424,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (enrichmentEnrichFiles.length === 0) {
                 return appendEnrichmentLog('❌ ERRO: Selecione pelo menos um arquivo para enriquecer.');
             }
-            // CAPTURA E VALIDA O ANO
             const enrichmentYearInput = document.getElementById('enrichment-year-input');
             const year = enrichmentYearInput.value;
             if (!year || isNaN(parseInt(year))) {
                 return appendEnrichmentLog('❌ ERRO: Por favor, insira um ano válido para pesquisar no banco.');
             }
-
             startEnrichmentBtn.disabled = true;
             const strategy = document.querySelector('input[name="enrichStrategy"]:checked').value;
             const backup = document.getElementById('backupCheckbox').checked;
             appendEnrichmentLog(`Iniciando enriquecimento com a estratégia: ${strategy.toUpperCase()} usando dados do ano ${year}`);
-            // ENVIA O ANO PARA O MAIN PROCESS
             window.electronAPI.startEnrichment({ filesToEnrich: enrichmentEnrichFiles, strategy, backup, year: parseInt(year) });
         });
     }
 
     window.electronAPI.onEnrichmentLog((msg) => appendEnrichmentLog(msg));
     window.electronAPI.onEnrichmentProgress(({ id, progress, eta }) => { const bar = document.getElementById(id); if (bar) bar.style.width = `${progress}%`; const etaElement = document.getElementById(`eta-${id}`); if (etaElement) { etaElement.textContent = eta ? `ETA: ${eta}` : ''; if (progress === 100) { etaElement.textContent = 'Concluído!'; } } });
-    window.electronAPI.onDbLoadProgress(({ current, total, fileName, cnpjsProcessed }) => { const percent = Math.round((current / total) * 100); dbLoadProgressBarFill.style.width = `${percent}%`; dbLoadProgressPercent.textContent = `${percent}%`; dbLoadProgressText.textContent = `Processando: ${fileName}`; dbLoadProgressStats.textContent = `${cnpjsProcessed} CNPJs processados`; });
+    window.electronAPI.onDbLoadProgress(({ current, total, fileName, cnpjsProcessed }) => { const percent = Math.round((current / total) * 100); dbLoadProgressBarFill.style.width = `${percent}%`; dbLoadProgressPercent.textContent = `${percent}%`; dbLoadProgressText.textContent = `Processando: ${fileName}`; dbLoadProgressStats.textContent = `${cnjsProcessed} CNPJs processados`; });
     window.electronAPI.onDbLoadFinished(() => { if (startLoadToDbBtn) startLoadToDbBtn.disabled = false; updateEnrichedCnpjCount(); setTimeout(() => { dbLoadProgressContainer.style.display = 'none'; }, 3000); dbLoadProgressTitle.textContent = 'Carga Concluída!'; dbLoadProgressBarFill.style.width = '100%'; dbLoadProgressPercent.textContent = '100%'; dbLoadProgressText.textContent = 'Finalizado com sucesso'; });
     window.electronAPI.onEnrichmentFinished(() => { if (startEnrichmentBtn) startEnrichmentBtn.disabled = false; });
 
@@ -458,7 +447,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // #           LÓGICA PARA A ABA DE MONITORAMENTO (ATUALIZADA)     #
     // #################################################################
 
-    // --- Variáveis e Constantes Globais para Monitoramento ---
     let lastSuspiciousCalls = [];
     const SUSPICIOUS_TABULATIONS = ['MUDO/ENCERRAR [43]', 'MUDO [33]'];
     const SUSPICIOUS_DURATION_SECONDS = 180;
@@ -500,7 +488,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
     const tabulacoes = [{ id: '96', name: 'CHAMAR NO WHATSAPP MAQUINA' }, { id: '80', name: 'Confirmação' }, { id: '82', name: 'Conta Ativa' }, { id: '47', name: 'Inapto' }, { id: '33', name: 'MUDO' }, { id: '43', name: 'MUDO/ENCERRAR' }, { id: '95', name: 'Maquina vendida' }, { id: '79', name: 'Promessa' }, { id: '83', name: 'Relacionamento' }, { id: '81', name: 'Retorno' }, { id: '44', name: 'CHAMAR NO WHATSAPP' }, { id: '34', name: 'CLIENTE ABRIU A CONTA' }, { id: '38', name: 'CLIENTE JÁ POSSUI CONTA' }, { id: '69', name: 'Inapto na receita federal' }, { id: '84', name: 'MEI' }, { id: '39', name: 'NÃO TEM INTERESSE' }, { id: '52', name: 'NÃO É O RESPONSAVEL' }, { id: '37', name: 'OUTRO ECE' }, { id: '42', name: 'PROBLEMA NO APLICATIVO' }, { id: '67', name: 'RECUSADA PELO BANCO' }, { id: '41', name: 'REDISCAR CLIENTE/ CAIU A LIGAÇÃO' }, { id: '40', name: 'TELEFONE INCORRETO' }, { id: '36', name: 'BLOCKLIST' }].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
 
-    // --- Lógica de Modais (Single e Multi-select) ---
     function renderModalList(items, searchTerm = '') {
         const lowerSearchTerm = searchTerm.toLowerCase();
         const filteredItems = items.filter(item => item.name.toLowerCase().includes(lowerSearchTerm));
@@ -542,23 +529,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectionModal) {
         modalCloseBtn.addEventListener('click', closeSelectionModal);
         selectionModal.addEventListener('click', e => { if (e.target === selectionModal) closeSelectionModal(); });
-        modalSearchInput.addEventListener('input', () => {
-            if (currentModalContext) {
-                renderModalList(currentModalContext.data, modalSearchInput.value);
-            }
-        });
-        modalListContainer.addEventListener('click', e => {
-            const target = e.target;
-            if (target && target.tagName === 'LI' && !target.classList.contains('group-header')) {
-                const { id, name } = target.dataset;
-                currentModalContext.searchEl.value = name;
-                currentModalContext.hiddenInputEl.value = id;
-                closeSelectionModal();
-            }
-        });
+        modalSearchInput.addEventListener('input', () => { if (currentModalContext) { renderModalList(currentModalContext.data, modalSearchInput.value); } });
+        modalListContainer.addEventListener('click', e => { const target = e.target; if (target && target.tagName === 'LI' && !target.classList.contains('group-header')) { const { id, name } = target.dataset; currentModalContext.searchEl.value = name; currentModalContext.hiddenInputEl.value = id; closeSelectionModal(); } });
     }
 
-    // --- Lógica para Modal Multi-Seleção (Tabulações) ---
     const multiSelectionModal = document.getElementById('multi-selection-modal');
     const multiModalTitle = document.getElementById('multi-modal-title');
     const multiModalCloseBtn = multiSelectionModal.querySelector('.modal-close-btn');
@@ -571,15 +545,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderMultiSelectModalList(items, searchTerm = '') {
         const lowerSearchTerm = searchTerm.toLowerCase();
         const filteredItems = items.filter(item => item.name.toLowerCase().includes(lowerSearchTerm));
-
         const currentSelection = multiSelectContext.hiddenInputEl.value.split(',').filter(Boolean);
-
-        const listHtml = filteredItems.map(item => `
-            <li>
-                <input type="checkbox" id="multi-check-${item.id}" data-id="${item.id}" ${currentSelection.includes(item.id) ? 'checked' : ''}>
-                <label for="multi-check-${item.id}">${item.name} [${item.id}]</label>
-            </li>
-        `).join('');
+        const listHtml = filteredItems.map(item => `<li><input type="checkbox" id="multi-check-${item.id}" data-id="${item.id}" ${currentSelection.includes(item.id) ? 'checked' : ''}><label for="multi-check-${item.id}">${item.name} [${item.id}]</label></li>`).join('');
         multiModalListContainer.innerHTML = `<ul class="modal-list-multi">${listHtml}</ul>`;
     }
 
@@ -601,50 +568,18 @@ document.addEventListener('DOMContentLoaded', () => {
         multiModalCloseBtn.addEventListener('click', closeMultiSelectionModal);
         multiModalCancelBtn.addEventListener('click', closeMultiSelectionModal);
         multiSelectionModal.addEventListener('click', e => { if (e.target === multiSelectionModal) closeMultiSelectionModal(); });
-        multiModalSearchInput.addEventListener('input', () => {
-            if (multiSelectContext) {
-                renderMultiSelectModalList(multiSelectContext.data, multiModalSearchInput.value);
-            }
-        });
-        multiModalConfirmBtn.addEventListener('click', () => {
-            if (!multiSelectContext) return;
-            const selectedIds = [];
-            multiModalListContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
-                selectedIds.push(checkbox.dataset.id);
-            });
-            multiSelectContext.hiddenInputEl.value = selectedIds.join(',');
-            multiSelectContext.displayEl.textContent = selectedIds.length > 0 ? `${selectedIds.length} selecionada(s)` : 'Selecionar Tabulações...';
-            closeMultiSelectionModal();
-        });
+        multiModalSearchInput.addEventListener('input', () => { if (multiSelectContext) { renderMultiSelectModalList(multiSelectContext.data, multiModalSearchInput.value); } });
+        multiModalConfirmBtn.addEventListener('click', () => { if (!multiSelectContext) return; const selectedIds = []; multiModalListContainer.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => { selectedIds.push(checkbox.dataset.id); }); multiSelectContext.hiddenInputEl.value = selectedIds.join(','); multiSelectContext.displayEl.textContent = selectedIds.length > 0 ? `${selectedIds.length} selecionada(s)` : 'Selecionar Tabulações...'; closeMultiSelectionModal(); });
     }
 
-    // --- Lógica para o Modal de Chamadas Suspeitas ---
     const suspiciousCallsModal = document.getElementById('suspicious-calls-modal');
     const suspiciousCallsList = document.getElementById('suspicious-calls-list');
     const suspiciousCallsCloseBtn = suspiciousCallsModal.querySelector('.modal-close-btn');
 
     function showSuspiciousCallsModal() {
-        let tableHTML = `
-            <table class="modal-table">
-                <thead>
-                    <tr>
-                        <th>Operador</th>
-                        <th>CNPJ Cliente</th>
-                        <th>Duração</th>
-                        <th>Tabulação</th>
-                    </tr>
-                </thead>
-                <tbody>`;
+        let tableHTML = `<table class="modal-table"><thead><tr><th>Operador</th><th>CNPJ Cliente</th><th>Duração</th><th>Tabulação</th></tr></thead><tbody>`;
         if (lastSuspiciousCalls.length > 0) {
-            lastSuspiciousCalls.forEach(call => {
-                tableHTML += `
-                    <tr>
-                        <td>${call.nome_operador || 'N/A'}</td>
-                        <td>${call.cpf || 'N/A'}</td>
-                        <td>${call.tempo_ligacao || '00:00:00'}</td>
-                        <td>${call.tabulacao || 'N/A'}</td>
-                    </tr>`;
-            });
+            lastSuspiciousCalls.forEach(call => { tableHTML += `<tr><td>${call.nome_operador || 'N/A'}</td><td>${call.cpf || 'N/A'}</td><td>${call.tempo_ligacao || '00:00:00'}</td><td>${call.tabulacao || 'N/A'}</td></tr>`; });
         } else {
             tableHTML += '<tr><td colspan="4" style="text-align:center;">Nenhuma chamada suspeita encontrada.</td></tr>';
         }
@@ -660,40 +595,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (suspiciousCallsCloseBtn) suspiciousCallsCloseBtn.addEventListener('click', closeSuspiciousCallsModal);
     if (suspiciousCallsModal) suspiciousCallsModal.addEventListener('click', (e) => { if (e.target === suspiciousCallsModal) closeSuspiciousCallsModal(); });
 
-    // --- Lógica Principal da Aba de Monitoramento ---
     const apiParametersContainer = document.getElementById('api-parameters');
     const generateReportBtn = document.getElementById('generateReportBtn');
     const monitoringLog = document.getElementById('monitoring-log');
     const dashboardSummary = document.getElementById('dashboard-summary');
     const dashboardDetails = document.getElementById('dashboard-details');
+    const bitrixDetailsContainer = document.getElementById('bitrix-details-container');
     const dataInicioInput = document.getElementById('data_inicio_monitor');
     const dataFimInput = document.getElementById('data_fim_monitor');
     const monitoringSearchInput = document.getElementById('monitoringSearchInput');
     const dateFilterMenu = document.getElementById('date-filter-menu');
     const operatorTimesContainer = document.getElementById('operator-times-container');
     const operatorTimesTableWrapper = document.getElementById('operator-times-table-wrapper');
-
-
-
-
-    // Em renderer.js, na seção de lógica da aba de Monitoramento
+    const summaryToggleBar = document.getElementById('summary-toggle-bar');
+    const showFastwaySummaryBtn = document.getElementById('showFastwaySummary');
+    const showBitrixSummaryBtn = document.getElementById('showBitrixSummary');
+    const monitoringTab = document.getElementById('monitoramento');
 
     function hasActiveFilter() {
-        // Verifica a barra de pesquisa principal
-        if (monitoringSearchInput && monitoringSearchInput.value.trim() !== '') {
-            return true;
-        }
-        // Procura por qualquer checkbox de filtro avançado que esteja marcado
+        if (monitoringSearchInput && monitoringSearchInput.value.trim() !== '') { return true; }
         const advancedFilterCheckboxes = document.querySelectorAll('#api-parameters input[type="checkbox"]');
-        for (const checkbox of advancedFilterCheckboxes) {
-            if (checkbox.checked) {
-                return true; // Encontrou pelo menos um filtro ativo
-            }
-        }
-        return false; // Nenhum filtro ativo foi encontrado
+        for (const checkbox of advancedFilterCheckboxes) { if (checkbox.checked) { return true; } }
+        return false; 
     }
-
-
 
     const apiParams = [
         { name: 'id', label: 'Call ID' }, { name: 'nome', label: 'Nome Cliente' }, { name: 'chave', label: 'Chave' },
@@ -703,47 +627,29 @@ document.addEventListener('DOMContentLoaded', () => {
         { name: 'operacao_id', label: 'ID Operação' }, { name: 'tipoServico', label: 'Tipo Serviço' }, { name: 'servico_id', label: 'Desempenho de campanha' },
         { name: 'grupo_operador_id', label: 'Desempenho de equipes' },
     ];
-
-    // MODIFICADO: Função agora recebe role e teamId para aplicar a lógica de permissão
-
-  function renderApiFilters(role, teamId) {
+    
+    function renderApiFilters(role, teamId) {
         const isAdmin = role === 'admin';
         const isMaster = role === 'master';
         apiParametersContainer.innerHTML = '';
-
-        // MODIFICADO: O filtro 'grupo_operador_id' NÃO será mais escondido para o 'limited'.
         const filtersToHideForLimited = ['chave', 'fone_origem', 'sentido', 'tronco_id', 'resultado', 'operacao_id', 'tipoServico', 'servico_id','cpf','nome'];
-
         const visibleParams = (isAdmin || isMaster) ? apiParams : apiParams.filter(p => !filtersToHideForLimited.includes(p.name));
-
         visibleParams.forEach(param => {
             const paramItem = document.createElement('div');
             paramItem.className = 'param-item';
             let inputHtml = '';
-            
-            // NOVO: Lógica especial para o filtro de equipe do usuário 'limited'
             if (param.name === 'grupo_operador_id' && role === 'limited' && teamId) {
                 const team = gruposOperador.find(g => g.id === teamId);
                 const teamName = team ? team.name : `Equipe ID ${teamId}`;
-
-                // Cria um campo de texto desabilitado com o nome da equipe
                 const displayInput = `<input type="text" value="${teamName}" readonly disabled style="cursor: not-allowed; background-color: var(--bg-dark);">`;
-                // Cria o input escondido com o ID da equipe para a API
                 const hiddenInput = `<input type="hidden" id="input-grupo_operador_id" value="${teamId}">`;
-                
                 inputHtml = `<div class="custom-select-container">${displayInput}${hiddenInput}</div>`;
-                
-                // Cria o toggle switch já marcado e desabilitado
                 const toggleHtml = `<div class="toggle-switch"><label class="switch"><input type="checkbox" id="check-grupo_operador_id" checked disabled><span class="slider"></span></label><span class="toggle-label">${param.label}</span></div>`;
-
                 paramItem.innerHTML = toggleHtml + inputHtml;
                 apiParametersContainer.appendChild(paramItem);
-
             } else {
-                // LÓGICA ORIGINAL: Para todos os outros filtros e para admin/master
                 const isSelectable = ['operador_id', 'servico_id', 'grupo_operador_id'].includes(param.name);
                 const containerId = `input-container-${param.name}`;
-
                 if (param.name === 'tabulacao_id') {
                     inputHtml = `<div id="${containerId}" class="multi-select-container"><button class="multi-select-button" id="tabulacao-multi-select-btn">Selecionar Tabulações...</button><input type="hidden" id="input-${param.name}"></div>`;
                 } else if (isSelectable) {
@@ -751,22 +657,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     inputHtml = `<input type="text" id="${containerId}" placeholder="Valor...">`;
                 }
-
                 const toggleHtml = `<div class="toggle-switch"><label class="switch"><input type="checkbox" id="check-${param.name}" data-param-name="${param.name}"><span class="slider"></span></label><span class="toggle-label">${param.label}</span></div>`;
-                
                 paramItem.innerHTML = toggleHtml + inputHtml;
                 apiParametersContainer.appendChild(paramItem);
-
                 const checkbox = document.getElementById(`check-${param.name}`);
                 const inputContainer = document.getElementById(containerId);
-                
                 if (inputContainer) { inputContainer.classList.add('hidden'); }
-
                 if (checkbox) {
                     checkbox.addEventListener('change', () => {
                         inputContainer.classList.toggle('hidden', !checkbox.checked);
                         if (!checkbox.checked) {
-                            // Limpa os inputs se desmarcado
                             const searchInput = document.getElementById(`${param.name}-search`);
                             if (searchInput) searchInput.value = '';
                             const hiddenInput = document.getElementById(`input-${param.name}`);
@@ -776,13 +676,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
                 }
-                
                 if (param.name === 'tabulacao_id') {
-                    document.getElementById('tabulacao-multi-select-btn').addEventListener('click', () => openMultiSelectionModal({
-                        title: 'Selecionar Tabulações', data: tabulacoes,
-                        hiddenInputEl: document.getElementById('input-tabulacao_id'),
-                        displayEl: document.getElementById('tabulacao-multi-select-btn'),
-                    }));
+                    document.getElementById('tabulacao-multi-select-btn').addEventListener('click', () => openMultiSelectionModal({ title: 'Selecionar Tabulações', data: tabulacoes, hiddenInputEl: document.getElementById('input-tabulacao_id'), displayEl: document.getElementById('tabulacao-multi-select-btn') }));
                 } else if (isSelectable) {
                     document.getElementById(`${param.name}-search`).addEventListener('click', () => {
                         if (!document.getElementById(`check-${param.name}`).checked) return;
@@ -790,16 +685,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (param.name === 'operador_id') { data = operadores; type = 'operador'; }
                         else if (param.name === 'servico_id') { data = servicos; type = 'servico'; }
                         else { data = gruposOperador; type = 'grupo_operador'; }
-                        openSelectionModal({
-                            type, title: `Selecionar ${param.label}`, data,
-                            searchEl: document.getElementById(`${param.name}-search`),
-                            hiddenInputEl: document.getElementById(`input-${param.name}`)
-                        });
+                        openSelectionModal({ type, title: `Selecionar ${param.label}`, data, searchEl: document.getElementById(`${param.name}-search`), hiddenInputEl: document.getElementById(`input-${param.name}`) });
                     });
                 }
             }
         });
-    
         if (monitoringSearchInput) {
             const foneDestinoCheckbox = document.getElementById('check-fone_destino');
             const foneDestinoInput = document.getElementById('input-container-fone_destino');
@@ -819,29 +709,141 @@ document.addEventListener('DOMContentLoaded', () => {
     const getApiDate = (dateString) => { if (!dateString) return ''; const [year, month, day] = dateString.split('-'); return `${day}/${month}/${year}`; }
     if (dateFilterMenu) { dateFilterMenu.addEventListener('click', (e) => { if (e.target.tagName === 'LI') { const period = e.target.dataset.period; const today = new Date(); let startDate, endDate = new Date(); switch (period) { case 'today': startDate = today; endDate = today; break; case 'yesterday': startDate = new Date(today); startDate.setDate(today.getDate() - 1); endDate = startDate; break; case 'this_week': startDate = new Date(today); const dayOfWeek = today.getDay(); startDate.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)); endDate = today; break; case 'last_week': startDate = new Date(today); startDate.setDate(today.getDate() - today.getDay() - 6); endDate = new Date(startDate); endDate.setDate(startDate.getDate() + 6); break; case 'this_month': startDate = new Date(today.getFullYear(), today.getMonth(), 1); endDate = today; break; } if (dataInicioInput) dataInicioInput.value = getHtmlDate(startDate); if (dataFimInput) dataFimInput.value = getHtmlDate(endDate); e.target.closest('details').removeAttribute('open'); } }); }
 
+    function formatSeconds(totalSeconds) {
+        if (isNaN(totalSeconds) || totalSeconds < 0) { return "00:00:00"; }
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = Math.floor(totalSeconds % 60);
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function formatTMA(totalSeconds) {
+        if (isNaN(totalSeconds) || totalSeconds < 0) { return "00:00"; }
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = Math.floor(totalSeconds % 60);
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function normalizeName(name) {
+        if (!name) return "";
+        const normalized = name.toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/g, '').trim();
+        const parts = normalized.split(/\s+/);
+        if (parts.length > 1) { return `${parts[0]} ${parts[parts.length - 1]}`; }
+        return parts[0] || "";
+    }
+    
+    function renderSummaryCards(source) {
+        const card1 = document.getElementById('summary-card-1'), title1 = document.getElementById('summary-title-1'), value1 = document.getElementById('summary-value-1');
+        const card2 = document.getElementById('summary-card-2'), title2 = document.getElementById('summary-title-2'), value2 = document.getElementById('summary-value-2');
+        const card3 = document.getElementById('summary-card-3'), value3 = document.getElementById('summary-value-3');
+        const card4 = document.getElementById('summary-card-4'), title4 = document.getElementById('summary-title-4'), value4 = document.getElementById('summary-value-4');
+
+        if (source === 'bitrix' && bitrixSummaryData) {
+            card1.style.display = 'block'; title1.textContent = 'Chamadas da Equipe (Bitrix)'; value1.textContent = (bitrixSummaryData.totalCalls || 0).toLocaleString('pt-BR');
+            card2.style.display = 'block'; title2.textContent = 'TMA da Equipe (Bitrix)'; value2.textContent = formatTMA(bitrixSummaryData.generalTma);
+            card4.style.display = 'block'; title4.textContent = 'Tempo Falado (Bitrix)'; value4.textContent = formatSeconds(bitrixSummaryData.totalDuration);
+            card3.style.display = 'none';
+        } else if (source === 'fastway' && fastwaySummaryData) {
+            card1.style.display = 'block'; title1.textContent = 'Total de Chamadas (Fastway)'; value1.textContent = (fastwaySummaryData.totalCalls || 0).toLocaleString('pt-BR');
+            card2.style.display = 'block'; title2.textContent = 'TMA (Fastway)'; value2.textContent = fastwaySummaryData.tma || '00:00';
+            card3.style.display = 'block'; value3.textContent = fastwaySummaryData.suspiciousCount || 0; card3.disabled = fastwaySummaryData.suspiciousCount === 0;
+            card4.style.display = 'block'; title4.textContent = 'Operadores Envolvidos'; value4.textContent = fastwaySummaryData.operatorCount || 0;
+        } else {
+            dashboardSummary.innerHTML = '<p style="color: var(--text-muted); text-align: center; grid-column: 1 / -1;">Nenhum dado de resumo para exibir.</p>';
+        }
+    }
+
+    // --- LÓGICA DE TROCA DE VIEWS ---
+    if(showFastwaySummaryBtn && showBitrixSummaryBtn) {
+        showFastwaySummaryBtn.addEventListener('click', () => {
+            monitoringTab.classList.remove('bitrix-view-active');
+            renderSummaryCards('fastway');
+            renderFastwayDetails();
+            showFastwaySummaryBtn.classList.add('active');
+            showBitrixSummaryBtn.classList.remove('active');
+        });
+        showBitrixSummaryBtn.addEventListener('click', () => {
+            monitoringTab.classList.add('bitrix-view-active');
+            renderSummaryCards('bitrix');
+            renderBitrixDetails();
+            showBitrixSummaryBtn.classList.add('active');
+            showFastwaySummaryBtn.classList.remove('active');
+        });
+    }
+
+    function processBitrixData(bitrixData, allowedOperatorNames = null) {
+        if (!bitrixData || bitrixData.message) {
+            bitrixSummaryData = null; bitrixDetailData = null; return;
+        }
+    
+        let finalOperatorStats = bitrixData.operatorStats;
+    
+        if (currentUserRole === 'limited' && allowedOperatorNames && allowedOperatorNames.size > 0) {
+            finalOperatorStats = bitrixData.operatorStats.filter(operator => {
+                const normalizedBitrixName = normalizeName(operator.name);
+                return Array.from(allowedOperatorNames).some(allowedName => {
+                    return normalizedBitrixName.startsWith(allowedName) || allowedName.startsWith(normalizedBitrixName);
+                });
+            });
+        }
+    
+        const totalCalls = finalOperatorStats.reduce((sum, op) => sum + op.callCount, 0);
+        const totalDuration = finalOperatorStats.reduce((sum, op) => sum + op.totalDuration, 0);
+        const generalTma = totalCalls > 0 ? totalDuration / totalCalls : 0;
+    
+        bitrixSummaryData = {
+            totalCalls: totalCalls,
+            generalTma: generalTma,
+            totalDuration: totalDuration
+        };
+        bitrixDetailData = finalOperatorStats;
+    }
+
+    function renderBitrixDetails() {
+        if (!bitrixDetailsContainer) return;
+        bitrixDetailsContainer.innerHTML = ''; // Limpa o container
+    
+        if (!bitrixDetailData) {
+            bitrixDetailsContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center;">Nenhum dado do Bitrix para exibir.</p>';
+            return;
+        }
+        
+        let content = '<h3>Desempenho por Operador (Bitrix)</h3>';
+        if (bitrixDetailData.length === 0) {
+            content += '<p style="color: var(--text-muted);">Nenhum operador da sua equipe foi encontrado nos registros do Bitrix para este período.</p>';
+        } else {
+            const sortedStats = [...bitrixDetailData].sort((a, b) => b.callCount - a.callCount);
+            content += '<table class="bitrix-report-table"><thead><tr><th>Operador</th><th>Total de Chamadas</th><th>TMA Individual</th><th>Tempo Falado</th></tr></thead><tbody>';
+            sortedStats.forEach(stats => {
+                content += `<tr><td>${stats.name}</td><td>${stats.callCount}</td><td>${formatTMA(stats.tma)}</td><td>${formatSeconds(stats.totalDuration)}</td></tr>`;
+            });
+            content += '</tbody></table>';
+        }
+        bitrixDetailsContainer.innerHTML = content;
+    }
+
+    // --- BOTÃO PRINCIPAL DE GERAR RELATÓRIO ---
     if (generateReportBtn) {
         generateReportBtn.addEventListener('click', async () => {
-            // --- VALIDAÇÃO (sem alterações) ---
             if (!hasActiveFilter()) {
                 alert('Selecione pelo menos 1 filtro ou preencha o campo de pesquisa.');
                 return;
             }
 
-            // --- ETAPA 1: Preparação (sem alterações) ---
             generateReportBtn.disabled = true;
-            monitoringLog.innerHTML = '> 🌀 Gerando relatório de chamadas... Por favor, aguarde.';
+            monitoringLog.innerHTML = '> 🌀 Gerando relatórios... Por favor, aguarde.';
             dashboardSummary.innerHTML = '';
             dashboardDetails.innerHTML = '';
+            if (bitrixDetailsContainer) bitrixDetailsContainer.innerHTML = '';
             operatorTimesContainer.style.display = 'none';
             operatorTimesTableWrapper.innerHTML = '';
+            summaryToggleBar.style.display = 'none';
+            fastwaySummaryData = null; bitrixSummaryData = null;
+            fastwayDetailData = null; bitrixDetailData = null;
 
-            // --- ETAPA 2: Montagem da URL principal (sem alterações) ---
             let baseUrl = 'https://mbfinance.fastssl.com.br/api/relatorio/captura_valores_analitico.php?';
             let params = [];
-            const isAdmin = currentUserRole === 'admin';
-            const allPossibleParams = apiParams.map(p => p.name);
-
-            allPossibleParams.forEach(paramName => {
+            apiParams.map(p => p.name).forEach(paramName => {
                 const checkbox = document.getElementById(`check-${paramName}`);
                 let value = '';
                 if (checkbox && checkbox.checked) {
@@ -850,7 +852,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 params.push(`${paramName}=${encodeURIComponent(value ?? '')}`);
             });
-
             const dataInicio = getApiDate(dataInicioInput.value);
             const dataFim = getApiDate(dataFimInput.value);
             params.push(`data_inicio=${dataInicio}`);
@@ -858,89 +859,115 @@ document.addEventListener('DOMContentLoaded', () => {
             params.push('formato=json');
             const finalUrl = baseUrl + params.join('&');
 
-            // --- ETAPA 3: Lógica unificada de requisição (RESTAURADA) ---
-            let payload = {
-                reportUrl: finalUrl,
-                operatorTimesParams: null
+            let originalReportPayload = { 
+                reportUrl: finalUrl, 
+                operatorTimesParams: null,
             };
-
-            const operadorIdChecked = document.getElementById('check-operador_id')?.checked;
-            // Esta verificação agora funcionará para o usuário 'limited', pois o checkbox estará marcado
-            const grupoOperadorIdChecked = document.getElementById('check-grupo_operador_id')?.checked;
-
-            if (operadorIdChecked || grupoOperadorIdChecked) {
-                payload.operatorTimesParams = {
-                    data_inicio: dataInicio,
-                    data_fim: dataFim,
-                    operador_id: document.getElementById('input-operador_id')?.value || '',
-                    // O valor correto (teamId) será pego do input hidden para o 'limited'
-                    grupo_operador_id: document.getElementById('input-grupo_operador_id')?.value || ''
-                };
+            if (document.getElementById('check-operador_id')?.checked || document.getElementById('check-grupo_operador_id')?.checked) {
+                originalReportPayload.operatorTimesParams = { data_inicio: dataInicio, data_fim: dataFim, operador_id: document.getElementById('input-operador_id')?.value || '', grupo_operador_id: document.getElementById('input-grupo_operador_id')?.value || '' };
             }
+            const bitrixPayload = { startDate: dataInicioInput.value, endDate: dataFimInput.value };
 
-            const result = await window.electronAPI.fetchMonitoringReport(payload);
+            monitoringLog.innerHTML = '> 🌀 Buscando dados do sistema principal (Fastway)...<br>> 🌀 Buscando dados do Bitrix24...';
+            
+            const [originalResult, bitrixResult] = await Promise.allSettled([
+                window.electronAPI.fetchMonitoringReport(originalReportPayload),
+                window.electronAPI.fetchBitrixReport(bitrixPayload)
+            ]);
+            
+            let logMessages = [];
+            let allowedOperatorNames = null;
 
-            if (result.success && result.data) {
-                updateDashboard(result.data);
-                monitoringLog.innerHTML = `> ✅ Relatório de chamadas gerado com sucesso. ${result.data.length} registros encontrados.`;
-
-                if (result.operatorTimesData) {
-                    renderOperatorTimesTable(result.operatorTimesData);
-                    monitoringLog.innerHTML += '<br>> ✅ Dados de tempos dos operadores carregados.';
+            // --- PROCESSAMENTO E FILTRAGEM ---
+            if (originalResult.status === 'fulfilled' && originalResult.value.success) {
+                const result = originalResult.value;
+                const { data, operatorTimesData } = result;
+                let monitoringData = data || [];
+                
+                if (currentUserRole === 'limited') {
+                    if (operatorTimesData) {
+                        const rows = operatorTimesData.trim().split('\n');
+                        if (rows.length > 1) {
+                            allowedOperatorNames = new Set();
+                            const headers = rows[0].split(';').map(h => h.trim().toUpperCase());
+                            const opIndex = headers.indexOf('OPERADOR');
+                            if (opIndex !== -1) {
+                                for(let i = 1; i < rows.length; i++) {
+                                    const operatorName = rows[i].split(';')[opIndex];
+                                    if (operatorName) {
+                                        allowedOperatorNames.add(normalizeName(operatorName));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (!allowedOperatorNames || allowedOperatorNames.size === 0) {
+                        if (monitoringData && monitoringData.length > 0) {
+                            allowedOperatorNames = new Set();
+                            monitoringData.forEach(call => {
+                                if (call.nome_operador) {
+                                    allowedOperatorNames.add(normalizeName(call.nome_operador));
+                                }
+                            });
+                            logMessages.push(`⚠️ Usando lista de operadores do relatório principal como fallback.`);
+                        }
+                    }
+                     if (allowedOperatorNames) {
+                        logMessages.push(`✅ Filtro de equipe com ${allowedOperatorNames.size} operadores criado.`);
+                    }
+                }
+                
+                processFastwayData(monitoringData);
+                logMessages.push(`✅ Relatório Fastway processado. ${monitoringData.length} registros válidos.`);
+                
+                if (operatorTimesData) {
+                    renderOperatorTimesTable(operatorTimesData);
+                    logMessages.push('✅ Dados de tempos dos operadores carregados.');
                 }
             } else {
-                monitoringLog.innerHTML = `> ❌ ERRO: ${result.message || 'Falha ao buscar dados da API.'}`;
+                const errorMessage = originalResult.reason?.message || originalResult.value?.message || 'Falha ao buscar dados da API principal.';
+                logMessages.push(`❌ ERRO (Fastway): ${errorMessage}`);
+                processFastwayData([]);
+            }
+            
+            if (bitrixResult.status === 'fulfilled' && bitrixResult.value.success) {
+                processBitrixData(bitrixResult.value.data, allowedOperatorNames);
+                logMessages.push('✅ Relatório do Bitrix24 processado e cruzado com sucesso.');
+            } else {
+                const errorMessage = bitrixResult.reason?.message || bitrixResult.value?.message || 'Falha ao buscar dados do Bitrix24.';
+                logMessages.push(`❌ ERRO (Bitrix): ${errorMessage}`);
+                processBitrixData(null);
             }
 
-            // --- ETAPA 4: Finalização (sem alterações) ---
+            // --- RENDERIZAÇÃO FINAL ---
+            dashboardSummary.innerHTML = `<div class="summary-card" id="summary-card-1" style="display: none;"><div class="summary-card-title" id="summary-title-1"></div><div class="summary-card-value" id="summary-value-1"></div></div><div class="summary-card" id="summary-card-2" style="display: none;"><div class="summary-card-title" id="summary-title-2"></div><div class="summary-card-value" id="summary-value-2"></div></div><button class="summary-card summary-card-button" id="summary-card-3" style="display: none;"><div class="summary-card-title">Tabulações Suspeitas</div><div class="summary-card-value warning" id="summary-value-3">0</div></button><div class="summary-card" id="summary-card-4" style="display: none;"><div class="summary-card-title" id="summary-title-4"></div><div class="summary-card-value" id="summary-value-4"></div></div>`;
+            document.getElementById('summary-card-3').addEventListener('click', showSuspiciousCallsModal);
+            
+            if(fastwaySummaryData && bitrixSummaryData) { summaryToggleBar.style.display = 'flex'; }
+            
+            showFastwaySummaryBtn.click();
+
+            monitoringLog.innerHTML = logMessages.map(m => `> ${m}`).join('<br>');
             generateReportBtn.disabled = false;
         });
     }
 
     function renderOperatorTimesTable(csvData) {
-        if (!csvData) {
-            operatorTimesContainer.style.display = 'none';
-            return;
-        }
-
+        if (!csvData) { operatorTimesContainer.style.display = 'none'; return; }
         const rows = csvData.trim().split('\n');
-        if (rows.length < 2) {
-            operatorTimesTableWrapper.innerHTML = '<p>Nenhum dado de tempo encontrado para a seleção.</p>';
-            operatorTimesContainer.style.display = 'block';
-            return;
-        }
-
-        const headers = rows[0].split(';');
-        const data = rows.slice(1).map(row => row.split(';'));
-
-        let tableHtml = '<table class="operator-times-table">';
-        // Cabeçalho
-        tableHtml += '<thead><tr>';
-        headers.forEach(header => {
-            tableHtml += `<th>${header.trim()}</th>`;
-        });
-        tableHtml += '</tr></thead>';
-
-        // Corpo da tabela
-        tableHtml += '<tbody>';
-        data.forEach(rowData => {
-            if (rowData.length < headers.length) return; // Ignora linhas malformadas
-            tableHtml += '<tr>';
-            rowData.forEach(cell => {
-                tableHtml += `<td>${cell.trim()}</td>`;
-            });
-            tableHtml += '</tr>';
-        });
+        if (rows.length < 2) { operatorTimesTableWrapper.innerHTML = '<p>Nenhum dado de tempo encontrado para a seleção.</p>'; operatorTimesContainer.style.display = 'block'; return; }
+        const headers = rows[0].split(';'); const data = rows.slice(1).map(row => row.split(';'));
+        let tableHtml = '<table class="operator-times-table"><thead><tr>';
+        headers.forEach(header => { tableHtml += `<th>${header.trim()}</th>`; }); tableHtml += '</tr></thead><tbody>';
+        data.forEach(rowData => { if (rowData.length < headers.length) return; tableHtml += '<tr>'; rowData.forEach(cell => { tableHtml += `<td>${cell.trim()}</td>`; }); tableHtml += '</tr>'; });
         tableHtml += '</tbody></table>';
-
-        operatorTimesTableWrapper.innerHTML = tableHtml;
-        operatorTimesContainer.style.display = 'block';
+        operatorTimesTableWrapper.innerHTML = tableHtml; operatorTimesContainer.style.display = 'block';
     }
 
-
-    function updateDashboard(data) {
-        if (!data || !Array.isArray(data)) { dashboardSummary.innerHTML = '<p style="color: var(--text-muted); text-align: center; grid-column: 1 / -1;">Ocorreu um erro ou nenhum dado foi retornado.</p>'; dashboardDetails.innerHTML = ''; return; }
-        if (data.length === 0) { dashboardSummary.innerHTML = '<p style="color: var(--text-muted); text-align: center; grid-column: 1 / -1;">Nenhum dado retornado para os filtros selecionados.</p>'; dashboardDetails.innerHTML = ''; return; }
+    function processFastwayData(data) {
+        if (!data || !Array.isArray(data) || data.length === 0) {
+            fastwaySummaryData = null; fastwayDetailData = null; return;
+        }
         const totalCalls = data.length;
         const aggregators = { tabulacao: {}, resultado: {}, nome_operador: {}, nome_campanha: {}, };
         const detailedTabulations = {};
@@ -949,18 +976,10 @@ document.addEventListener('DOMContentLoaded', () => {
         data.forEach(item => {
             const tabulacao = item.tabulacao || 'Não Preenchido';
             const duration = getDurationInSeconds(item.tempo_ligacao);
-            for (const key in aggregators) {
-                const value = item[key] || 'Não Preenchido';
-                aggregators[key][value] = (aggregators[key][value] || 0) + 1;
-            }
-            if (!detailedTabulations[tabulacao]) {
-                detailedTabulations[tabulacao] = [];
-            }
+            for (const key in aggregators) { const value = item[key] || 'Não Preenchido'; aggregators[key][value] = (aggregators[key][value] || 0) + 1; }
+            if (!detailedTabulations[tabulacao]) { detailedTabulations[tabulacao] = []; }
             detailedTabulations[tabulacao].push(item);
-
-            if (SUSPICIOUS_TABULATIONS.includes(tabulacao) && duration >= SUSPICIOUS_DURATION_SECONDS) {
-                suspiciousCalls.push(item);
-            }
+            if (SUSPICIOUS_TABULATIONS.includes(tabulacao) && duration >= SUSPICIOUS_DURATION_SECONDS) { suspiciousCalls.push(item); }
             totalDurationSeconds += duration;
         });
         lastSuspiciousCalls = suspiciousCalls;
@@ -968,100 +987,50 @@ document.addEventListener('DOMContentLoaded', () => {
         const roundedAvgSeconds = Math.round(avgDurationSeconds);
         const avgMinutes = Math.floor(roundedAvgSeconds / 60);
         const avgSeconds = roundedAvgSeconds % 60;
-        const tma = `${String(avgMinutes).padStart(2, '0')}:${String(avgSeconds).padStart(2, '0')}`;
-        dashboardSummary.innerHTML = `<div class="summary-card"><div class="summary-card-title">Total de Chamadas</div><div class="summary-card-value">${totalCalls.toLocaleString('pt-BR')}</div></div><div class="summary-card"><div class="summary-card-title">TMA</div><div class="summary-card-value">${tma}</div></div><button class="summary-card summary-card-button" id="suspicious-card-btn" ${lastSuspiciousCalls.length === 0 ? 'disabled' : ''}><div class="summary-card-title">Tabulações Suspeitas</div><div class="summary-card-value warning">${lastSuspiciousCalls.length}</div></button><div class="summary-card"><div class="summary-card-title">Operadores Envolvidos</div><div class="summary-card-value">${Object.keys(aggregators.nome_operador).length}</div></div>`;
-        document.getElementById('suspicious-card-btn').addEventListener('click', showSuspiciousCallsModal);
+        
+        fastwaySummaryData = { totalCalls: totalCalls, tma: `${String(avgMinutes).padStart(2, '0')}:${String(avgSeconds).padStart(2, '0')}`, suspiciousCount: lastSuspiciousCalls.length, operatorCount: Object.keys(aggregators.nome_operador).length };
+        fastwayDetailData = { aggregators, detailedTabulations };
+    }
+
+    function renderFastwayDetails() {
         dashboardDetails.innerHTML = '';
+        if (!fastwayDetailData) {
+            dashboardDetails.innerHTML = '<p style="color: var(--text-muted); text-align: center;">Nenhum dado da Fastway para exibir.</p>';
+            return;
+        }
+
+        const { aggregators, detailedTabulations } = fastwayDetailData;
         const isOperatorFiltered = document.getElementById('check-operador_id')?.checked;
         const createDetailCard = (title, dataObject) => { if (title === 'Top Tabulações' && isOperatorFiltered) { return createInteractiveTabulationCard('Top Tabulações', detailedTabulations); } const sortedData = Object.entries(dataObject).sort(([, a], [, b]) => b - a); let listItems = sortedData.map(([name, count]) => `<li><span class="name" title="${name}">${name}</span><span class="count">${count.toLocaleString('pt-BR')}</span></li>`).join(''); if (!listItems) listItems = '<li>Nenhum dado.</li>'; return `<div class="detail-card"><h3>${title}</h3><ul class="detail-list custom-scrollbar">${listItems}</ul></div>`; }
 
         const createInteractiveTabulationCard = (title, detailedDataObject) => {
             const sortedTabulations = Object.keys(detailedDataObject).sort((a, b) => detailedDataObject[b].length - detailedDataObject[a].length);
-
             let detailsHtml = sortedTabulations.map(tabulationName => {
                 const calls = detailedDataObject[tabulationName];
                 const isSuspicious = SUSPICIOUS_TABULATIONS.includes(tabulationName);
-
                 const callListHtml = calls.map((call, index) => {
-                    const callId = call.id || '';
-                    const chave = call.chave || '';
-                    const protocolo = call.protocolo || '';
+                    const callId = call.id || '', chave = call.chave || '', protocolo = call.protocolo || '';
                     const downloadUrl = `http://mbfinance.fastssl.com.br/api/gravacao/index.php?id=${callId}&chave=${chave}&protocolo=${protocolo}&tipo_download=1&checkout_step=`;
-
-                    const operatorFirstName = (call.nome_operador || '').split(' ')[0];
-                    const cnpj = call.cpf || '';
+                    const operatorFirstName = (call.nome_operador || '').split(' ')[0], cnpj = call.cpf || '';
                     let fileName = 'gravacao_desconhecida.mp3';
-
-                    if (operatorFirstName && cnpj) {
-                        fileName = `${operatorFirstName}_${cnpj}.mp3`;
-                    } else if (cnpj) {
-                        fileName = `${cnpj}.mp3`;
-                    } else if (callId) {
-                        fileName = `gravacao_${callId}.mp3`;
-                    }
-
-                    // ID único para o botão de download
+                    if (operatorFirstName && cnpj) { fileName = `${operatorFirstName}_${cnpj}.mp3`; } else if (cnpj) { fileName = `${cnpj}.mp3`; } else if (callId) { fileName = `gravacao_${callId}.mp3`; }
                     const downloadButtonId = `download-btn-${tabulationName.replace(/[^a-zA-Z0-9]/g, '-')}-${index}`;
-
-                    // Adiciona o event listener de forma assíncrona para garantir que o elemento exista no DOM
                     setTimeout(() => {
                         const btn = document.getElementById(downloadButtonId);
                         if (btn) {
                             btn.addEventListener('click', async () => {
                                 const originalContent = btn.innerHTML;
-                                // Mostra um spinner e desabilita o botão durante o download
-                                btn.disabled = true;
-                                btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="animation: spin 1s linear infinite;"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>`;
-
+                                btn.disabled = true; btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="animation: spin 1s linear infinite;"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>`;
                                 appendLog(`Solicitando download para: ${fileName}`);
-                                try {
-                                    // Chama a função do main.js via preload
-                                    const result = await window.electronAPI.downloadRecording(downloadUrl, fileName);
-                                    appendLog(`✅ ${result.message}`);
-                                } catch (err) {
-                                    appendLog(`❌ Erro no processo de download: ${err.message}`);
-                                } finally {
-                                    // Restaura o botão ao estado original
-                                    btn.disabled = false;
-                                    btn.innerHTML = originalContent;
-                                }
+                                try { const result = await window.electronAPI.downloadRecording(downloadUrl, fileName); appendLog(`✅ ${result.message}`); } catch (err) { appendLog(`❌ Erro no processo de download: ${err.message}`); } finally { btn.disabled = false; btn.innerHTML = originalContent; }
                             });
                         }
                     }, 0);
-
-                    // Retorna o HTML do item da lista com um <button> em vez de <a href>
-                    return `
-                <li>
-                    <div class="call-info">
-                        <span class="call-cnpj">CNPJ: ${call.cpf || 'N/A'}</span>
-                        <span class="call-phone">Tel: ${call.fone || 'N/A'}</span>
-                    </div>
-                    <div class="call-actions">
-                        <span class="call-duration">Duração: ${call.tempo_ligacao || '00:00:00'}</span>
-                        <button id="${downloadButtonId}" class="download-link" title="Baixar gravação: ${fileName}">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#ffffff" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>
-                        </button>
-                    </div>
-                </li>`;
+                    return `<li><div class="call-info"><span class="call-cnpj">CNPJ: ${call.cpf || 'N/A'}</span><span class="call-phone">Tel: ${call.fone || 'N/A'}</span></div><div class="call-actions"><span class="call-duration">Duração: ${call.tempo_ligacao || '00:00:00'}</span><button id="${downloadButtonId}" class="download-link" title="Baixar gravação: ${fileName}"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#ffffff" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg></button></div></li>`;
                 }).join('');
-
-                return `
-            <details>
-                <summary class="${isSuspicious ? 'suspicious-summary' : ''}">
-                    <span>${tabulationName}</span>
-                    <span>${calls.length} chamadas</span>
-                </summary>
-                <ul class="tabulation-call-list custom-scrollbar">${callListHtml}</ul>
-            </details>`;
+                return `<details><summary class="${isSuspicious ? 'suspicious-summary' : ''}"><span>${tabulationName}</span><span>${calls.length} chamadas</span></summary><ul class="tabulation-call-list custom-scrollbar">${callListHtml}</ul></details>`;
             }).join('');
-
-            return `
-        <div class="detail-card interactive-tabulation">
-            <h3>${title} (Detalhado)</h3>
-            <div class="custom-scrollbar" style="max-height: 400px; overflow-y: auto; padding-right: 5px;">
-                ${detailsHtml}
-            </div>
-        </div>`;
+            return `<div class="detail-card interactive-tabulation"><h3>${title} (Detalhado)</h3><div class="custom-scrollbar" style="max-height: 400px; overflow-y: auto; padding-right: 5px;">${detailsHtml}</div></div>`;
         };
 
         dashboardDetails.innerHTML += createDetailCard('Top Tabulações', aggregators.tabulacao);
