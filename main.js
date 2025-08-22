@@ -489,7 +489,46 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
                 
                 log(`Lote ${currentBatchNum}/${totalBatches}: ${enrichmentDataForBatch.size} CNPJs encontrados no BD para o ano ${year}. Atualizando planilha...`);
 
-                    for (const [cnpj, { row }] of cnpjsInBatch.entries()) { let rowWasEnriched = false; if (enrichmentDataForBatch.has(cnpj)) { const phonesFromDb = enrichmentDataForBatch.get(cnpj); const existingPhones = phoneCols.map(idx => row.getCell(idx).value).filter(Boolean); const shouldProcess = (strategy === "overwrite") || (strategy === "append" && existingPhones.length < phoneCols.length) || (strategy === "ignore" && existingPhones.length === 0); if (shouldProcess) { rowWasEnriched = true; if (strategy === "overwrite") phoneCols.forEach(idx => row.getCell(idx).value = null); let phonesToWrite = [...phonesFromDb]; phoneCols.forEach(idx => { if (strategy === "append" && row.getCell(idx).value) return; if (phonesToWrite.length > 0) row.getCell(idx).value = phonesToWrite.shift(); }); } } else { if (cnpj) notFoundInFile++; } row.getCell(statusCol).value = rowWasEnriched ? "Enriquecido" : "Pobre"; if (rowWasEnriched) enrichedInFile++; }
+                    for (const [cnpj, { row }] of cnpjsInBatch.entries()) {
+                        let rowWasEnriched = false;
+                        if (enrichmentDataForBatch.has(cnpj)) {
+                            const phonesFromDb = enrichmentDataForBatch.get(cnpj);
+                            const existingPhones = phoneCols.map(idx => String(row.getCell(idx).value || '').trim()).filter(Boolean);
+                            const shouldProcess = (strategy === "overwrite") || (strategy === "append" && existingPhones.length < phoneCols.length) || (strategy === "ignore" && existingPhones.length === 0);
+                    
+                            if (shouldProcess) {
+                                rowWasEnriched = true;
+                                
+                                // --- INÍCIO DA MODIFICAÇÃO ---
+                                // 1. Coleta todos os telefones (existentes e do banco) com base na estratégia
+                                let combinedPhones = [];
+                                if (strategy === "overwrite") {
+                                    combinedPhones = [...phonesFromDb];
+                                } else { // "append" ou "ignore" tratam os existentes da mesma forma
+                                    combinedPhones = [...existingPhones, ...phonesFromDb];
+                                }
+                    
+                                // 2. Remove duplicados usando um Set
+                                const uniquePhones = [...new Set(combinedPhones)];
+                    
+                                // 3. Limpa as colunas de telefone existentes na planilha
+                                phoneCols.forEach(idx => {
+                                    row.getCell(idx).value = null;
+                                });
+                    
+                                // 4. Escreve os telefones únicos de volta na planilha, respeitando o limite de colunas
+                                uniquePhones.slice(0, phoneCols.length).forEach((phone, index) => {
+                                    row.getCell(phoneCols[index]).value = phone;
+                                });
+                                // --- FIM DA MODIFICAÇÃO ---
+                            }
+                        } else {
+                            if (cnpj) notFoundInFile++;
+                        }
+                        
+                        row.getCell(statusCol).value = rowWasEnriched ? "Enriquecido" : "Pobre";
+                        if (rowWasEnriched) enrichedInFile++;
+                    }
                     
                     const processedRowsInFile = endIndex - 1;
                     const eta = formatEta((totalRows - processedRowsInFile) / (processedRowsInFile / (Date.now() - startTime)));
