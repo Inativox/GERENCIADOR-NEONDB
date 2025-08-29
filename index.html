@@ -145,7 +145,7 @@
         .container { 
             animation: containerFadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1);
             width: 100%;
-            max-width: 1600px; 
+            max-width: 90%; 
             margin: 0 auto; 
             background: var(--bg-light);
             backdrop-filter: blur(20px);
@@ -224,8 +224,7 @@
         h2 { font-size: 1.3rem; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-top: 0; margin-bottom: 20px; position: relative; }
         h2::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 60px; height: 2px; background: var(--gradient-primary); border-radius: 1px; }
 
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 24px; }
-        #localGrid { grid-template-columns: 1fr; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
         
         .section { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 28px; box-shadow: 0 10px 25px -5px var(--shadow-color), 0 0 0 1px rgba(255, 255, 255, 0.05); position: relative; overflow: hidden; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         .section::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--accent-color), transparent); opacity: 0.3; }
@@ -739,7 +738,7 @@
         }
         @media (max-width: 768px) { 
             body { padding: 0; } 
-            .container { padding: 15px; border-radius: 0; height: 100%; border: none; } 
+            .container { padding: 15px; border-radius: 0; height: 100%; border: none; max-width: 100%;} 
             h1 { font-size: 1.8rem; } 
             .tabs { flex-direction: column; gap: 2px; } 
             .tab-button { padding: 10px 14px; text-align: left; }

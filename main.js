@@ -1,9 +1,9 @@
-console.log('--- MAIN.JS CARREGADO - VERSÃO NOVA (NEON DB COM CHAVE EXTERNA) ---');
+console.log('--- MAIN.JS CARREGADO - VERSÃO NOVA (NEON DB COM CHAVE EXTERNA E FILTRO CNAE) ---');
 const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
-const fsp = require("fs").promises; 
+const fsp = require("fs").promises;
 const XLSX = require("xlsx");
 const ExcelJS = require("exceljs");
 const axios = require("axios");
@@ -17,6 +17,23 @@ autoUpdater.logger.transports.file.level = "info";
 const store = new Store();
 
 // #################################################################
+// #           LISTA DE CNAES PROIBIDOS (NOVA ADIÇÃO)              #
+// #################################################################
+const PROHIBITED_CNAES = new Set([
+    '8299704', '8299706', '9002702', '9200301', '9200302', '9200399',
+    '9329803', '9329804', '9491000', '9492800', '9529106', '9609204',
+    '1210700', '1220401', '1220402', '1220403', '1220499', '2092401',
+    '2442300', '2550101', '2550102', '3211602', '3211603', '4520005',
+    '4681801', '4681802', '4681803', '4681804', '4681805', '4732600',
+    '4782202', '4783101', '4783102', '4789009', '6434400', '6440900',
+    '6491300', '6619399', '7912100', '8422100', '9420100', '9430800',
+    '724301', '729404', '893200', '899101', '899102', '899103',
+    '899199', '9499500', '9493600', '220906', '5590601', '9411100',
+    '8720401', '9412099', '8711504', '7911200'
+]);
+
+
+// #################################################################
 // #           CONFIGURAÇÃO DO BANCO DE DADOS (DINÂMICA)           #
 // #################################################################
 
@@ -27,14 +44,14 @@ async function initializePool(connectionString, windowToLog) {
         await pool.end();
         console.log("Pool de conexões anterior encerrado.");
     }
-    
+
     if (!connectionString) {
         console.log("Chave de conexão não fornecida. A inicialização do pool foi ignorada.");
         if (windowToLog) windowToLog.webContents.send("log", "⚠️ Chave de conexão do BD não configurada. Funções do BD desabilitadas.");
         pool = null;
         return;
     }
-    
+
     pool = new Pool({
         connectionString: connectionString,
     });
@@ -58,6 +75,7 @@ async function initializePool(connectionString, windowToLog) {
 
 const users = {
     'Pablo': { password: 'Vasco@2025', role: 'admin' },
+    'Matheus': { password: 'Botafogo@2025', role: 'admin' },
     'Felipe': { password: 'Flamengo@2025', role: 'admin' },
     'Davi': { password: '080472Fr*', role: 'admin' },
     'Tatiane': { password: '123456', role: 'master' },
@@ -72,11 +90,11 @@ const users = {
 };
 let mainWindow;
 let loginWindow;
-let currentUser = null; 
+let currentUser = null;
 
 function createLoginWindow() {
     loginWindow = new BrowserWindow({
-        width: 480, 
+        width: 480,
         height: 650,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -110,7 +128,7 @@ ipcMain.handle('save-and-test-db-connection', async (event, connectionString) =>
         return { success: true, message: 'Conexão bem-sucedida e salva!' };
     } catch (error) {
         console.error("❌ Falha ao testar/salvar conexão com o BD:", error.message);
-        pool = null; 
+        pool = null;
         return { success: false, message: error.message };
     }
 });
@@ -118,19 +136,19 @@ ipcMain.handle('save-and-test-db-connection', async (event, connectionString) =>
 ipcMain.handle('login-attempt', async (event, username, password, rememberMe) => {
     const user = users[username];
     if (user && user.password === password) {
-        currentUser = { 
-            username: username, 
+        currentUser = {
+            username: username,
             role: user.role,
             teamId: user.teamId || null
         };
-        
+
         if (rememberMe) {
             store.set('credentials', { username, password });
         } else {
             store.delete('credentials');
         }
-        
-        createMainWindow(); 
+
+        createMainWindow();
         if (loginWindow) loginWindow.close();
 
         return { success: true };
@@ -199,7 +217,7 @@ function createMainWindow() {
         }
     });
     mainWindow.loadFile("index.html");
-    
+
     mainWindow.webContents.on("did-finish-load", async () => {
         if (currentUser) {
             mainWindow.webContents.send('user-info', currentUser);
@@ -233,8 +251,8 @@ app.whenReady().then(async () => {
 
         if (user && user.password === password) {
             console.log("Login automático bem-sucedido.");
-            currentUser = { 
-                username, 
+            currentUser = {
+                username,
                 role: user.role,
                 teamId: user.teamId || null
             };
@@ -259,8 +277,6 @@ app.on("window-all-closed", () => {
 // #################################################################
 // #           LÓGICA DE NEGÓCIOS (Refatorada para PostgreSQL)     #
 // #################################################################
-
-// --- FUNÇÕES GERAIS E DE ARQUIVOS (Sem grandes alterações) ---
 
 function sendUpdateStatusToWindow(text) {
     if (mainWindow && mainWindow.webContents) {
@@ -310,19 +326,32 @@ ipcMain.handle("download-enriched-data", async () => {
         const { rows } = await pool.query(query);
 
         if (rows.length === 0) return { success: false, message: "Nenhum dado encontrado." };
-        
+
         const maxPhones = rows.reduce((max, row) => Math.max(max, row.telefones ? row.telefones.length : 0), 0);
         const headers = ["cpf", ...Array.from({ length: maxPhones }, (_, i) => `fone${i + 1}`)];
-        
+
         const data = rows.map(row => {
             const phones = row.telefones || [];
-            return [row.cnpj, ...Array.from({ length: maxPhones }, (_, i) => phones[i] || "")];
+            const processedPhones = Array.from({ length: maxPhones }, (_, i) => {
+                const phone = phones[i];
+                if (!phone) return null;
+                // Converte para número para evitar o erro de "número armazenado como texto" no Excel
+                const numericPhone = Number(String(phone).replace(/\D/g, ''));
+                return isNaN(numericPhone) ? phone : numericPhone;
+            });
+            return [row.cnpj, ...processedPhones];
         });
 
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet("Dados Enriquecidos");
         worksheet.addRow(headers);
         worksheet.addRows(data);
+
+        // Aplica o formato de número nas colunas de telefone
+        for (let i = 2; i <= maxPhones + 1; i++) {
+            worksheet.getColumn(i).numFmt = '0';
+        }
+
         await workbook.xlsx.writeFile(filePath);
         return { success: true, message: `Arquivo salvo com sucesso: ${filePath}` };
     } catch (error) {
@@ -409,7 +438,7 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
 
                     const phones = phoneColIdxs.map(idx => String(row.getCell(idx).value || "").trim()).filter(Boolean);
                     if (phones.length > 0) cnpjsToUpdate.set(cnpj, [...(cnpjsToUpdate.get(cnpj) || []),...phones]);
-                    
+
                     if (i % 5000 === 0) {
                         await saveChunkToDb(cnpjsToUpdate, filePath);
                         cnpjsToUpdate.clear();
@@ -435,9 +464,9 @@ function formatEta(totalSeconds) { if (!isFinite(totalSeconds) || totalSeconds <
 
 async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, log, progress, onFinish) {
     if (!isAdmin() || !pool){
-        log("❌ Acesso negado ou conexão com BD inativa."); 
-        if(onFinish) onFinish(); 
-        return; 
+        log("❌ Acesso negado ou conexão com BD inativa.");
+        if(onFinish) onFinish();
+        return;
     }
 
     if (!year) {
@@ -458,7 +487,7 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
             if (backup) { const p = path.parse(filePath); fs.copyFileSync(filePath, path.join(p.dir, `${p.name}.backup_enrich_${Date.now()}${p.ext}`)); log(`Backup criado.`); }
             try {
                 const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; let cnpjCol = -1, statusCol = -1; const phoneCols = []; worksheet.getRow(1).eachCell((cell, colNum) => { const h = String(cell.value || "").trim().toLowerCase(); if (h === "cpf" || h === "cnpj") cnpjCol = colNum; else if (h.startsWith("fone")) phoneCols.push(colNum); else if (h === "status") statusCol = colNum; }); phoneCols.sort((a, b) => a - b); if (cnpjCol === -1) { log(`❌ ERRO: Coluna 'cpf'/'cnpj' não encontrada. Pulando.`); continue; } if (statusCol === -1) { statusCol = worksheet.columnCount + 1; worksheet.getCell(1, statusCol).value = "status"; }
-                
+
                 const totalRows = worksheet.rowCount - 1;
                 let enrichedInFile = 0, notFoundInFile = 0;
                 const totalBatches = Math.ceil((worksheet.rowCount - 1) / BATCH_SIZE);
@@ -472,7 +501,7 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
                     if (cnpjsInBatch.size === 0) continue;
 
                     log(`Lote ${currentBatchNum}/${totalBatches}: Processando ${cnpjsInBatch.size} CNPJs...`);
-                    
+
                   const enrichmentDataForBatch = new Map();
                 const cnpjKeys = Array.from(cnpjsInBatch.keys());
                 if (cnpjKeys.length > 0) {
@@ -486,7 +515,7 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
                     const result = await pool.query(query, [cnpjKeys, year]);
                     result.rows.forEach(row => enrichmentDataForBatch.set(row.cnpj, row.telefones || []));
                 }
-                
+
                 log(`Lote ${currentBatchNum}/${totalBatches}: ${enrichmentDataForBatch.size} CNPJs encontrados no BD para o ano ${year}. Atualizando planilha...`);
 
                     for (const [cnpj, { row }] of cnpjsInBatch.entries()) {
@@ -495,41 +524,54 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
                             const phonesFromDb = enrichmentDataForBatch.get(cnpj);
                             const existingPhones = phoneCols.map(idx => String(row.getCell(idx).value || '').trim()).filter(Boolean);
                             const shouldProcess = (strategy === "overwrite") || (strategy === "append" && existingPhones.length < phoneCols.length) || (strategy === "ignore" && existingPhones.length === 0);
-                    
+
                             if (shouldProcess) {
                                 rowWasEnriched = true;
                                 
-                                // --- INÍCIO DA MODIFICAÇÃO ---
-                                // 1. Coleta todos os telefones (existentes e do banco) com base na estratégia
-                                let combinedPhones = [];
+                                // --- INÍCIO DA CORREÇÃO E MELHORIA DA LÓGICA ---
+                                let finalPhones = [];
+
+                                // 1. Define a lista final de telefones com base na estratégia, já garantindo que sejam únicos.
                                 if (strategy === "overwrite") {
-                                    combinedPhones = [...phonesFromDb];
-                                } else { // "append" ou "ignore" tratam os existentes da mesma forma
-                                    combinedPhones = [...existingPhones, ...phonesFromDb];
+                                    // Substitui completamente os telefones existentes pelos do banco de dados.
+                                    finalPhones = [...new Set(phonesFromDb)];
+                                } else if (strategy === "append") {
+                                    // Combina os telefones existentes com os do banco, mantendo os existentes primeiro e removendo duplicatas.
+                                    finalPhones = [...new Set([...existingPhones, ...phonesFromDb])];
+                                } else { // A estratégia é "ignore" (já verificado pelo shouldProcess)
+                                    // Apenas preenche se não houver telefones existentes.
+                                    finalPhones = [...new Set(phonesFromDb)];
                                 }
-                    
-                                // 2. Remove duplicados usando um Set
-                                const uniquePhones = [...new Set(combinedPhones)];
-                    
-                                // 3. Limpa as colunas de telefone existentes na planilha
+                                
+                                // 2. Limpa as colunas de telefone existentes na planilha.
+                                // Usar 'null' é crucial para garantir que a célula fique verdadeiramente vazia,
+                                // evitando problemas com células que parecem vazias mas contêm espaços ou strings vazias.
                                 phoneCols.forEach(idx => {
                                     row.getCell(idx).value = null;
                                 });
-                    
-                                // 4. Escreve os telefones únicos de volta na planilha, respeitando o limite de colunas
-                                uniquePhones.slice(0, phoneCols.length).forEach((phone, index) => {
-                                    row.getCell(phoneCols[index]).value = phone;
+                                
+                                // 3. Escreve os telefones únicos de volta na planilha, respeitando o limite de colunas.
+                                finalPhones.slice(0, phoneCols.length).forEach((phone, index) => {
+                                    const numericPhoneString = String(phone).replace(/\D/g, '');
+                                    if (numericPhoneString) {
+                                        // Converte para número para evitar o erro de "número armazenado como texto" no Excel.
+                                        // AVISO: Isso removerá quaisquer zeros à esquerda do número.
+                                        const cell = row.getCell(phoneCols[index]);
+                                        cell.value = Number(numericPhoneString);
+                                        // Aplica um formato de número para evitar notação científica em números longos.
+                                        cell.numFmt = '0';
+                                    }
                                 });
-                                // --- FIM DA MODIFICAÇÃO ---
+                                // --- FIM DA CORREÇÃO E MELHORIA DA LÓGICA ---
                             }
                         } else {
                             if (cnpj) notFoundInFile++;
                         }
-                        
+
                         row.getCell(statusCol).value = rowWasEnriched ? "Enriquecido" : "Pobre";
                         if (rowWasEnriched) enrichedInFile++;
                     }
-                    
+
                     const processedRowsInFile = endIndex - 1;
                     const eta = formatEta((totalRows - processedRowsInFile) / (processedRowsInFile / (Date.now() - startTime)));
                     progress(id, Math.round((processedRowsInFile / totalRows) * 100), eta);
@@ -553,9 +595,9 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
 
 ipcMain.on("start-enrichment", async (event, options) => {
     if (!isAdmin() || !pool) {
-        event.sender.send("enrichment-log", "❌ Acesso negado ou conexão com BD inativa."); 
-        event.sender.send("enrichment-finished"); 
-        return; 
+        event.sender.send("enrichment-log", "❌ Acesso negado ou conexão com BD inativa.");
+        event.sender.send("enrichment-finished");
+        return;
     }
     await runEnrichmentProcess(
         options,
@@ -569,7 +611,70 @@ ipcMain.on("start-enrichment", async (event, options) => {
 // --- FUNÇÕES DA ABA MONITORAMENTO, LOGIN, ETC (Sem alterações relevantes ao DB) ---
 ipcMain.handle('fetch-monitoring-report', async (event, { reportUrl, operatorTimesParams }) => { if (!currentUser) { return { success: false, message: 'Acesso negado. Faça o login.' }; } let mainReportResult; try { const response = await axios.get(reportUrl, { timeout: 4000000, headers: { 'User-Agent': 'PostmanRuntime/7.44.1' } }); if (response.status === 200) { const data = (typeof response.data === 'string' && response.data.includes("Nenhum registro encontrado")) ? [] : response.data; mainReportResult = { success: true, data: data, operatorTimesData: null }; } else { return { success: false, message: `A API principal retornou um status inesperado: ${response.status}` }; } } catch (error) { console.error("Erro ao buscar relatório de monitoramento:", error.message); return { success: false, message: `Falha na comunicação com a API principal: ${error.message}` }; } if (mainReportResult.success && operatorTimesParams) { const { data_inicio, data_fim, operador_id, grupo_operador_id } = operatorTimesParams; const baseUrl = 'http://mbfinance.fastssl.com.br/api/relatorio/operador_tempos.php'; const url = `${baseUrl}?data_inicial=${data_inicio}&data_final=${data_fim}&operador_id=${operador_id}&grupo_operador_id=${grupo_operador_id}&servico_id=&operador_ativo=`; try { const timesResponse = await axios.get(url, { timeout: 30000 }); if (timesResponse.status === 200) { mainReportResult.operatorTimesData = timesResponse.data; } else { console.error(`API de tempos retornou status ${timesResponse.status}`); } } catch (error) { console.error('[DEBUG MAIN] ERRO na chamada da API de tempos:', error.message); } } return mainReportResult; });
 ipcMain.handle('download-recording', async (event, url, fileName) => { if (!mainWindow) { return { success: false, message: 'Janela principal não encontrada.' }; } const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, { title: 'Salvar Gravação', defaultPath: fileName, filters: [ { name: 'Áudio MP3', extensions: ['mp3'] } ] }); if (canceled || !filePath) { return { success: true, message: 'Download cancelado pelo usuário.' }; } try { const response = await axios({ method: 'get', url: url, responseType: 'stream', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' } }); const writer = fs.createWriteStream(filePath); response.data.pipe(writer); return new Promise((resolve, reject) => { writer.on('finish', () => resolve({ success: true, message: `Gravação salva em: ${filePath}` })); writer.on('error', (err) => { console.error("Erro ao salvar o arquivo:", err); reject({ success: false, message: `Falha ao salvar o arquivo: ${err.message}` }); }); }); } catch (error) { console.error("Erro no download da gravação:", error); let errorMessage = error.message; if (error.response && error.response.status === 403) { errorMessage = "Acesso negado (403 Forbidden). Verifique a URL ou permissões no servidor."; } return { success: false, message: `Erro ao baixar a gravação: ${errorMessage}` }; } });
-async function runPhoneAdjustment(filePath, event, backup) { if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado: Permissão de administrador necessária."); return; } const log = (msg) => event.sender.send("log", msg); if (!filePath || !fs.existsSync(filePath)) { log(`❌ Erro: Arquivo para ajuste de fones não encontrado em: ${filePath}`); return; } log(`\n--- Iniciando Ajuste de Fones para: ${path.basename(filePath)} ---`); try { if (backup) { const p = path.parse(filePath); const backupPath = path.join(p.dir, `${p.name}.backup_fones_${Date.now()}${p.ext}`); fs.copyFileSync(filePath, backupPath); log(`Backup do arquivo criado em: ${backupPath}`); } const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; const phoneColumns = []; worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => { if (cell.value && typeof cell.value === "string" && cell.value.trim().toLowerCase().startsWith("fone")) { phoneColumns.push(colNumber); } }); phoneColumns.sort((a, b) => a - b); if (phoneColumns.length === 0) { log("⚠️ Nenhuma coluna \"fone\" encontrada. Ajuste pulado."); return; } log(`Ajustando ${phoneColumns.length} colunas de telefone...`); let processedRows = 0; worksheet.eachRow((row, rowNumber) => { if (rowNumber === 1) return; const phoneValuesInRow = phoneColumns.map(colNumber => row.getCell(colNumber).value).filter(v => v !== null && v !== undefined && String(v).trim() !== ""); phoneColumns.forEach((colNumber, index) => { row.getCell(colNumber).value = index < phoneValuesInRow.length ? phoneValuesInRow[index] : null; }); processedRows++; }); await workbook.xlsx.writeFile(filePath); log(`✅ Ajuste de fones concluído. ${processedRows} linhas processadas.`); } catch (err) { log(`❌ Erro catastrófico durante o ajuste de fones: ${err.message}`); console.error(err); } }
+async function runPhoneAdjustment(filePath, event, backup) { 
+    if (!isAdmin()) { 
+        event.sender.send("log", "❌ Acesso negado: Permissão de administrador necessária."); 
+        return; 
+    } 
+    const log = (msg) => event.sender.send("log", msg); 
+    if (!filePath || !fs.existsSync(filePath)) { 
+        log(`❌ Erro: Arquivo para ajuste de fones não encontrado em: ${filePath}`); 
+        return; 
+    } 
+    log(`\n--- Iniciando Ajuste de Fones para: ${path.basename(filePath)} ---`); 
+    try { 
+        if (backup) { 
+            const p = path.parse(filePath); 
+            const backupPath = path.join(p.dir, `${p.name}.backup_fones_${Date.now()}${p.ext}`); 
+            fs.copyFileSync(filePath, backupPath); 
+            log(`Backup do arquivo criado em: ${backupPath}`); 
+        } 
+        const workbook = new ExcelJS.Workbook(); 
+        await workbook.xlsx.readFile(filePath); 
+        const worksheet = workbook.worksheets[0]; 
+        const phoneColumns = []; 
+        worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => { 
+            if (cell.value && typeof cell.value === "string" && cell.value.trim().toLowerCase().startsWith("fone")) { 
+                phoneColumns.push(colNumber); 
+            } 
+        }); 
+        phoneColumns.sort((a, b) => a - b); 
+        if (phoneColumns.length === 0) { 
+            log("⚠️ Nenhuma coluna \"fone\" encontrada. Ajuste pulado."); 
+            return; 
+        } 
+        log(`Ajustando ${phoneColumns.length} colunas de telefone...`); 
+        let processedRows = 0; 
+        worksheet.eachRow((row, rowNumber) => { 
+            if (rowNumber === 1) return; 
+            const phoneValuesInRow = phoneColumns
+                .map(colNumber => row.getCell(colNumber).value)
+                .filter(v => v !== null && v !== undefined && String(v).trim() !== ""); 
+            
+            phoneColumns.forEach((colNumber, index) => {
+                const cell = row.getCell(colNumber);
+                if (index < phoneValuesInRow.length) {
+                    const phone = phoneValuesInRow[index];
+                    const numericPhoneString = String(phone).replace(/\D/g, '');
+                    if (numericPhoneString) {
+                        cell.value = Number(numericPhoneString);
+                        cell.numFmt = '0';
+                    } else {
+                        cell.value = null; // Limpa se for inválido
+                    }
+                } else {
+                    cell.value = null; // Limpa as células extras
+                }
+            }); 
+            processedRows++; 
+        }); 
+        await workbook.xlsx.writeFile(filePath); 
+        log(`✅ Ajuste de fones concluído. ${processedRows} linhas processadas.`); 
+    } catch (err) { 
+        log(`❌ Erro catastrófico durante o ajuste de fones: ${err.message}`); 
+        console.error(err); 
+    } 
+}
 
 
 // --- FUNÇÃO PARA ALIMENTAR A BASE RAIZ (Refatorada para PostgreSQL) ---
@@ -580,7 +685,7 @@ ipcMain.on("feed-root-database", async (event, filePaths) => {
 
     const BATCH_SIZE = 5000;
     let totalNewCnpjsAdded = 0;
-    
+
     const processChunk = async (cnpjChunk, sourceFile, batchId) => {
         if (cnpjChunk.length === 0) return;
         try {
@@ -607,7 +712,7 @@ ipcMain.on("feed-root-database", async (event, filePaths) => {
             const workbook = new ExcelJS.Workbook(); await workbook.xlsx.readFile(filePath); const worksheet = workbook.worksheets[0]; if (!worksheet || worksheet.rowCount <= 1) { log(`⚠️ Arquivo ${fileName} está vazio ou não possui dados. Pulando.`); continue; }
             let cnpjColIdx = -1; worksheet.getRow(1).eachCell((cell, colNumber) => { const header = String(cell.value || "").trim().toLowerCase(); if (header === 'cpf' || header === 'cnpj') cnpjColIdx = colNumber; });
             if (cnpjColIdx === -1) { log(`❌ ERRO: Coluna 'cpf' ou 'cnpj' não encontrada em ${fileName}. Pulando.`); continue; }
-            
+
             let cnpjsFromFile = new Set();
             const batchId = `raiz-feed-${Date.now()}`;
 
@@ -616,7 +721,7 @@ ipcMain.on("feed-root-database", async (event, filePaths) => {
                 const cellValue = row.getCell(cnpjColIdx).value;
                 const cnpj = cellValue ? String(cellValue).replace(/\D/g, "").trim() : null;
                 if (cnpj && (cnpj.length === 11 || cnpj.length === 14)) cnpjsFromFile.add(cnpj);
-                
+
                 if (cnpjsFromFile.size >= BATCH_SIZE) {
                     await processChunk(Array.from(cnpjsFromFile), fileName, batchId);
                     cnpjsFromFile.clear();
@@ -672,7 +777,7 @@ ipcMain.handle("update-blocklist", async (event, backup) => { if (!isAdmin()) { 
 ipcMain.on("start-cleaning", async (event, args) => {
     if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado."); return; }
     const log = (msg) => event.sender.send("log", msg);
-    
+
     if ((args.isAutoRoot || args.checkDb || args.saveToDb) && !pool) {
         return log("❌ ERRO: As opções de Banco de Dados estão ativadas, mas a conexão com o BD falhou ou não foi configurada.");
     }
@@ -691,6 +796,7 @@ ipcMain.on("start-cleaning", async (event, args) => {
         }
         log(`Histórico de CNPJs em memória com ${storedCnpjs.size} registros.`);
         if (args.checkDb) log("Opção \"Consultar Banco de Dados\" está ATIVADA."); if (args.saveToDb) log("Opção \"Salvar no Banco de Dados\" está ATIVADA."); if (args.autoAdjust) log("Opção \"Ajustar Fones Pós-Limpeza\" está ATIVADA.");
+        log(`FILTRO DE CNAE PROIBIDO: ATIVADO (Padrão).`);
 
         const allNewCnpjs = new Set();
         for (const fileObj of args.cleanFiles) {
@@ -705,7 +811,7 @@ ipcMain.on("start-cleaning", async (event, args) => {
         if (args.saveToDb && allNewCnpjs.size > 0) {
             log(`\nEnviando ${allNewCnpjs.size} novos CNPJs para o banco de dados...`);
             const cnpjsArray = Array.from(allNewCnpjs);
-            
+
             const query = `
                 INSERT INTO limpeza_cnpjs (cnpj, batch_id)
                 SELECT d.cnpj, $2 FROM unnest($1::text[]) AS d(cnpj)
@@ -725,7 +831,121 @@ ipcMain.on("start-cleaning", async (event, args) => {
     }
 });
 
-async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, saveToDb, cnpjsHistory) { const file = fileObj.path; const id = fileObj.id; const log = (msg) => event.sender.send("log", msg); const progress = (pct) => event.sender.send("progress", { id, progress: pct }); log(`\nProcessando arquivo de limpeza: ${path.basename(file)}...`); if (!fs.existsSync(file)) return new Set(); if (backup) { const p = path.parse(file); const bkp = path.join(p.dir, `${p.name}.backup_${Date.now()}${p.ext}`); fs.copyFileSync(file, bkp); log(`Backup criado: ${bkp}`); } const wb = await readSpreadsheet(file); const sheet = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }); if (data.length <= 1) { log(`⚠️ Arquivo vazio ou sem dados: ${file}`); return new Set(); } const header = data[0]; const destColIdx = letterToIndex(destCol); const cpfColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "cpf"); if (cpfColIdx === -1) { log(`❌ ERRO: A coluna \"cpf\" não foi encontrada no arquivo ${path.basename(file)}. Pulando este arquivo.`); return new Set(); } const foneIdxs = header.reduce((acc, cell, i) => { if (typeof cell === "string" && cell.trim().toLowerCase().startsWith("fone")) acc.push(i); return acc; }, []); const cleaned = [header]; let removedByRoot = 0; let removedDuplicates = 0; let cleanedPhones = 0; const totalRows = data.length - 1; const newCnpjsInThisFile = new Set(); for (let i = 1; i < data.length; i++) { const row = data[i]; const key = row[destColIdx] ? String(row[destColIdx]).trim() : ""; const cnpj = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : ""; if (checkDb && cnpj && cnpjsHistory.has(cnpj)) { removedDuplicates++; continue; } if (key && rootSet.has(key)) { removedByRoot++; continue; } foneIdxs.forEach(idx => { const v = row[idx] ? String(row[idx]).trim() : ""; if (/^\d{10}$/.test(v)) { row[idx] = ""; cleanedPhones++; } }); cleaned.push(row); if (saveToDb && cnpj && !cnpjsHistory.has(cnpj)) { newCnpjsInThisFile.add(cnpj); } if (i % 2000 === 0) { progress(Math.floor((i / totalRows) * 100)); await new Promise(resolve => setImmediate(resolve)); } } const newWB = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]); writeSpreadsheet(newWB, file); progress(100); log(`Arquivo: ${path.basename(file)}\n • Clientes repetidos (BD): ${removedDuplicates}\n • Removidos pela Raiz: ${removedByRoot}\n • Fones limpos: ${cleanedPhones}\n • Total final: ${cleaned.length - 1}`); return newCnpjsInThisFile; }
+// #################################################################
+// #           FUNÇÃO DE LIMPEZA PRINCIPAL (MODIFICADA)            #
+// #################################################################
+async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, saveToDb, cnpjsHistory) {
+    const file = fileObj.path;
+    const id = fileObj.id;
+    const log = (msg) => event.sender.send("log", msg);
+    const progress = (pct) => event.sender.send("progress", { id, progress: pct });
+
+    log(`\nProcessando arquivo de limpeza: ${path.basename(file)}...`);
+    if (!fs.existsSync(file)) return new Set();
+
+    if (backup) {
+        const p = path.parse(file);
+        const bkp = path.join(p.dir, `${p.name}.backup_${Date.now()}${p.ext}`);
+        fs.copyFileSync(file, bkp);
+        log(`Backup criado: ${bkp}`);
+    }
+
+    const wb = await readSpreadsheet(file);
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    if (data.length <= 1) {
+        log(`⚠️ Arquivo vazio ou sem dados: ${file}`);
+        return new Set();
+    }
+
+    const header = data[0];
+    const destColIdx = letterToIndex(destCol);
+
+    // Identifica colunas CPF, FONE e a nova coluna CNAE/LIVRE3
+    const cpfColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "cpf");
+    const cnaeColIdx = header.findIndex(h => ["cnae", "livre3"].includes(String(h).trim().toLowerCase()));
+    const foneIdxs = header.reduce((acc, cell, i) => {
+        if (typeof cell === "string" && cell.trim().toLowerCase().startsWith("fone")) acc.push(i);
+        return acc;
+    }, []);
+
+    if (cpfColIdx === -1) {
+        log(`❌ ERRO: A coluna "cpf" não foi encontrada no arquivo ${path.basename(file)}. Pulando este arquivo.`);
+        return new Set();
+    }
+    if (cnaeColIdx === -1) {
+        log(`⚠️ AVISO: Nenhuma coluna "cnae" ou "livre3" encontrada em ${path.basename(file)}. A verificação de CNAE será ignorada para este arquivo.`);
+    }
+
+
+    const cleaned = [header];
+    let removedByRoot = 0;
+    let removedDuplicates = 0;
+    let removedByCnae = 0; // Novo contador para CNAEs
+    let cleanedPhones = 0;
+    const totalRows = data.length - 1;
+    const newCnpjsInThisFile = new Set();
+
+    for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const key = row[destColIdx] ? String(row[destColIdx]).trim() : "";
+        const cnpj = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : "";
+
+        // Verificação 1: Banco de Dados (se ativado)
+        if (checkDb && cnpj && cnpjsHistory.has(cnpj)) {
+            removedDuplicates++;
+            continue;
+        }
+
+        // Verificação 2: Lista Raiz
+        if (key && rootSet.has(key)) {
+            removedByRoot++;
+            continue;
+        }
+
+        // Verificação 3: CNAE Proibido (NOVO)
+        if (cnaeColIdx !== -1) {
+            const cnaeValue = row[cnaeColIdx] ? String(row[cnaeColIdx]).replace(/\D/g, "").trim() : "";
+            if (cnaeValue && PROHIBITED_CNAES.has(cnaeValue)) {
+                removedByCnae++;
+                continue; // Pula para a próxima linha se o CNAE for proibido
+            }
+        }
+
+        // Limpeza de Fones
+        foneIdxs.forEach(idx => {
+            const v = row[idx] ? String(row[idx]).trim() : "";
+            if (/^\d{10}$/.test(v)) {
+                // Define como 'null' para garantir que a célula fique verdadeiramente vazia.
+                // Usar "" (string vazia) pode fazer a célula parecer preenchida em alguns leitores de planilha.
+                row[idx] = null;
+                cleanedPhones++;
+            }
+        });
+
+        cleaned.push(row);
+        if (saveToDb && cnpj && !cnpjsHistory.has(cnpj)) {
+            newCnpjsInThisFile.add(cnpj);
+        }
+
+        if (i % 2000 === 0) {
+            progress(Math.floor((i / totalRows) * 100));
+            await new Promise(resolve => setImmediate(resolve));
+        }
+    }
+
+    const newWB = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]);
+    writeSpreadsheet(newWB, file);
+    progress(100);
+
+    // Log final atualizado para incluir a contagem de CNAE
+    log(`Arquivo: ${path.basename(file)}\n • Clientes repetidos (BD): ${removedDuplicates}\n • Removidos pela Raiz: ${removedByRoot}\n • Removidos por CNAE Proibido: ${removedByCnae}\n • Fones limpos: ${cleanedPhones}\n • Total final: ${cleaned.length - 1}`);
+
+    return newCnpjsInThisFile;
+}
+
 
 ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) => {
     if (!isAdmin() || !pool) { event.sender.send("log", "❌ Acesso negado ou conexão com BD inativa."); return; }
@@ -736,7 +956,7 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
     log(`Usando ${storedCnpjs.size} CNPJs do histórico em memória.`);
     const allNewCnpjs = new Set();
     for (const filePath of filesToClean) { log(`\nProcessando: ${path.basename(filePath)}`); try { const wb = await readSpreadsheet(filePath); const sheet = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }); if (data.length <= 1) { log(`⚠️ Arquivo vazio ou sem dados: ${filePath}`); continue; } const header = data[0]; const cpfColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "cpf"); if (cpfColIdx === -1) { log(`❌ ERRO: A coluna \"cpf\" não foi encontrada em ${path.basename(filePath)}. Pulando.`); continue; } let removedCount = 0; const cleaned = [header]; for (let i = 1; i < data.length; i++) { const row = data[i]; const cnpj = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : ""; if (cnpj && storedCnpjs.has(cnpj)) { removedCount++; continue; } cleaned.push(row); if (saveToDb && cnpj) { allNewCnpjs.add(cnpj); } } const newWB = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]); writeSpreadsheet(newWB, filePath); log(`✅ Arquivo ${path.basename(filePath)} concluído. Removidos: ${removedCount}. Total final: ${cleaned.length - 1}`); } catch (err) { log(`❌ Erro ao processar ${path.basename(filePath)}: ${err.message}`); console.error(err); } }
-    
+
     if (saveToDb && allNewCnpjs.size > 0) {
         log(`\nEnviando ${allNewCnpjs.size} novos CNPJs para o banco de dados...`);
         const cnpjsArray = Array.from(allNewCnpjs);
@@ -749,6 +969,7 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
     }
     log("\n--- Limpeza Apenas pelo Banco de Dados finalizada. ---");
 });
+
 
 
 
@@ -831,7 +1052,7 @@ ipcMain.handle('fetch-bitrix-report', async (event, {
 
         const calls = await fetchAllBitrixPages('voximplant.statistic.get', VOX_GET_TOKEN, {
             FILTER: {
-                ">CALL_DURATION": 70,
+                ">CALL_DURATION": 30,
                 "=CALL_TYPE": 1,
                 ">=CALL_START_DATE": formatDateForBitrix(startDate),
                 "<=CALL_START_DATE": formatDateForBitrix(endDate),
@@ -909,7 +1130,7 @@ async function shuffleFilesInPlace(filePaths, log) {
     for (const filePath of filePaths) {
         try {
             log(`Embaralhando o arquivo: ${path.basename(filePath)}...`);
-            
+
             const workbook = await readSpreadsheet(filePath);
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             const allData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
@@ -931,7 +1152,7 @@ async function shuffleFilesInPlace(filePaths, log) {
             const newWorkbook = XLSX.utils.book_new();
             const newWorksheet = XLSX.utils.aoa_to_sheet(shuffledData);
             XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Mesclado");
-            writeSpreadsheet(newWorkbook, filePath); 
+            writeSpreadsheet(newWorkbook, filePath);
 
             log(`✅ Arquivo ${path.basename(filePath)} embaralhado com sucesso.`);
         } catch (err) {
@@ -986,14 +1207,14 @@ async function mergeAndSegment(event, options) {
         let currentPart = 1;
 
         const { dir, name, ext } = path.parse(savePath);
-        
+
         let currentWriter, currentWorksheet;
 
         const createNewWriter = async () => {
-            const partPath = needsSegmentation 
+            const partPath = needsSegmentation
                 ? path.join(dir, `${name}_parte${currentPart}${ext}`)
                 : savePath;
-            
+
             log(`Criando arquivo de saída: ${path.basename(partPath)}`);
             createdFiles.push(partPath);
 
@@ -1025,7 +1246,7 @@ async function mergeAndSegment(event, options) {
                 const headerRow = inputWorksheet.getRow(1).values;
                 header = Array.isArray(headerRow) ? headerRow.slice(1) : Object.values(headerRow);
                 currentWorksheet.columns = header.map(h => ({ header: h, key: h, style: {} }));
-                
+
                 if (removeDuplicates) {
                     cnpjColumnIndex = header.findIndex(h => String(h || '').trim().toLowerCase() === 'cpf' || String(h || '').trim().toLowerCase() === 'cnpj');
                     if (cnpjColumnIndex === -1) {
@@ -1033,7 +1254,7 @@ async function mergeAndSegment(event, options) {
                     }
                 }
             }
-            
+
             let rowCountInFile = 0;
             const fileTotalDataRows = inputWorksheet.rowCount - 1;
 
@@ -1051,14 +1272,14 @@ async function mergeAndSegment(event, options) {
                         break;
                 }
                 if (!shouldAdd) continue;
-                
+
                 rowCountInFile++;
                 const rowData = Array.isArray(row.values) ? row.values.slice(1) : Object.values(row.values);
 
                 if (removeDuplicates && cnpjColumnIndex !== -1) {
                     const cnpj = String(rowData[cnpjColumnIndex] || '').replace(/\D/g, "").trim();
                     if (cnpj && seenCnpjs.has(cnpj)) {
-                        continue; 
+                        continue;
                     }
                     if(cnpj) seenCnpjs.add(cnpj);
                 }
@@ -1082,9 +1303,9 @@ async function mergeAndSegment(event, options) {
         await currentWorksheet.commit();
         await currentWriter.commit();
         log(`Parte final (parte ${currentPart}) finalizada com ${rowsInCurrentPart} linhas.`);
-        
+
         log(`\n✅ Mesclagem e segmentação concluídas! Total de ${totalRowsWritten} linhas salvas em ${createdFiles.length} arquivo(s).`);
-        
+
         return createdFiles;
 
     } catch (err) {
@@ -1109,7 +1330,7 @@ ipcMain.on("start-merge", async (event, options) => {
         log("❌ Erro: Por favor, selecione pelo menos dois arquivos para mesclar.");
         return;
     }
-    
+
     log(`\n--- Iniciando Processo de Mesclagem ---`);
     log(`Estratégia: ${options.strategy}. Remover Duplicados: ${options.removeDuplicates}. Embaralhar: ${options.shuffle}.`);
     if (options.strategy === 'custom') {
@@ -1185,7 +1406,7 @@ async function processNextInApiQueue(event, keyMode) {
     processNextInApiQueue(event, keyMode);
 }
 
-// NOVA FUNÇÃO runApiConsultation com lógica de chave "DUPLA"
+// FUNÇÃO runApiConsultation ATUALIZADA COM LÓGICA DE RETENTATIVA CORRIGIDA
 async function runApiConsultation(filePath, keyMode, log, progress) {
     const credentials = {
         c6: {
@@ -1201,7 +1422,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
     };
     const TOKEN_URL = "https://crm-leads-p.c6bank.info/querie-partner/token";
     const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
-    
+
     const BATCH_SIZE_SINGLE = 20000;
     const BATCH_SIZE_DUAL = 40000;
     const RETRY_MS = 2 * 60 * 1000;
@@ -1216,7 +1437,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
         const tokenParams = new URLSearchParams({ grant_type: "client_credentials", client_id: creds.CLIENT_ID, client_secret: creds.CLIENT_SECRET });
         const tokenResp = await axios.post(TOKEN_URL, tokenParams.toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 30000 });
         const token = tokenResp.data.access_token;
-        
+
         const consultaResp = await axios.post(CONSULTA_URL, { CNPJ: cnpjArray }, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 30000 });
         const key = Object.keys(consultaResp.data).find(k => k.toLowerCase().includes("cnpj") && Array.isArray(consultaResp.data[k]));
         return key ? new Set(consultaResp.data[key].map(normalizeCnpj)) : new Set();
@@ -1227,7 +1448,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(filePath);
         const worksheet = workbook.worksheets[0];
-        
+
         const COLUNA_CNPJ = "cpf";
         let cnpjColNumber = -1;
         worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -1272,6 +1493,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                     let encontrados = new Set();
 
                     if (keyMode === 'dupla') {
+                        // --- INÍCIO DA LÓGICA CORRIGIDA ---
                         log("Modo 'Dupla' ativado. Consultando com ambas as chaves simultaneamente.");
                         const meio = Math.ceil(lote.length / 2);
                         const lote1 = lote.slice(0, meio);
@@ -1282,19 +1504,17 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                             performApiCall(lote2.map(r => r.cnpj), credentials.im)
                         ]);
 
-                        if (res1.status === 'fulfilled') {
-                            res1.value.forEach(cnpj => encontrados.add(cnpj));
-                        } else {
-                            log(`❌ Erro na Chave 1: ${res1.reason.message}`);
+                        if (res1.status === 'rejected' || res2.status === 'rejected') {
+                            const errorMessages = [];
+                            if (res1.status === 'rejected') errorMessages.push(`Chave 1: ${res1.reason.message}`);
+                            if (res2.status === 'rejected') errorMessages.push(`Chave 2: ${res2.reason.message}`);
+                            throw new Error(`Falha na consulta dupla. Erros: ${errorMessages.join('; ')}`);
                         }
-                        if (res2.status === 'fulfilled') {
-                            res2.value.forEach(cnpj => encontrados.add(cnpj));
-                        } else {
-                            log(`❌ Erro na Chave 2: ${res2.reason.message}`);
-                        }
-                        if (res1.status === 'rejected' && res2.status === 'rejected') {
-                           throw new Error("Ambas as chaves falharam na consulta.");
-                        }
+
+                        // Se chegou aqui, ambas as chamadas foram bem-sucedidas
+                        res1.value.forEach(cnpj => encontrados.add(cnpj));
+                        res2.value.forEach(cnpj => encontrados.add(cnpj));
+                        // --- FIM DA LÓGICA CORRIGIDA ---
 
                     } else { // Modos 'chave1', 'chave2', 'intercalar'
                         let currentCreds;
@@ -1311,7 +1531,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                         }
                         encontrados = await performApiCall(lote.map(r => r.cnpj), currentCreds);
                     }
-                    
+
                     log(`Atualizando planilha em memória...`);
                     let countDisponivel = 0;
                     lote.forEach(({ cnpj, rowNum }) => {
@@ -1326,12 +1546,12 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                     const countCliente = lote.length - countDisponivel;
                     log(`Resultados do Lote: ${countDisponivel} disponível(is), ${countCliente} cliente(s).`);
                     log(`💾 Salvando progresso do lote ${i + 1} na planilha...`);
-                    
+
                     const tempFilePath = path.join(path.dirname(filePath), `${path.basename(filePath, ".xlsx")}_temp.xlsx`);
                     await workbook.xlsx.writeFile(tempFilePath);
                     fs.unlinkSync(filePath);
                     fs.renameSync(tempFilePath, filePath);
-                    
+
                     log(`✅ Progresso salvo com sucesso.`);
                     sucesso = true;
 

@@ -986,7 +986,8 @@ function renderComparisonList(fastwayData, bitrixData) {
             dashboardSummary.innerHTML = `<div class="summary-card" id="summary-card-1" style="display: none;"><div class="summary-card-title" id="summary-title-1"></div><div class="summary-card-value" id="summary-value-1"></div></div><div class="summary-card" id="summary-card-2" style="display: none;"><div class="summary-card-title" id="summary-title-2"></div><div class="summary-card-value" id="summary-value-2"></div></div><button class="summary-card summary-card-button" id="summary-card-3" style="display: none;"><div class="summary-card-title">Tabulações Suspeitas</div><div class="summary-card-value warning" id="summary-value-3">0</div></button><div class="summary-card" id="summary-card-4" style="display: none;"><div class="summary-card-title" id="summary-title-4"></div><div class="summary-card-value" id="summary-value-4"></div></div>`;
             document.getElementById('summary-card-3').addEventListener('click', showSuspiciousCallsModal);
             
-            if(fastwaySummaryData && bitrixSummaryData) { 
+            // --- CORREÇÃO APLICADA AQUI ---
+            if(fastwaySummaryData || bitrixSummaryData) { 
                 summaryToggleBar.style.display = 'flex';
             }
             
