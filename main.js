@@ -66,7 +66,7 @@ async function initializePool(connectionString, windowToLog) {
         pool = null;
         throw error;
     }
-}
+} 
 
 
 // #################################################################
@@ -970,6 +970,128 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
     log("\n--- Limpeza Apenas pelo Banco de Dados finalizada. ---");
 });
 
+ipcMain.on('organize-daily-sheet', async (event, filePath) => {
+    const log = (msg) => event.sender.send("log", msg);
+    log(`--- Iniciando Organização da Planilha Diária (Modo Otimizado por Lotes v2) ---`);
+
+    const dir = path.dirname(filePath);
+    const originalName = path.parse(filePath).name;
+    const newFilePath = path.join(dir, `${originalName}_organizado.xlsx`);
+    let writer;
+
+    try {
+        const writerOptions = {
+            filename: newFilePath,
+            useStyles: true,
+            useSharedStrings: true
+        };
+        writer = new ExcelJS.stream.xlsx.WorkbookWriter(writerOptions);
+        const newWorksheet = writer.addWorksheet('Organizado');
+
+        // MODIFICAÇÃO 1: Removida a formatação de data da coluna 'livre1'
+        newWorksheet.columns = [
+            { header: 'nome', key: 'nome', width: 40 },
+            { header: 'cpf', key: 'cpf', width: 20, style: { numFmt: '0' } },
+            { header: 'livre1', key: 'livre1', width: 15 }, // <- Formatação de data removida
+            { header: 'chave', key: 'chave', width: 30 },
+            { header: 'livre3', key: 'livre3', width: 20, style: { numFmt: '0' } },
+            { header: 'livre5', key: 'livre5', width: 10 },
+            { header: 'livre7', key: 'livre7', width: 10 },
+            { header: 'fone1', key: 'fone1', width: 15, style: { numFmt: '0' } },
+            { header: 'fone2', key: 'fone2', width: 15, style: { numFmt: '0' } },
+            { header: 'fone3', key: 'fone3', width: 15, style: { numFmt: '0' } },
+            { header: 'fone4', key: 'fone4', width: 15, style: { numFmt: '0' } },
+            { header: 'fone5', key: 'fone5', width: 15, style: { numFmt: '0' } },
+            { header: 'fone6', key: 'fone6', width: 15, style: { numFmt: '0' } },
+            { header: 'fone7', key: 'fone7', width: 15, style: { numFmt: '0' } },
+            { header: 'fone8', key: 'fone8', width: 15, style: { numFmt: '0' } },
+            { header: 'fone9', key: 'fone9', width: 15, style: { numFmt: '0' } },
+            { header: 'fone10', key: 'fone10', width: 15, style: { numFmt: '0' } },
+            { header: 'fone11', key: 'fone11', width: 15, style: { numFmt: '0' } },
+            { header: 'fone12', key: 'fone12', width: 15, style: { numFmt: '0' } },
+            { header: 'fone13', key: 'fone13', width: 15, style: { numFmt: '0' } },
+            { header: 'fone14', key: 'fone14', width: 15, style: { numFmt: '0' } },
+            { header: 'fone15', key: 'fone15', width: 15, style: { numFmt: '0' } },
+            { header: 'fone16', key: 'fone16', width: 15, style: { numFmt: '0' } }
+        ];
+
+        const reader = new ExcelJS.stream.xlsx.WorkbookReader(filePath);
+        const headerMap = {};
+        let processedRows = 0;
+        const BATCH_LOG_INTERVAL = 20000;
+
+        reader.read();
+
+        reader.on('worksheet', worksheet => {
+            worksheet.on('row', row => {
+                if (row.number === 1) {
+                    row.values.forEach((value, index) => {
+                        if (value) headerMap[value] = index;
+                    });
+                    const requiredCols = ['razao_social', 'cnpj_pk', 'data_inicio_atividade_formatado', 'correiro_eletronico', 'cnae_fiscal_principal', 'telefone_1_formatado', 'telefone_2_formatado'];
+                    for (const col of requiredCols) {
+                        if (!headerMap[col]) {
+                            throw new Error(`Coluna obrigatória "${col}" não encontrada na planilha original.`);
+                        }
+                    }
+                    log("✅ Cabeçalho validado. Iniciando processamento das linhas...");
+                } else {
+                    const getValue = (colName) => row.getCell(headerMap[colName]).value;
+
+                    // MODIFICAÇÃO 2: A lógica de data foi simplificada
+                    const dataInicioOriginal = getValue('data_inicio_atividade_formatado');
+
+                    const newRowData = {
+                        nome: getValue('razao_social'),
+                        cpf: getValue('cnpj_pk') ? Number(String(getValue('cnpj_pk')).replace(/\D/g, '')) : null,
+                        livre1: dataInicioOriginal, // <- Simplesmente copia o valor original
+                        chave: getValue('correiro_eletronico'),
+                        livre3: getValue('cnae_fiscal_principal') ? Number(String(getValue('cnae_fiscal_principal')).replace(/\D/g, '')) : null,
+                        livre5: null, // <- Deixado vazio conforme solicitado
+                        livre7: 'C6',
+                        fone1: getValue('telefone_1_formatado') ? Number(String(getValue('telefone_1_formatado')).replace(/\D/g, '')) : null,
+                        fone2: getValue('telefone_2_formatado') ? Number(String(getValue('telefone_2_formatado')).replace(/\D/g, '')) : null
+                    };
+
+                    newWorksheet.addRow(newRowData).commit();
+                    processedRows++;
+
+                    if (processedRows % BATCH_LOG_INTERVAL === 0) {
+                        log(`Processadas ${processedRows.toLocaleString('pt-BR')} linhas...`);
+                    }
+                }
+            });
+        });
+
+        await new Promise((resolve, reject) => {
+            reader.on('end', async () => {
+                try {
+                    await writer.commit();
+                    resolve();
+                } catch (e) {
+                    reject(e);
+                }
+            });
+            reader.on('error', reject);
+        });
+
+        log(`✅ Planilha organizada com sucesso! ${processedRows.toLocaleString('pt-BR')} linhas processadas.`);
+        log(`O novo arquivo foi salvo em: ${newFilePath}`);
+        shell.showItemInFolder(newFilePath);
+
+    } catch (error) {
+        log(`❌ ERRO ao organizar a planilha: ${error.message}`);
+        console.error("Erro detalhado na organização:", error);
+        if (writer && fs.existsSync(newFilePath)) {
+            try {
+                fs.unlinkSync(newFilePath);
+                log(`Arquivo parcial corrompido (${path.basename(newFilePath)}) foi removido.`);
+            } catch (e) {
+                log(`Não foi possível remover o arquivo parcial corrompido: ${e.message}`);
+            }
+        }
+    }
+});
 
 
 

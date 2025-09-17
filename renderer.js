@@ -8,8 +8,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentTabDescription = document.getElementById('current-tab-description');
     const mainTitle = document.getElementById("main-app-title");
     const logoutBtn = document.getElementById('logoutBtn');
-
     const monitoringTeamTitle = document.getElementById('monitoring-team-title');
+     const organizeDailySheetBtn = document.getElementById('organizeDailySheetBtn');
+
+    if (organizeDailySheetBtn) {
+        organizeDailySheetBtn.addEventListener('click', async () => {
+            appendLog('Selecionando arquivo para organizar...');
+            const files = await window.electronAPI.selectFile({ title: 'Selecione a planilha diária para organizar', multi: false });
+            if (files && files.length > 0) {
+                const filePath = files[0];
+                appendLog(`Iniciando organização para: ${getBasename(filePath)}`);
+                window.electronAPI.organizeDailySheet(filePath);
+            } else {
+                appendLog('Nenhum arquivo selecionado. Operação cancelada.');
+            }
+        });
+    }
 
     let currentUserRole = null;
     let currentUserTeamId = null;
@@ -484,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: '231', name: 'Relacionamento Rodrigo Santana', category: 'Relacionamento' }];
     const gruposOperador = [
         { id: '85', name: 'Equipe Bruna' }, { id: '120', name: 'Equipe Camila' }, { id: '123', name: 'Equipe Laiane' },
-        { id: '133', name: 'Equipe TEF' }, { id: '87', name: 'Equipe Waleska' }, { id: '106', name: 'Equipe Mayko' }
+        { id: '146', name: 'Equipe Ricardo' }, { id: '87', name: 'Equipe Waleska' }, { id: '106', name: 'Equipe Mayko' }, { id: '133', name: 'Equipe Joao Avila' }
     ];
     const tabulacoes = [{ id: '96', name: 'CHAMAR NO WHATSAPP MAQUINA' }, { id: '80', name: 'Confirmação' }, { id: '82', name: 'Conta Ativa' }, { id: '47', name: 'Inapto' }, { id: '33', name: 'MUDO' }, { id: '43', name: 'MUDO/ENCERRAR' }, { id: '95', name: 'Maquina vendida' }, { id: '79', name: 'Promessa' }, { id: '83', name: 'Relacionamento' }, { id: '81', name: 'Retorno' }, { id: '44', name: 'CHAMAR NO WHATSAPP' }, { id: '34', name: 'CLIENTE ABRIU A CONTA' }, { id: '38', name: 'CLIENTE JÁ POSSUI CONTA' }, { id: '69', name: 'Inapto na receita federal' }, { id: '84', name: 'MEI' }, { id: '39', name: 'NÃO TEM INTERESSE' }, { id: '52', name: 'NÃO É O RESPONSAVEL' }, { id: '37', name: 'OUTRO ECE' }, { id: '42', name: 'PROBLEMA NO APLICATIVO' }, { id: '67', name: 'RECUSADA PELO BANCO' }, { id: '41', name: 'REDISCAR CLIENTE/ CAIU A LIGAÇÃO' }, { id: '40', name: 'TELEFONE INCORRETO' }, { id: '36', name: 'BLOCKLIST' }].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
 

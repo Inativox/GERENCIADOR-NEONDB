@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     feedRootDatabase: (filePaths) => ipcRenderer.send("feed-root-database", filePaths),
     saveStoredCnpjsToExcel: () => ipcRenderer.invoke("save-stored-cnpjs-to-excel"),
     deleteBatch: (batchId) => ipcRenderer.invoke("delete-batch", batchId),
+    organizeDailySheet: (filePath) => ipcRenderer.send('organize-daily-sheet', filePath),
 
     // --- Funções da API de Consulta (C6) ---
     addFilesToApiQueue: (files) => ipcRenderer.send("add-files-to-api-queue", files),
