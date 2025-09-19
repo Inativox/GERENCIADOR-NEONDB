@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     addFilesToApiQueue: (files) => ipcRenderer.send("add-files-to-api-queue", files),
     startApiQueue: (args) => ipcRenderer.send("start-api-queue", args),
     resetApiQueue: () => ipcRenderer.send("reset-api-queue"),
+    removeFromApiQueue: (filePath) => ipcRenderer.send("remove-from-api-queue", filePath),
+    prioritizeInApiQueue: (filePath) => ipcRenderer.send("prioritize-in-api-queue", filePath),
+    cancelCurrentApiTask: () => ipcRenderer.send("cancel-current-api-task"),
 
     // --- Funções de Enriquecimento ---
     getEnrichedCnpjCount: () => ipcRenderer.invoke("get-enriched-cnpj-count"),

@@ -382,8 +382,107 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectApiFileBtn) selectApiFileBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione as planilhas de CNPJs', multi: true }); if (files && files.length > 0) { window.electronAPI.addFilesToApiQueue(files); } });
     if (startApiBtn) startApiBtn.addEventListener('click', () => { startApiBtn.disabled = true; resetApiBtn.disabled = true; apiStatusSpan.textContent = 'Iniciando processamento da fila...'; window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value }); });
     if (resetApiBtn) resetApiBtn.addEventListener('click', () => { window.electronAPI.resetApiQueue(); });
-    function updateApiQueueUI(queue) { const { pending, processing, completed } = queue; if (!apiProcessingDiv || !apiPendingDiv || !apiCompletedDiv || !startApiBtn) return; apiProcessingDiv.innerHTML = processing ? '' : `<span style="color:var(--text-secondary)">Nenhum</span>`; if (processing) addFileToUI(apiProcessingDiv, processing, true); apiPendingDiv.innerHTML = pending.length > 0 ? '' : `<span style="color:var(--text-secondary)">Nenhum arquivo na fila</span>`; if (pending.length > 0) pending.forEach(file => addFileToUI(apiPendingDiv, file, false)); apiCompletedDiv.innerHTML = completed.length > 0 ? '' : `<span style="color:var(--text-secondary)">Nenhum arquivo concluído</span>`; if (completed.length > 0) completed.forEach(file => addFileToUI(apiCompletedDiv, file, false)); startApiBtn.disabled = pending.length === 0 || !!processing; }
-    window.electronAPI.onApiQueueUpdate((queue) => { updateApiQueueUI(queue); if (!queue.processing && queue.pending.length === 0 && queue.completed.length > 0) { apiStatusSpan.textContent = 'Fila concluída!'; resetApiBtn.disabled = false; } });
+    const apiCancelledDiv = document.getElementById('apiCancelled');
+    if (!apiCancelledDiv) {
+        console.log("WARNING: The element with id 'apiCancelled' was not found. The cancelled files list will not be displayed.");
+    }
+
+    function updateApiQueueUI(queue) {
+        const { pending, processing, completed, cancelled } = queue;
+        if (!apiProcessingDiv || !apiPendingDiv || !apiCompletedDiv || !startApiBtn) return;
+
+        const createFileItem = (file, type, index) => {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file-item';
+
+            const fileName = document.createElement('span');
+            fileName.className = 'file-name';
+            fileName.textContent = getBasename(file);
+            fileDiv.appendChild(fileName);
+
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'file-actions';
+
+            if (type === 'pending') {
+                if (index > 0) {
+                    const prioritizeBtn = document.createElement('button');
+                    prioritizeBtn.className = 'queue-action-btn';
+                    prioritizeBtn.innerHTML = '&#x25B2;'; // Up arrow
+                    prioritizeBtn.title = 'Priorizar';
+                    prioritizeBtn.onclick = () => window.electronAPI.prioritizeInApiQueue(file);
+                    actionsDiv.appendChild(prioritizeBtn);
+                }
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'queue-action-btn remove';
+                removeBtn.innerHTML = '&#x2716;'; // X mark
+                removeBtn.title = 'Remover';
+                removeBtn.onclick = () => window.electronAPI.removeFromApiQueue(file);
+                actionsDiv.appendChild(removeBtn);
+            } else if (type === 'processing') {
+                const cancelBtn = document.createElement('button');
+                cancelBtn.className = 'queue-action-btn remove';
+                cancelBtn.innerHTML = '&#x2716;'; // X mark
+                cancelBtn.title = 'Cancelar';
+                cancelBtn.onclick = () => {
+                    if (confirm(`Tem certeza que deseja cancelar o processamento de: ${getBasename(file)}?`)) {
+                        window.electronAPI.cancelCurrentApiTask();
+                    }
+                };
+                actionsDiv.appendChild(cancelBtn);
+            }
+            fileDiv.appendChild(actionsDiv);
+            return fileDiv;
+        };
+
+        // Processing
+        apiProcessingDiv.innerHTML = '';
+        if (processing) {
+            apiProcessingDiv.appendChild(createFileItem(processing, 'processing'));
+        } else {
+            apiProcessingDiv.innerHTML = `<span style="color:var(--text-secondary)">Nenhum</span>`;
+        }
+
+        // Pending
+        apiPendingDiv.innerHTML = '';
+        if (pending && pending.length > 0) {
+            pending.forEach((file, index) => apiPendingDiv.appendChild(createFileItem(file, 'pending', index)));
+        } else {
+            apiPendingDiv.innerHTML = `<span style="color:var(--text-secondary)">Nenhum arquivo na fila</span>`;
+        }
+
+        // Completed
+        apiCompletedDiv.innerHTML = '';
+        if (completed && completed.length > 0) {
+            completed.forEach(file => apiCompletedDiv.appendChild(createFileItem(file, 'completed')));
+        } else {
+            apiCompletedDiv.innerHTML = `<span style="color:var(--text-secondary)">Nenhum arquivo concluído</span>`;
+        }
+        
+        // Cancelled
+        if(apiCancelledDiv) {
+            apiCancelledDiv.innerHTML = '';
+            if (cancelled && cancelled.length > 0) {
+                cancelled.forEach(file => apiCancelledDiv.appendChild(createFileItem(file, 'cancelled')));
+            } else {
+                apiCancelledDiv.innerHTML = `<span style="color:var(--text-secondary)">Nenhum</span>`;
+            }
+        }
+
+        startApiBtn.disabled = pending.length === 0 || !!processing;
+        resetApiBtn.disabled = !processing && pending.length === 0 && completed.length === 0 && (!cancelled || cancelled.length === 0);
+    }
+
+    window.electronAPI.onApiQueueUpdate((queue) => { 
+        updateApiQueueUI(queue); 
+        if (!queue.processing && queue.pending.length === 0 && (queue.completed.length > 0 || (queue.cancelled && queue.cancelled.length > 0))) { 
+            apiStatusSpan.textContent = 'Fila concluída!';
+            resetApiBtn.disabled = false; 
+        } else if (queue.processing) {
+            apiStatusSpan.textContent = `Processando...`;
+        } else {
+            apiStatusSpan.textContent = 'Aguardando início';
+        }
+    });
     window.electronAPI.onApiLog((message) => { appendApiLog(message); });
     window.electronAPI.onApiProgress(({ current, total }) => { const percent = Math.round((current / total) * 100); apiProgressBarFill.style.width = `${percent}%`; apiStatusSpan.textContent = `Processando Lote ${current} de ${total}`; });
     function appendApiLog(msg) { if (apiLogDiv) { apiLogDiv.innerHTML += `> ${msg.replace(/\n/g, '<br>> ')}\n`; apiLogDiv.scrollTop = apiLogDiv.scrollHeight; } }

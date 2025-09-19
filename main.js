@@ -1633,13 +1633,14 @@ ipcMain.on("start-adjust-phones", async (event, args) => {
     log(`\n✅ Ajuste de fones concluído para o arquivo.`);
 });
 
-let apiQueue = { pending: [], processing: null, completed: [] };
+let apiQueue = { pending: [], processing: null, completed: [], cancelled: [] };
 let isApiQueueRunning = false;
+let cancelCurrentApiTask = false;
 
 ipcMain.on("add-files-to-api-queue", (event, filePaths) => {
     if (!isAdmin()) return;
     apiQueue.pending.push(...filePaths);
-    apiQueue.pending = [... new Set(apiQueue.pending)];
+    apiQueue.pending = [...new Set(apiQueue.pending)];
     event.sender.send("api-queue-update", apiQueue);
 });
 
@@ -1647,18 +1648,55 @@ ipcMain.on("start-api-queue", (event, { keyMode }) => {
     if (!isAdmin()) return;
     if (isApiQueueRunning) return;
     isApiQueueRunning = true;
+    cancelCurrentApiTask = false;
     processNextInApiQueue(event, keyMode);
 });
 
 ipcMain.on("reset-api-queue", (event) => {
     if (!isAdmin()) return;
-    apiQueue = { pending: [], processing: null, completed: [] };
     isApiQueueRunning = false;
+    cancelCurrentApiTask = true; // Signal to stop any ongoing process
+    apiQueue = { pending: [], processing: null, completed: [], cancelled: [] };
     event.sender.send("api-queue-update", apiQueue);
     event.sender.send("api-log", "Fila e status reiniciados.");
 });
 
+ipcMain.on("remove-from-api-queue", (event, filePath) => {
+    if (!isAdmin()) return;
+    const index = apiQueue.pending.indexOf(filePath);
+    if (index > -1) {
+        apiQueue.pending.splice(index, 1);
+        event.sender.send("api-queue-update", apiQueue);
+        event.sender.send("api-log", `Arquivo removido da fila: ${path.basename(filePath)}`);
+    }
+});
+
+ipcMain.on("prioritize-in-api-queue", (event, filePath) => {
+    if (!isAdmin()) return;
+    const index = apiQueue.pending.indexOf(filePath);
+    if (index > 0) {
+        const [item] = apiQueue.pending.splice(index, 1);
+        apiQueue.pending.unshift(item);
+        event.sender.send("api-queue-update", apiQueue);
+        event.sender.send("api-log", `Arquivo priorizado: ${path.basename(filePath)}`);
+    }
+});
+
+ipcMain.on("cancel-current-api-task", (event) => {
+    if (!isAdmin()) return;
+    if (isApiQueueRunning && apiQueue.processing) {
+        event.sender.send("api-log", `Solicitação de cancelamento para: ${path.basename(apiQueue.processing)}`);
+        cancelCurrentApiTask = true;
+    }
+});
+
 async function processNextInApiQueue(event, keyMode) {
+    if (!isApiQueueRunning) {
+        apiQueue.processing = null;
+        event.sender.send("api-queue-update", apiQueue);
+        event.sender.send("api-log", "\nFila de processamento interrompida.");
+        return;
+    }
     if (apiQueue.pending.length === 0) {
         event.sender.send("api-log", "\n✅ Fila de processamento concluída.");
         apiQueue.processing = null;
@@ -1666,15 +1704,27 @@ async function processNextInApiQueue(event, keyMode) {
         event.sender.send("api-queue-update", apiQueue);
         return;
     }
+
     apiQueue.processing = apiQueue.pending.shift();
     event.sender.send("api-queue-update", apiQueue);
     event.sender.send("api-log", `--- Iniciando processamento de: ${path.basename(apiQueue.processing)} ---`);
+    
     await runApiConsultation(apiQueue.processing, keyMode, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }));
-    apiQueue.completed.push(apiQueue.processing);
+
+    if (cancelCurrentApiTask) {
+        event.sender.send("api-log", `Processamento de ${path.basename(apiQueue.processing)} foi cancelado.`);
+        apiQueue.cancelled.push(apiQueue.processing);
+        cancelCurrentApiTask = false; // Reset for next run
+    } else {
+        apiQueue.completed.push(apiQueue.processing);
+    }
+    
     apiQueue.processing = null;
     event.sender.send("api-queue-update", apiQueue);
+    
     processNextInApiQueue(event, keyMode);
 }
+
 
 // FUNÇÃO runApiConsultation ATUALIZADA COM LÓGICA DE RETENTATIVA CORRIGIDA
 async function runApiConsultation(filePath, keyMode, log, progress) {
@@ -1734,7 +1784,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                 const cnpjCell = row.getCell(cnpjColNumber);
                 const respostaCell = row.getCell(COLUNA_RESPOSTA_LETTER);
                 if (!respostaCell.value && cnpjCell.value) {
-                    registros.push({ cnpj: normalizeCnpj(cnpjCell.value), rowNum });
+                    registros.push({cnpj: normalizeCnpj(cnpjCell.value), rowNum });
                 }
             }
         });
@@ -1752,6 +1802,10 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
         }
 
         for (let i = 0; i < lotes.length; i++) {
+            if (cancelCurrentApiTask) {
+                log("Processamento do arquivo cancelado pelo usuário.");
+                break;
+            }
             const lote = lotes[i];
             log(`\n=== Processando Lote ${i + 1}/${lotes.length} (${lote.length} registros) ===`);
             progress(i + 1, lotes.length);
@@ -1759,6 +1813,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
             let sucesso = false;
             let retries = 0;
             while (!sucesso && retries < MAX_RETRIES) {
+                if (cancelCurrentApiTask) break;
                 try {
                     let encontrados = new Set();
 
@@ -1804,7 +1859,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
 
                     log(`Atualizando planilha em memória...`);
                     let countDisponivel = 0;
-                    lote.forEach(({ cnpj, rowNum }) => {
+                    lote.forEach(({cnpj, rowNum }) => {
                         if (encontrados.has(cnpj)) {
                             worksheet.getCell(`${COLUNA_RESPOSTA_LETTER}${rowNum}`).value = "disponível";
                             countDisponivel++;
@@ -1830,6 +1885,7 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                     log(`❌ Erro no processamento do lote (tentativa ${retries}/${MAX_RETRIES}): ${err.message}.`);
                     if (retries < MAX_RETRIES) {
                         log(`Tentando novamente em ${RETRY_MS / 60000} minutos...`);
+                        if (cancelCurrentApiTask) break;
                         await sleep(RETRY_MS);
                     } else {
                         log(`Máximo de tentativas atingido para este lote. Pulando para o próximo.`);
@@ -1837,11 +1893,14 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                 }
             }
             if (sucesso && i < lotes.length - 1) {
+                if (cancelCurrentApiTask) break;
                 log(`Aguardando ${DELAY_SUCESSO_MS / 60000} minutos antes do próximo lote...`);
                 await sleep(DELAY_SUCESSO_MS);
             }
         }
-        log(`\n🎉 Arquivo ${path.basename(filePath)} processado e salvo.`);
+        if (!cancelCurrentApiTask) {
+            log(`\n🎉 Arquivo ${path.basename(filePath)} processado e salvo.`);
+        }
     } catch (error) {
         log(`❌ Erro fatal ao processar o arquivo ${path.basename(filePath)}: ${error.message}`);
         console.error(error);

@@ -266,6 +266,43 @@
         .files:empty::after { content: 'Nenhum arquivo selecionado'; color: var(--text-muted); font-style: italic; font-size: 13px; }
         .file-item { background: var(--bg-lighter); color: var(--text-primary); padding: 10px 14px; border-radius: 6px; margin-top: 6px; font-size: 12px; border-left: 3px solid var(--accent-color); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         .file-item:hover { transform: translateX(3px); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15); }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .queue-action-btn {
+            background: var(--bg-dark);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            margin: 0;
+            line-height: 22px;
+            text-align: center;
+            box-shadow: none;
+        }
+
+        .queue-action-btn:hover {
+            background: var(--accent-color);
+            color: var(--accent-text);
+            border-color: var(--accent-color);
+        }
+
+        .queue-action-btn.remove:hover {
+            background: var(--danger-color);
+            border-color: var(--danger-color);
+        }
         
         /* 4.4 Logs ------------------------------------------------------------- */
         .logs { height: 200px; background: var(--bg-dark); border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 10px; padding: 16px; overflow-y: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; white-space: pre-wrap; margin-top: 10px; line-height: 1.5; box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.2); }
@@ -746,6 +783,8 @@
                         <div id="apiPending" class="files"><span style="color:var(--text-secondary)">Nenhum arquivo na fila</span></div>
                         <h4>Concluídos:</h4>
                         <div id="apiCompleted" class="files"><span style="color:var(--text-secondary)">Nenhum arquivo concluído</span></div>
+                        <h4>Cancelados:</h4>
+                        <div id="apiCancelled" class="files"><span style="color:var(--text-secondary)">Nenhum</span></div>
                     </div>
                 </div>
                 <div class="section" data-section-id="configuracoes-acoes-api">
