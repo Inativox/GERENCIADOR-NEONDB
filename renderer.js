@@ -13,12 +13,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (organizeDailySheetBtn) {
         organizeDailySheetBtn.addEventListener('click', async () => {
-            appendLog('Selecionando arquivo para organizar...');
-            const files = await window.electronAPI.selectFile({ title: 'Selecione a planilha diária para organizar', multi: false });
+            appendLog('Selecionando arquivo(s) para organizar...');
+            const files = await window.electronAPI.selectFile({ title: 'Selecione as planilhas para organizar', multi: true });
             if (files && files.length > 0) {
-                const filePath = files[0];
-                appendLog(`Iniciando organização para: ${getBasename(filePath)}`);
-                window.electronAPI.organizeDailySheet(filePath);
+                const organizationType = document.querySelector('input[name="organizeType"]:checked').value;
+                appendLog(`Iniciando organização para ${files.length} arquivo(s) usando o formato: ${organizationType}`);
+                for (const filePath of files) {
+                    appendLog(`Organizando: ${getBasename(filePath)}`);
+                    window.electronAPI.organizeDailySheet(filePath, organizationType);
+                }
             } else {
                 appendLog('Nenhum arquivo selecionado. Operação cancelada.');
             }

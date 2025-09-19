@@ -970,10 +970,87 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
     log("\n--- Limpeza Apenas pelo Banco de Dados finalizada. ---");
 });
 
-ipcMain.on('organize-daily-sheet', async (event, filePath) => {
+// =================================================================
+// =           *** INÍCIO DA MODIFICAÇÃO *** =
+// =================================================================
+ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => {
     const log = (msg) => event.sender.send("log", msg);
-    log(`--- Iniciando Organização da Planilha Diária (Modo Otimizado por Lotes v2) ---`);
+    log(`--- Iniciando Organização (${organizationType}) da Planilha Diária ---`);
+    
+    // --- LÓGICA PARA NOVA FUNCIONALIDADE DE SEPARAR POR ABAS (CADÊNCIAS) ---
+    if (organizationType === 'cadencia') {
+        const dir = path.dirname(filePath);
+        const originalName = path.parse(filePath).name;
+        
+        try {
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.readFile(filePath);
+            let processedSheetCount = 0;
 
+            for (const worksheet of workbook.worksheets) {
+                const sheetName = worksheet.name;
+                log(`\nProcessando aba: "${sheetName}"...`);
+                processedSheetCount++;
+
+                const newFilePath = path.join(dir, `${originalName}_${sheetName}_organizado.xlsx`);
+                
+                const writerOptions = {
+                    filename: newFilePath,
+                    useStyles: true,
+                    useSharedStrings: true
+                };
+                const writer = new ExcelJS.stream.xlsx.WorkbookWriter(writerOptions);
+                const newWorksheet = writer.addWorksheet('Organizado');
+                
+                // Define a estrutura do arquivo de saída
+                newWorksheet.columns = [
+                    { header: 'nome', key: 'nome', width: 40 },
+                    { header: 'cpf', key: 'cpf', width: 20, style: { numFmt: '0' } },
+                    { header: 'fone1', key: 'fone1', width: 15, style: { numFmt: '0' } },
+                    { header: 'chave', key: 'chave', width: 30 },
+                    { header: 'livre7', key: 'livre7', width: 10 }
+                ];
+
+                let processedRows = 0;
+                worksheet.eachRow((row, rowNumber) => {
+                    if (rowNumber > 1) { // Pula o cabeçalho
+                        const cnpjValue = row.getCell('B').value;
+                        const nomeValue = row.getCell('F').value;
+                        const foneValue = row.getCell('L').value;
+                        const emailValue = row.getCell('M').value;
+
+                        const newRowData = {
+                            nome: nomeValue,
+                            cpf: cnpjValue ? Number(String(cnpjValue).replace(/\D/g, '')) : null,
+                            fone1: foneValue ? Number(String(foneValue).replace(/\D/g, '')) : null,
+                            chave: emailValue,
+                            livre7: 'C6'
+                        };
+
+                        newWorksheet.addRow(newRowData).commit();
+                        processedRows++;
+                    }
+                });
+
+                await writer.commit();
+                log(`✅ Aba "${sheetName}" concluída. ${processedRows} linhas salvas em: ${path.basename(newFilePath)}`);
+            }
+
+            if (processedSheetCount > 0) {
+                log(`\n--- ✅ Processo de separação por equipes finalizado com sucesso! ---`);
+                shell.showItemInFolder(path.join(dir, `${workbook.worksheets[0].name}_CAD.xlsx`));
+            } else {
+                log(`⚠️ Nenhuma aba encontrada no arquivo.`);
+            }
+
+        } catch (error) {
+            log(`❌ ERRO GERAL ao separar planilhas por aba: ${error.message}`);
+            console.error("Erro detalhado na separação:", error);
+        }
+        return; // Finaliza a execução para não cair na lógica antiga
+    }
+
+    // --- LÓGICA ANTIGA PARA OS FORMATOS 'bernardo' E 'empresaAqui' ---
     const dir = path.dirname(filePath);
     const originalName = path.parse(filePath).name;
     const newFilePath = path.join(dir, `${originalName}_organizado.xlsx`);
@@ -988,11 +1065,10 @@ ipcMain.on('organize-daily-sheet', async (event, filePath) => {
         writer = new ExcelJS.stream.xlsx.WorkbookWriter(writerOptions);
         const newWorksheet = writer.addWorksheet('Organizado');
 
-        // MODIFICAÇÃO 1: Removida a formatação de data da coluna 'livre1'
         newWorksheet.columns = [
             { header: 'nome', key: 'nome', width: 40 },
             { header: 'cpf', key: 'cpf', width: 20, style: { numFmt: '0' } },
-            { header: 'livre1', key: 'livre1', width: 15 }, // <- Formatação de data removida
+            { header: 'livre1', key: 'livre1', width: 15 },
             { header: 'chave', key: 'chave', width: 30 },
             { header: 'livre3', key: 'livre3', width: 20, style: { numFmt: '0' } },
             { header: 'livre5', key: 'livre5', width: 10 },
@@ -1019,6 +1095,14 @@ ipcMain.on('organize-daily-sheet', async (event, filePath) => {
         const headerMap = {};
         let processedRows = 0;
         const BATCH_LOG_INTERVAL = 20000;
+        let useHeaderMapping = true;
+
+        const fallbackMapping = {
+            empresaAqui: {
+                nome: 'B', cnpj: 'A', tel1: 'E', tel2: 'F',
+                email: 'G', cnae: 'H', data: 'L'
+            }
+        };
 
         reader.read();
 
@@ -1026,38 +1110,100 @@ ipcMain.on('organize-daily-sheet', async (event, filePath) => {
             worksheet.on('row', row => {
                 if (row.number === 1) {
                     row.values.forEach((value, index) => {
-                        if (value) headerMap[value] = index;
+                        if (value) headerMap[String(value).trim().toLowerCase()] = index;
                     });
-                    const requiredCols = ['razao_social', 'cnpj_pk', 'data_inicio_atividade_formatado', 'correiro_eletronico', 'cnae_fiscal_principal', 'telefone_1_formatado', 'telefone_2_formatado'];
-                    for (const col of requiredCols) {
-                        if (!headerMap[col]) {
-                            throw new Error(`Coluna obrigatória "${col}" não encontrada na planilha original.`);
-                        }
+
+                    let requiredCols;
+                    if (organizationType === 'bernardo') {
+                        requiredCols = ['razao_social', 'cnpj_pk', 'data_inicio_atividade_formatado', 'correiro_eletronico', 'cnae_fiscal_principal', 'telefone_1_formatado', 'telefone_2_formatado'];
+                    } else { // empresaAqui
+                        requiredCols = ['razao', 'cnpj', 'data inicio ativ.', 'e-mail', 'cnae principal', 'telefone 1', 'telefone 2'];
                     }
-                    log("✅ Cabeçalho validado. Iniciando processamento das linhas...");
+                    
+                    const allHeadersFound = requiredCols.every(col => {
+                         // Corrigido para procurar por 'e-mail' e 'cnae principal' sem acentos
+                        const normalizedCol = col.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                        return Object.keys(headerMap).some(headerKey => 
+                            headerKey.normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(normalizedCol)
+                        );
+                    });
+
+
+                    if (!allHeadersFound) {
+                        useHeaderMapping = false;
+                        log(`⚠️ AVISO: Um ou mais cabeçalhos não foram encontrados. Usando mapeamento de colunas fixo (A, B, M, N...).`);
+                    } else {
+                        log("✅ Cabeçalho validado. Usando mapeamento por nome de coluna.");
+                    }
                 } else {
-                    const getValue = (colName) => row.getCell(headerMap[colName]).value;
+                    let newRowData;
 
-                    // MODIFICAÇÃO 2: A lógica de data foi simplificada
-                    const dataInicioOriginal = getValue('data_inicio_atividade_formatado');
+                    if (organizationType === 'bernardo') {
+                        const getValue = (colName) => row.getCell(headerMap[colName.toLowerCase()]).value;
+                        newRowData = {
+                            nome: getValue('razao_social'),
+                            cpf: getValue('cnpj_pk') ? Number(String(getValue('cnpj_pk')).replace(/\D/g, '')) : null,
+                            livre1: getValue('data_inicio_atividade_formatado'),
+                            chave: getValue('correiro_eletronico'),
+                            livre3: getValue('cnae_fiscal_principal') ? Number(String(getValue('cnae_fiscal_principal')).replace(/\D/g, '')) : null,
+                            livre5: null, livre7: 'C6',
+                            fone1: getValue('telefone_1_formatado') ? Number(String(getValue('telefone_1_formatado')).replace(/\D/g, '')) : null,
+                            fone2: getValue('telefone_2_formatado') ? Number(String(getValue('telefone_2_formatado')).replace(/\D/g, '')) : null
+                        };
+                    } else if (organizationType === 'empresaAqui') {
+                        let razao, cnpj, dataInicio, email, cnae, tel1, tel2;
 
-                    const newRowData = {
-                        nome: getValue('razao_social'),
-                        cpf: getValue('cnpj_pk') ? Number(String(getValue('cnpj_pk')).replace(/\D/g, '')) : null,
-                        livre1: dataInicioOriginal, // <- Simplesmente copia o valor original
-                        chave: getValue('correiro_eletronico'),
-                        livre3: getValue('cnae_fiscal_principal') ? Number(String(getValue('cnae_fiscal_principal')).replace(/\D/g, '')) : null,
-                        livre5: null, // <- Deixado vazio conforme solicitado
-                        livre7: 'C6',
-                        fone1: getValue('telefone_1_formatado') ? Number(String(getValue('telefone_1_formatado')).replace(/\D/g, '')) : null,
-                        fone2: getValue('telefone_2_formatado') ? Number(String(getValue('telefone_2_formatado')).replace(/\D/g, '')) : null
-                    };
+                        if (useHeaderMapping) {
+                            // Função auxiliar para encontrar a coluna ignorando acentos e variações
+                            const findHeaderIndex = (possibleNames) => {
+                                for(const name of possibleNames) {
+                                    const normalizedName = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                                    for (const headerKey in headerMap) {
+                                        if (headerKey.normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(normalizedName)) {
+                                            return headerMap[headerKey];
+                                        }
+                                    }
+                                }
+                                return -1;
+                            };
 
-                    newWorksheet.addRow(newRowData).commit();
-                    processedRows++;
+                            razao = row.getCell(findHeaderIndex(['razao'])).value;
+                            cnpj = row.getCell(findHeaderIndex(['cnpj'])).value;
+                            dataInicio = row.getCell(findHeaderIndex(['data inicio ativ'])).value;
+                            email = row.getCell(findHeaderIndex(['e-mail', 'email'])).value;
+                            cnae = row.getCell(findHeaderIndex(['cnae principal'])).value;
+                            tel1 = row.getCell(findHeaderIndex(['telefone 1'])).value;
+                            tel2 = row.getCell(findHeaderIndex(['telefone 2'])).value;
 
-                    if (processedRows % BATCH_LOG_INTERVAL === 0) {
-                        log(`Processadas ${processedRows.toLocaleString('pt-BR')} linhas...`);
+                        } else { // Plano B: Mapeamento Fixo
+                            const mapping = fallbackMapping.empresaAqui;
+                            razao = row.getCell(mapping.nome).value;
+                            cnpj = row.getCell(mapping.cnpj).value;
+                            dataInicio = row.getCell(mapping.data).value;
+                            email = row.getCell(mapping.email).value;
+                            cnae = row.getCell(mapping.cnae).value;
+                            tel1 = row.getCell(mapping.tel1).value;
+                            tel2 = row.getCell(mapping.tel2).value;
+                        }
+
+                        newRowData = {
+                            nome: razao,
+                            cpf: cnpj ? Number(String(cnpj).replace(/\D/g, '')) : null,
+                            livre1: dataInicio,
+                            chave: email,
+                            livre3: cnae ? Number(String(cnae).replace(/\D/g, '')) : null,
+                            livre5: null, livre7: 'C6',
+                            fone1: tel1 ? Number(String(tel1).replace(/\D/g, '')) : null,
+                            fone2: tel2 ? Number(String(tel2).replace(/\D/g, '')) : null
+                        };
+                    }
+                    
+                    if (newRowData) {
+                        newWorksheet.addRow(newRowData).commit();
+                        processedRows++;
+                        if (processedRows % BATCH_LOG_INTERVAL === 0) {
+                            log(`Processadas ${processedRows.toLocaleString('pt-BR')} linhas...`);
+                        }
                     }
                 }
             });
@@ -1092,7 +1238,9 @@ ipcMain.on('organize-daily-sheet', async (event, filePath) => {
         }
     }
 });
-
+// =================================================================
+// =            *** FIM DA MODIFICAÇÃO *** =
+// =================================================================
 
 
 // #################################################################
@@ -1698,4 +1846,4 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
         log(`❌ Erro fatal ao processar o arquivo ${path.basename(filePath)}: ${error.message}`);
         console.error(error);
     }
-}
+} 

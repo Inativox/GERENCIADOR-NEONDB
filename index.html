@@ -657,14 +657,20 @@
                                 <button id="adjustPhonesBtn">Ajustar Fones (Manual)</button>
                             </div>
                             
-                        <div class="tool-group">
-                            <button id="organizeDailySheetBtn">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-spreadsheet" viewBox="0 0 16 16">
-                                    <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 1A1.5 1.5 0 0 0 11 2.5V3h-1v1h1v1h1v1h-1v1h1v1h-1v1h1v1h-1v1h-1v-1H9v-1H8v1H7v-1H6v1H5v-1H4v-1H3v-1h1V8H3V7h1V6H3V5h1V4h1V3h1v1h1V3h1v1h1V3h1V2.5A1.5 1.5 0 0 0 9.5 1z"/>
-                                </svg>
-                                Organizar Planilha Diária
-                            </button>
-                        </div>
+                            <div class="tool-group">
+                                <label style="margin-bottom: 10px; font-weight: 600;">Tipo de Organização de Planilha:</label>
+                                <div class="radio-group-container" style="margin-bottom: 15px;">
+                                    <label><input type="radio" name="organizeType" value="bernardo" checked><span class="radio-circle"></span>Bernardo (Padrão)</label>
+                                    <label><input type="radio" name="organizeType" value="empresaAqui"><span class="radio-circle"></span>Empresa Aqui</label>
+                                    <label><input type="radio" name="organizeType" value="cadencia"><span class="radio-circle"></span>Separar por Equipes (Cadências)</label>
+                                </div>
+                                <button id="organizeDailySheetBtn">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-spreadsheet" viewBox="0 0 16 16">
+                                        <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 1A1.5 1.5 0 0 0 11 2.5V3h-1v1h1v1h1v1h-1v1h1v1h-1v1h1v1h-1v1h-1v-1H9v-1H8v1H7v-1H6v1H5v-1H4v-1H3v-1h1V8H3V7h1V6H3V5h1V4h1V3h1v1h1V3h1v1h1V3h1V2.5A1.5 1.5 0 0 0 9.5 1z"/>
+                                    </svg>
+                                    Organizar Planilha Diária
+                                </button>
+                            </div>
 
                             <div class="tool-group">
                                 <button id="selectMergeFilesBtn">Selecionar Arquivos para Mesclar</button>
