@@ -25,12 +25,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     startMerge: (files) => ipcRenderer.send("start-merge", files),
     startDbOnlyCleaning: (args) => ipcRenderer.send("start-db-only-cleaning", args),
     feedRootDatabase: (filePaths) => ipcRenderer.send("feed-root-database", filePaths),
+    splitList: (args) => ipcRenderer.send("split-list", args),
     saveStoredCnpjsToExcel: () => ipcRenderer.invoke("save-stored-cnpjs-to-excel"),
     deleteBatch: (batchId) => ipcRenderer.invoke("delete-batch", batchId),
     organizeDailySheet: (filePath, organizationType) => ipcRenderer.send('organize-daily-sheet', filePath, organizationType),
 
     // --- Funções da API de Consulta (C6) ---
     addFilesToApiQueue: (files) => ipcRenderer.send("add-files-to-api-queue", files),
+    pauseApiQueue: () => ipcRenderer.send("pause-api-queue"),
+    resumeApiQueue: () => ipcRenderer.send("resume-api-queue"),
     startApiQueue: (args) => ipcRenderer.send("start-api-queue", args),
     resetApiQueue: () => ipcRenderer.send("reset-api-queue"),
     removeFromApiQueue: (filePath) => ipcRenderer.send("remove-from-api-queue", filePath),

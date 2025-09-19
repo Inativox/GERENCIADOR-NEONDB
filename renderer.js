@@ -307,6 +307,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const customMergeInputContainer = document.getElementById('customMergeInputContainer');
     const customMergeCountInput = document.getElementById('customMergeCount');
     const removeDuplicatesCheckbox = document.getElementById('removeDuplicatesCheckbox');
+    const selectListToSplitBtn = document.getElementById('selectListToSplitBtn');
+    const listToSplitPathDiv = document.getElementById('listToSplitPath');
+    const linesPerSplitInput = document.getElementById('linesPerSplit');
+    const splitListBtn = document.getElementById('splitListBtn');
     const shuffleResultCheckbox = document.getElementById('shuffleResultCheckbox');
     function addFileToUI(container, filePath, isSingle) { if (isSingle) { container.innerHTML = ''; } const fileDiv = document.createElement('div'); fileDiv.className = 'file-item new-item'; fileDiv.textContent = getBasename(filePath); container.appendChild(fileDiv); setTimeout(() => { fileDiv.classList.remove('new-item'); }, 500); }
     function resetUploadProgress() { if (uploadProgressContainer) uploadProgressContainer.style.display = 'none'; if (uploadProgressBarFill) uploadProgressBarFill.style.width = '0%'; if (uploadProgressText) uploadProgressText.textContent = ''; }
@@ -361,6 +365,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    let listToSplitFile = null;
+    if (selectListToSplitBtn) {
+        selectListToSplitBtn.addEventListener('click', async () => {
+            const files = await window.electronAPI.selectFile({ title: 'Selecione a Lista para Dividir', multi: false });
+            if (files && files.length > 0) {
+                listToSplitFile = files[0];
+                addFileToUI(listToSplitPathDiv, listToSplitFile, true);
+                appendLog(`Arquivo para divisão selecionado: ${listToSplitFile}`);
+            }
+        });
+    }
+    if (splitListBtn) {
+        splitListBtn.addEventListener('click', () => {
+            const linesPerSplit = parseInt(linesPerSplitInput.value, 10);
+            if (!listToSplitFile) return appendLog('❌ ERRO: Selecione um arquivo para dividir.');
+            if (!linesPerSplit || linesPerSplit <= 0) return appendLog('❌ ERRO: Insira um número de linhas válido e maior que zero.');
+            window.electronAPI.splitList({ filePath: listToSplitFile, linesPerSplit });
+        });
+    }
+
     if (feedRootBtn) feedRootBtn.addEventListener('click', async () => { appendLog('Selecionando arquivos para alimentar a base Raiz...'); const files = await window.electronAPI.selectFile({ title: 'Selecione planilhas com CNPJs para a Raiz', multi: true }); if (!files || files.length === 0) { appendLog('Nenhum arquivo selecionado. Operação cancelada.'); return; } feedRootBtn.disabled = true; appendLog(`Iniciando o processo de alimentação da Raiz com ${files.length} arquivo(s).`); window.electronAPI.feedRootDatabase(files); });
     window.electronAPI.onRootFeedFinished(() => { if (feedRootBtn) feedRootBtn.disabled = false; appendLog('✅ Processo de alimentação da Raiz finalizado.'); });
     window.electronAPI.onLog((msg) => appendLog(msg));
@@ -372,12 +396,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiPendingDiv = document.getElementById('apiPending');
     const apiCompletedDiv = document.getElementById('apiCompleted');
     const apiKeySelection = document.getElementById('apiKeySelection');
+    const pauseApiBtn = document.getElementById('pauseApiBtn');
+    const resumeApiBtn = document.getElementById('resumeApiBtn');
     const startApiBtn = document.getElementById('startApiBtn');
     const resetApiBtn = document.getElementById('resetApiBtn');
     const selectApiFileBtn = document.getElementById('selectApiFileBtn');
     const apiStatusSpan = document.getElementById('apiStatus');
     const apiProgressBarFill = document.getElementById('apiProgressBarFill');
     const apiLogDiv = document.getElementById('apiLog');
+    if (pauseApiBtn) pauseApiBtn.addEventListener('click', () => window.electronAPI.pauseApiQueue());
+    if (resumeApiBtn) resumeApiBtn.addEventListener('click', () => window.electronAPI.resumeApiQueue());
     if (apiDropzone) { apiDropzone.addEventListener('dragover', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--accent-color)'; apiDropzone.style.backgroundColor = 'var(--bg-lighter)'; }); apiDropzone.addEventListener('dragleave', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--border-color)'; apiDropzone.style.backgroundColor = 'transparent'; }); apiDropzone.addEventListener('drop', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--border-color)'; apiDropzone.style.backgroundColor = 'transparent'; const files = Array.from(event.dataTransfer.files).filter(file => file.path.endsWith('.xlsx') || file.path.endsWith('.xls') || file.path.endsWith('.csv')).map(file => file.path); if (files.length > 0) { window.electronAPI.addFilesToApiQueue(files); } }); }
     if (selectApiFileBtn) selectApiFileBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione as planilhas de CNPJs', multi: true }); if (files && files.length > 0) { window.electronAPI.addFilesToApiQueue(files); } });
     if (startApiBtn) startApiBtn.addEventListener('click', () => { startApiBtn.disabled = true; resetApiBtn.disabled = true; apiStatusSpan.textContent = 'Iniciando processamento da fila...'; window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value }); });
@@ -388,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateApiQueueUI(queue) {
-        const { pending, processing, completed, cancelled } = queue;
+        const { pending, processing, completed, cancelled, isPaused } = queue;
         if (!apiProcessingDiv || !apiPendingDiv || !apiCompletedDiv || !startApiBtn) return;
 
         const createFileItem = (file, type, index) => {
@@ -468,15 +496,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        startApiBtn.disabled = pending.length === 0 || !!processing;
-        resetApiBtn.disabled = !processing && pending.length === 0 && completed.length === 0 && (!cancelled || cancelled.length === 0);
+        const isRunning = !!processing;
+        const hasFiles = pending.length > 0 || completed.length > 0 || cancelled.length > 0 || isRunning;
+
+        startApiBtn.style.display = !isRunning ? 'inline-flex' : 'none';
+        startApiBtn.disabled = pending.length === 0 || isRunning;
+
+        pauseApiBtn.style.display = isRunning && !isPaused ? 'inline-flex' : 'none';
+        resumeApiBtn.style.display = isRunning && isPaused ? 'inline-flex' : 'none';
+
+        resetApiBtn.disabled = !hasFiles;
     }
 
     window.electronAPI.onApiQueueUpdate((queue) => { 
         updateApiQueueUI(queue); 
-        if (!queue.processing && queue.pending.length === 0 && (queue.completed.length > 0 || (queue.cancelled && queue.cancelled.length > 0))) { 
+        if (queue.isPaused) {
+            apiStatusSpan.textContent = 'Pausado';
+        } else if (!queue.processing && queue.pending.length === 0 && (queue.completed.length > 0 || (queue.cancelled && queue.cancelled.length > 0))) { 
             apiStatusSpan.textContent = 'Fila concluída!';
-            resetApiBtn.disabled = false; 
         } else if (queue.processing) {
             apiStatusSpan.textContent = `Processando...`;
         } else {

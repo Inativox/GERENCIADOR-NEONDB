@@ -1628,14 +1628,79 @@ ipcMain.on("start-adjust-phones", async (event, args) => {
         return;
     }
     const log = (msg) => event.sender.send("log", msg);
-    log(`\n--- Iniciando Ajuste de Fones para ${path.basename(args.filePath)} ---`);
+    log(`\n--- Iniciando Ajuste de Fones para ${path.basename(args.filePath)} ---
+`);
     await runPhoneAdjustment(args.filePath, event, args.backup);
-    log(`\n✅ Ajuste de fones concluído para o arquivo.`);
+    log(`\n✅ Ajuste de fones concluído para o arquivo.
+`);
+});
+
+ipcMain.on("split-list", async (event, { filePath, linesPerSplit }) => {
+    if (!isAdmin()) {
+        event.sender.send("log", "❌ Acesso negado: Permissão de administrador necessária.");
+        return;
+    }
+    const log = (msg) => event.sender.send("log", msg);
+    log(`\n--- Iniciando Divisão de Lista para ${path.basename(filePath)} ---
+`);
+
+    try {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(filePath);
+        const worksheet = workbook.worksheets[0];
+
+        if (!worksheet || worksheet.rowCount <= 1) {
+            log(`⚠️ Arquivo ${path.basename(filePath)} vazio ou sem dados. Pulando.
+`);
+            return;
+        }
+
+        const header = worksheet.getRow(1).values.filter(Boolean); // Get header and remove null/undefined
+        const totalRows = worksheet.rowCount - 1; // Exclude header
+        const numFiles = Math.ceil(totalRows / linesPerSplit);
+        const baseName = path.basename(filePath, path.extname(filePath));
+        const outputDir = path.dirname(filePath);
+
+        log(`Total de ${totalRows} linhas de dados. Será dividido em ${numFiles} arquivo(s) com ${linesPerSplit} linhas cada.
+`);
+
+        let currentRow = 2; // Start from the second row (after header)
+        for (let i = 0; i < numFiles; i++) {
+            const newWorkbook = new ExcelJS.Workbook();
+            const newWorksheet = newWorkbook.addWorksheet("Sheet1");
+            newWorksheet.addRow(header); // Add header to new file
+
+            const startRow = currentRow;
+            const endRow = Math.min(currentRow + linesPerSplit - 1, totalRows + 1); // +1 for header offset
+
+            for (let j = startRow; j <= endRow; j++) {
+                const row = worksheet.getRow(j);
+                newWorksheet.addRow(row.values.filter(Boolean)); // Add row data
+            }
+            
+            const newFilePath = path.join(outputDir, `${baseName}_parte${i + 1}.xlsx`);
+            await newWorkbook.xlsx.writeFile(newFilePath);
+            log(`✅ Parte ${i + 1} salva em: ${path.basename(newFilePath)}
+`);
+            currentRow = endRow + 1;
+        }
+        log(`\n--- Divisão de Lista concluída com sucesso! ---
+`);
+        event.sender.send("log", `🎉 Arquivos divididos salvos em: ${outputDir}`);
+        shell.showItemInFolder(path.join(outputDir, `${baseName}_parte1.xlsx`));
+
+    } catch (error) {
+        log(`❌ ERRO ao dividir a lista: ${error.message}
+`);
+        console.error("Erro detalhado na divisão:", error);
+    }
 });
 
 let apiQueue = { pending: [], processing: null, completed: [], cancelled: [] };
 let isApiQueueRunning = false;
 let cancelCurrentApiTask = false;
+let isApiQueuePaused = false;
+let currentApiKeyMode = 'chave1';
 
 ipcMain.on("add-files-to-api-queue", (event, filePaths) => {
     if (!isAdmin()) return;
@@ -1644,12 +1709,34 @@ ipcMain.on("add-files-to-api-queue", (event, filePaths) => {
     event.sender.send("api-queue-update", apiQueue);
 });
 
+ipcMain.on("pause-api-queue", (event) => {
+    if (!isAdmin()) return;
+    if (isApiQueueRunning && !isApiQueuePaused) {
+        isApiQueuePaused = true;
+        event.sender.send("api-log", "\n⏸️ Fila de processamento PAUSADA. A tarefa atual será concluída.");
+        event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
+    }
+});
+
+ipcMain.on("resume-api-queue", (event) => {
+    if (!isAdmin()) return;
+    if (isApiQueueRunning && isApiQueuePaused) {
+        isApiQueuePaused = false;
+        event.sender.send("api-log", "\n▶️ Fila de processamento RETOMADA.");
+        event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
+        processNextInApiQueue(event); // Continue processing
+    }
+});
+
 ipcMain.on("start-api-queue", (event, { keyMode }) => {
     if (!isAdmin()) return;
     if (isApiQueueRunning) return;
+    currentApiKeyMode = keyMode;
     isApiQueueRunning = true;
+    isApiQueuePaused = false;
     cancelCurrentApiTask = false;
-    processNextInApiQueue(event, keyMode);
+    event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
+    processNextInApiQueue(event);
 });
 
 ipcMain.on("reset-api-queue", (event) => {
@@ -1657,8 +1744,9 @@ ipcMain.on("reset-api-queue", (event) => {
     isApiQueueRunning = false;
     cancelCurrentApiTask = true; // Signal to stop any ongoing process
     apiQueue = { pending: [], processing: null, completed: [], cancelled: [] };
-    event.sender.send("api-queue-update", apiQueue);
+    isApiQueuePaused = false;
     event.sender.send("api-log", "Fila e status reiniciados.");
+    event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
 });
 
 ipcMain.on("remove-from-api-queue", (event, filePath) => {
@@ -1666,7 +1754,7 @@ ipcMain.on("remove-from-api-queue", (event, filePath) => {
     const index = apiQueue.pending.indexOf(filePath);
     if (index > -1) {
         apiQueue.pending.splice(index, 1);
-        event.sender.send("api-queue-update", apiQueue);
+        event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
         event.sender.send("api-log", `Arquivo removido da fila: ${path.basename(filePath)}`);
     }
 });
@@ -1677,7 +1765,7 @@ ipcMain.on("prioritize-in-api-queue", (event, filePath) => {
     if (index > 0) {
         const [item] = apiQueue.pending.splice(index, 1);
         apiQueue.pending.unshift(item);
-        event.sender.send("api-queue-update", apiQueue);
+        event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
         event.sender.send("api-log", `Arquivo priorizado: ${path.basename(filePath)}`);
     }
 });
@@ -1690,26 +1778,32 @@ ipcMain.on("cancel-current-api-task", (event) => {
     }
 });
 
-async function processNextInApiQueue(event, keyMode) {
+async function processNextInApiQueue(event) {
     if (!isApiQueueRunning) {
         apiQueue.processing = null;
-        event.sender.send("api-queue-update", apiQueue);
+        event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
         event.sender.send("api-log", "\nFila de processamento interrompida.");
         return;
     }
+
+    if (isApiQueuePaused) {
+        event.sender.send("api-log", "Fila PAUSADA. Aguardando para retomar...");
+        return; // Do not process next, just wait
+    }
+
     if (apiQueue.pending.length === 0) {
         event.sender.send("api-log", "\n✅ Fila de processamento concluída.");
         apiQueue.processing = null;
         isApiQueueRunning = false;
-        event.sender.send("api-queue-update", apiQueue);
+        event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
         return;
     }
 
     apiQueue.processing = apiQueue.pending.shift();
-    event.sender.send("api-queue-update", apiQueue);
+    event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
     event.sender.send("api-log", `--- Iniciando processamento de: ${path.basename(apiQueue.processing)} ---`);
     
-    await runApiConsultation(apiQueue.processing, keyMode, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }));
+    await runApiConsultation(apiQueue.processing, currentApiKeyMode, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }));
 
     if (cancelCurrentApiTask) {
         event.sender.send("api-log", `Processamento de ${path.basename(apiQueue.processing)} foi cancelado.`);
@@ -1720,9 +1814,12 @@ async function processNextInApiQueue(event, keyMode) {
     }
     
     apiQueue.processing = null;
-    event.sender.send("api-queue-update", apiQueue);
+    event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
     
-    processNextInApiQueue(event, keyMode);
+    // If paused, don't call itself recursively
+    if (!isApiQueuePaused) {
+        processNextInApiQueue(event);
+    }
 }
 
 
@@ -1806,6 +1903,20 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
                 log("Processamento do arquivo cancelado pelo usuário.");
                 break;
             }
+            if (isApiQueuePaused) { // Check for pause here
+                log("Processamento PAUSADO. Aguardando para retomar...");
+                // Wait until unpaused. This is a blocking wait.
+                while (isApiQueuePaused) {
+                    await sleep(1000); // Check every second
+                    if (cancelCurrentApiTask) break; // Allow cancellation even when paused
+                }
+                if (cancelCurrentApiTask) {
+                    log("Processamento do arquivo cancelado enquanto pausado.");
+                    break;
+                }
+                log("Processamento RETOMADO.");
+            }
+
             const lote = lotes[i];
             log(`\n=== Processando Lote ${i + 1}/${lotes.length} (${lote.length} registros) ===`);
             progress(i + 1, lotes.length);
@@ -1899,7 +2010,28 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
             }
         }
         if (!cancelCurrentApiTask) {
-            log(`\n🎉 Arquivo ${path.basename(filePath)} processado e salvo.`);
+            log(`\nProcessamento da API concluído para ${path.basename(filePath)}. Iniciando limpeza final...`);
+            
+            const finalWorksheet = workbook.worksheets[0];
+            const newWorkbook = new ExcelJS.Workbook();
+            const newWorksheet = newWorkbook.addWorksheet('Disponiveis');
+            
+            // Copia o cabeçalho
+            newWorksheet.getRow(1).values = finalWorksheet.getRow(1).values;
+
+            let keptRows = 0;
+            finalWorksheet.eachRow((row, rowNum) => {
+                if (rowNum > 1) { // Pula o cabeçalho
+                    const status = row.getCell(COLUNA_RESPOSTA_LETTER).value;
+                    if (status === 'disponível') {
+                        newWorksheet.addRow(row.values);
+                        keptRows++;
+                    }
+                }
+            });
+
+            await newWorkbook.xlsx.writeFile(filePath);
+            log(`✅ Limpeza final concluída. ${keptRows} registros 'disponível' foram mantidos no arquivo.`);
         }
     } catch (error) {
         log(`❌ Erro fatal ao processar o arquivo ${path.basename(filePath)}: ${error.message}`);

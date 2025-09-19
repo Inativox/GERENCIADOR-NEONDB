@@ -684,6 +684,14 @@
                                     Excluir Lote
                                 </button>
                             </div>
+                            <div class="tool-group">
+                                <label for="splitListFileBtn">Dividir Lista Grande</label>
+                                <button id="selectListToSplitBtn">1. Selecionar Arquivo</button>
+                                <div id="listToSplitPath" class="files"></div>
+                                <label for="linesPerSplit">Linhas por Planilha:</label>
+                                <input type="number" id="linesPerSplit" placeholder="Ex: 25000" value="25000">
+                                <button id="splitListBtn">2. Dividir Lista</button>
+                            </div>
                         </div>
                         <div class="tool-column">
                             <div class="tool-group">
@@ -805,7 +813,9 @@
                       </select>
                     </div>
                     <hr>
-                    <button id="startApiBtn" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>Iniciar Fila</button>
+                    <button id="startApiBtn" style="display: inline-flex;" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>Iniciar Fila</button>
+                    <button id="pauseApiBtn" style="display: none; background: var(--warning-color);">Pausar Fila</button>
+                    <button id="resumeApiBtn" style="display: none; background: var(--success-color);">Retomar Fila</button>
                     <button id="resetApiBtn" class="btn-danger"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>Limpar Fila</button>
                     <p style="margin-top: 20px;"><strong>Status Geral:</strong> <span id="apiStatus">Aguardando</span></p>
                     <div class="progress-bar-container">
