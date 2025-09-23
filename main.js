@@ -1700,13 +1700,13 @@ let apiQueue = { pending: [], processing: null, completed: [], cancelled: [] };
 let isApiQueueRunning = false;
 let cancelCurrentApiTask = false;
 let isApiQueuePaused = false;
-let currentApiKeyMode = 'chave1';
+let currentApiOptions = { keyMode: 'chave1', removeClients: true };
 
 ipcMain.on("add-files-to-api-queue", (event, filePaths) => {
     if (!isAdmin()) return;
     apiQueue.pending.push(...filePaths);
     apiQueue.pending = [...new Set(apiQueue.pending)];
-    event.sender.send("api-queue-update", apiQueue);
+    event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
 });
 
 ipcMain.on("pause-api-queue", (event) => {
@@ -1728,10 +1728,10 @@ ipcMain.on("resume-api-queue", (event) => {
     }
 });
 
-ipcMain.on("start-api-queue", (event, { keyMode }) => {
+ipcMain.on("start-api-queue", (event, options) => {
     if (!isAdmin()) return;
     if (isApiQueueRunning) return;
-    currentApiKeyMode = keyMode;
+    currentApiOptions = options;
     isApiQueueRunning = true;
     isApiQueuePaused = false;
     cancelCurrentApiTask = false;
@@ -1803,7 +1803,7 @@ async function processNextInApiQueue(event) {
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
     event.sender.send("api-log", `--- Iniciando processamento de: ${path.basename(apiQueue.processing)} ---`);
     
-    await runApiConsultation(apiQueue.processing, currentApiKeyMode, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }));
+    await runApiConsultation(apiQueue.processing, currentApiOptions, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }));
 
     if (cancelCurrentApiTask) {
         event.sender.send("api-log", `Processamento de ${path.basename(apiQueue.processing)} foi cancelado.`);
@@ -1824,7 +1824,8 @@ async function processNextInApiQueue(event) {
 
 
 // FUNÇÃO runApiConsultation ATUALIZADA COM LÓGICA DE RETENTATIVA CORRIGIDA
-async function runApiConsultation(filePath, keyMode, log, progress) {
+async function runApiConsultation(filePath, options, log, progress) {
+    const { keyMode, removeClients } = options;
     const credentials = {
         c6: {
             CLIENT_ID: "EA8ZUFeZVSeqMGr49XJSsZKFuxSZub3i",
@@ -1862,6 +1863,11 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
 
     try {
         log(`Iniciando processo com o modo de chave: '${keyMode}'.`);
+        if (removeClients) {
+            log(`Remoção automática de clientes: ATIVADA.`);
+        } else {
+            log(`Remoção automática de clientes: DESATIVADA.`);
+        }
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.readFile(filePath);
         const worksheet = workbook.worksheets[0];
@@ -2010,28 +2016,32 @@ async function runApiConsultation(filePath, keyMode, log, progress) {
             }
         }
         if (!cancelCurrentApiTask) {
-            log(`\nProcessamento da API concluído para ${path.basename(filePath)}. Iniciando limpeza final...`);
-            
-            const finalWorksheet = workbook.worksheets[0];
-            const newWorkbook = new ExcelJS.Workbook();
-            const newWorksheet = newWorkbook.addWorksheet('Disponiveis');
-            
-            // Copia o cabeçalho
-            newWorksheet.getRow(1).values = finalWorksheet.getRow(1).values;
+            if (removeClients) {
+                log(`\nProcessamento da API concluído para ${path.basename(filePath)}. Iniciando limpeza final (remoção de clientes)...`);
+                
+                const finalWorksheet = workbook.worksheets[0];
+                const newWorkbook = new ExcelJS.Workbook();
+                const newWorksheet = newWorkbook.addWorksheet('Disponiveis');
+                
+                // Copia o cabeçalho
+                newWorksheet.getRow(1).values = finalWorksheet.getRow(1).values;
 
-            let keptRows = 0;
-            finalWorksheet.eachRow((row, rowNum) => {
-                if (rowNum > 1) { // Pula o cabeçalho
-                    const status = row.getCell(COLUNA_RESPOSTA_LETTER).value;
-                    if (status === 'disponível') {
-                        newWorksheet.addRow(row.values);
-                        keptRows++;
+                let keptRows = 0;
+                finalWorksheet.eachRow((row, rowNum) => {
+                    if (rowNum > 1) { // Pula o cabeçalho
+                        const status = row.getCell(COLUNA_RESPOSTA_LETTER).value;
+                        if (status === 'disponível') {
+                            newWorksheet.addRow(row.values);
+                            keptRows++;
+                        }
                     }
-                }
-            });
+                });
 
-            await newWorkbook.xlsx.writeFile(filePath);
-            log(`✅ Limpeza final concluída. ${keptRows} registros 'disponível' foram mantidos no arquivo.`);
+                await newWorkbook.xlsx.writeFile(filePath);
+                log(`✅ Limpeza final concluída. ${keptRows} registros 'disponível' foram mantidos no arquivo.`);
+            } else {
+                log(`\n✅ Processamento da API concluído para ${path.basename(filePath)}. O arquivo foi salvo com todos os resultados (disponível/cliente).`);
+            }
         }
     } catch (error) {
         log(`❌ Erro fatal ao processar o arquivo ${path.basename(filePath)}: ${error.message}`);

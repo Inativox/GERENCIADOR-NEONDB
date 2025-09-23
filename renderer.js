@@ -408,7 +408,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (resumeApiBtn) resumeApiBtn.addEventListener('click', () => window.electronAPI.resumeApiQueue());
     if (apiDropzone) { apiDropzone.addEventListener('dragover', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--accent-color)'; apiDropzone.style.backgroundColor = 'var(--bg-lighter)'; }); apiDropzone.addEventListener('dragleave', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--border-color)'; apiDropzone.style.backgroundColor = 'transparent'; }); apiDropzone.addEventListener('drop', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--border-color)'; apiDropzone.style.backgroundColor = 'transparent'; const files = Array.from(event.dataTransfer.files).filter(file => file.path.endsWith('.xlsx') || file.path.endsWith('.xls') || file.path.endsWith('.csv')).map(file => file.path); if (files.length > 0) { window.electronAPI.addFilesToApiQueue(files); } }); }
     if (selectApiFileBtn) selectApiFileBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione as planilhas de CNPJs', multi: true }); if (files && files.length > 0) { window.electronAPI.addFilesToApiQueue(files); } });
-    if (startApiBtn) startApiBtn.addEventListener('click', () => { startApiBtn.disabled = true; resetApiBtn.disabled = true; apiStatusSpan.textContent = 'Iniciando processamento da fila...'; window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value }); });
+    if (startApiBtn) {
+        startApiBtn.addEventListener('click', () => {
+            startApiBtn.disabled = true;
+            resetApiBtn.disabled = true;
+            apiStatusSpan.textContent = 'Iniciando processamento da fila...';
+            const removeClients = document.getElementById('apiRemoveClientsCheckbox').checked;
+            window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value, removeClients: removeClients });
+        });
+    }
     if (resetApiBtn) resetApiBtn.addEventListener('click', () => { window.electronAPI.resetApiQueue(); });
     const apiCancelledDiv = document.getElementById('apiCancelled');
     if (!apiCancelledDiv) {
