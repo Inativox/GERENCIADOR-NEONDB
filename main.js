@@ -1696,7 +1696,7 @@ ipcMain.on("split-list", async (event, { filePath, linesPerSplit }) => {
     }
 });
 
-let apiQueue = { pending: [], processing: null, completed: [], cancelled: [] };
+let apiQueue = { pending: [], processing: null, completed: [], cancelled: [], clientHeader: null, clientRows: [] };
 let isApiQueueRunning = false;
 let cancelCurrentApiTask = false;
 let isApiQueuePaused = false;
@@ -1734,6 +1734,8 @@ ipcMain.on("start-api-queue", (event, options) => {
     currentApiOptions = options;
     isApiQueueRunning = true;
     isApiQueuePaused = false;
+    apiQueue.clientHeader = null;
+    apiQueue.clientRows = [];
     cancelCurrentApiTask = false;
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
     processNextInApiQueue(event);
@@ -1743,7 +1745,7 @@ ipcMain.on("reset-api-queue", (event) => {
     if (!isAdmin()) return;
     isApiQueueRunning = false;
     cancelCurrentApiTask = true; // Signal to stop any ongoing process
-    apiQueue = { pending: [], processing: null, completed: [], cancelled: [] };
+    apiQueue = { pending: [], processing: null, completed: [], cancelled: [], clientHeader: null, clientRows: [] };
     isApiQueuePaused = false;
     event.sender.send("api-log", "Fila e status reiniciados.");
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
@@ -1778,6 +1780,45 @@ ipcMain.on("cancel-current-api-task", (event) => {
     }
 });
 
+async function saveCollectedClients(event) {
+    const log = (msg) => event.sender.send("api-log", msg);
+
+    if (!currentApiOptions.extractClients || apiQueue.clientRows.length === 0) {
+        return; // Nothing to do
+    }
+
+    log(`\n--- Iniciando salvamento do arquivo consolidado de clientes (${apiQueue.clientRows.length} registros) ---`);
+
+    try {
+        const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+            title: "Salvar Arquivo de Clientes",
+            defaultPath: `clientes_consolidados_${Date.now()}.xlsx`,
+            filters: [{ name: "Planilhas Excel", extensions: ["xlsx"] }]
+        });
+
+        if (canceled || !filePath) {
+            log("Salvamento do arquivo de clientes cancelado pelo usuário.");
+            return;
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet("Clientes");
+
+        if (apiQueue.clientHeader) {
+            worksheet.addRow(apiQueue.clientHeader);
+        }
+        worksheet.addRows(apiQueue.clientRows);
+
+        await workbook.xlsx.writeFile(filePath);
+        log(`✅ Arquivo de clientes salvo com sucesso em: ${filePath}`);
+        shell.showItemInFolder(filePath);
+
+    } catch (error) {
+        log(`❌ Erro ao salvar o arquivo consolidado de clientes: ${error.message}`);
+        console.error(error);
+    }
+}
+
 async function processNextInApiQueue(event) {
     if (!isApiQueueRunning) {
         apiQueue.processing = null;
@@ -1795,6 +1836,9 @@ async function processNextInApiQueue(event) {
         event.sender.send("api-log", "\n✅ Fila de processamento concluída.");
         apiQueue.processing = null;
         isApiQueueRunning = false;
+
+        await saveCollectedClients(event);
+
         event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
         return;
     }
@@ -1803,14 +1847,26 @@ async function processNextInApiQueue(event) {
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
     event.sender.send("api-log", `--- Iniciando processamento de: ${path.basename(apiQueue.processing)} ---`);
     
-    await runApiConsultation(apiQueue.processing, currentApiOptions, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }));
+    const result = await runApiConsultation(apiQueue.processing, currentApiOptions, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }));
+
+    if (result && result.success && currentApiOptions.extractClients && result.clientData.rows.length > 0) {
+        if (!apiQueue.clientHeader) {
+            apiQueue.clientHeader = result.clientData.header;
+        }
+        apiQueue.clientRows.push(...result.clientData.rows);
+        event.sender.send("api-log", `Adicionados ${result.clientData.rows.length} clientes à lista de extração. Total agora: ${apiQueue.clientRows.length}.`);
+    }
 
     if (cancelCurrentApiTask) {
         event.sender.send("api-log", `Processamento de ${path.basename(apiQueue.processing)} foi cancelado.`);
         apiQueue.cancelled.push(apiQueue.processing);
         cancelCurrentApiTask = false; // Reset for next run
     } else {
-        apiQueue.completed.push(apiQueue.processing);
+        if (result && result.success) {
+            apiQueue.completed.push(apiQueue.processing);
+        } else {
+            apiQueue.cancelled.push(apiQueue.processing); // Move to cancelled if it failed
+        }
     }
     
     apiQueue.processing = null;
@@ -2016,6 +2072,22 @@ async function runApiConsultation(filePath, options, log, progress) {
             }
         }
         if (!cancelCurrentApiTask) {
+            let collectedClients = { header: null, rows: [] };
+            if (options.extractClients) {
+                log(`\nExtraindo dados de 'cliente' do arquivo...`);
+                // O objeto 'worksheet' já foi atualizado em memória durante o processamento dos lotes
+                collectedClients.header = worksheet.getRow(1).values;
+                worksheet.eachRow((row, rowNum) => {
+                    if (rowNum > 1) {
+                        const status = row.getCell(COLUNA_RESPOSTA_LETTER).value;
+                        if (status === 'cliente') {
+                            collectedClients.rows.push(row.values);
+                        }
+                    }
+                });
+                log(`Encontrados ${collectedClients.rows.length} registros de 'cliente' para extração.`);
+            }
+
             if (removeClients) {
                 log(`\nProcessamento da API concluído para ${path.basename(filePath)}. Iniciando limpeza final (remoção de clientes)...`);
                 
@@ -2042,9 +2114,12 @@ async function runApiConsultation(filePath, options, log, progress) {
             } else {
                 log(`\n✅ Processamento da API concluído para ${path.basename(filePath)}. O arquivo foi salvo com todos os resultados (disponível/cliente).`);
             }
+            return { success: true, clientData: collectedClients };
         }
+        return { success: false, clientData: { header: null, rows: [] } }; // In case of cancellation
     } catch (error) {
         log(`❌ Erro fatal ao processar o arquivo ${path.basename(filePath)}: ${error.message}`);
         console.error(error);
+        return { success: false, clientData: { header: null, rows: [] } };
     }
 } 

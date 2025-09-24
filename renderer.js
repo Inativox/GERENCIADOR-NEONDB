@@ -414,7 +414,8 @@ document.addEventListener('DOMContentLoaded', () => {
             resetApiBtn.disabled = true;
             apiStatusSpan.textContent = 'Iniciando processamento da fila...';
             const removeClients = document.getElementById('apiRemoveClientsCheckbox').checked;
-            window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value, removeClients: removeClients });
+            const extractClients = document.getElementById('apiExtractClientsCheckbox').checked;
+            window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value, removeClients: removeClients, extractClients: extractClients });
         });
     }
     if (resetApiBtn) resetApiBtn.addEventListener('click', () => { window.electronAPI.resetApiQueue(); });
