@@ -1090,6 +1090,18 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
             { header: 'fone15', key: 'fone15', width: 15, style: { numFmt: '0' } },
             { header: 'fone16', key: 'fone16', width: 15, style: { numFmt: '0' } }
         ];
+        
+        if (organizationType === 'relacionamento') {
+            newWorksheet.columns = [
+                { header: 'nome', key: 'nome', width: 40 },
+                { header: 'cpf', key: 'cpf', width: 20, style: { numFmt: '0' } },
+                { header: 'livre1', key: 'livre1', width: 20 }, // Fase
+                { header: 'chave', key: 'chave', width: 30 }, // EMAIL
+                { header: 'livre2', key: 'livre2', width: 20 }, // VL_CASH_IN_MTD
+                { header: 'livre3', key: 'livre3', width: 45 }, // Faixa de faturamento
+                { header: 'fone1', key: 'fone1', width: 15, style: { numFmt: '0' } } // TELEFONE_MASTER
+            ];
+        }
 
         const reader = new ExcelJS.stream.xlsx.WorkbookReader(filePath);
         const headerMap = {};
@@ -1101,6 +1113,10 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
             empresaAqui: {
                 nome: 'B', cnpj: 'A', tel1: 'E', tel2: 'F',
                 email: 'G', cnae: 'H', data: 'L'
+            },
+            relacionamento: {
+                cpf: 'B', livre1: 'C', nome: 'E', fone1: 'G',
+                chave: 'H', livre2: 'I', livre3: 'Q'
             }
         };
 
@@ -1118,6 +1134,8 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
                         requiredCols = ['razao_social', 'cnpj_pk', 'data_inicio_atividade_formatado', 'correiro_eletronico', 'cnae_fiscal_principal', 'telefone_1_formatado', 'telefone_2_formatado'];
                     } else { // empresaAqui
                         requiredCols = ['razao', 'cnpj', 'data inicio ativ.', 'e-mail', 'cnae principal', 'telefone 1', 'telefone 2'];
+                    } if (organizationType === 'relacionamento') {
+                        requiredCols = ['cd_cpf_cnpj_cliente', 'fase', 'nome_cliente', 'telefone_master', 'email', 'vl_cash_in_mtd', 'qual a faixa de faturamento mensal da sua empresa?'];
                     }
                     
                     const allHeadersFound = requiredCols.every(col => {
@@ -1195,6 +1213,42 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
                             livre5: null, livre7: 'C6',
                             fone1: tel1 ? Number(String(tel1).replace(/\D/g, '')) : null,
                             fone2: tel2 ? Number(String(tel2).replace(/\D/g, '')) : null
+                        };
+                    } else if (organizationType === 'relacionamento') {
+                        let cpf, fase, nome, fone1, email, cashIn, faturamento;
+
+                        if (useHeaderMapping) {
+                             const findHeaderIndex = (possibleNames) => {
+                                for(const name of possibleNames) {
+                                    const normalizedName = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                                    for (const headerKey in headerMap) {
+                                        if (headerKey.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(normalizedName)) {
+                                            return headerMap[headerKey];
+                                        }
+                                    }
+                                }
+                                return -1;
+                            };
+                            cpf = row.getCell(findHeaderIndex(['cd_cpf_cnpj_cliente'])).value;
+                            fase = row.getCell(findHeaderIndex(['fase'])).value;
+                            nome = row.getCell(findHeaderIndex(['nome_cliente'])).value;
+                            fone1 = row.getCell(findHeaderIndex(['telefone_master'])).value;
+                            email = row.getCell(findHeaderIndex(['email'])).value;
+                            cashIn = row.getCell(findHeaderIndex(['vl_cash_in_mtd'])).value;
+                            faturamento = row.getCell(findHeaderIndex(['qual a faixa de faturamento mensal da sua empresa?'])).value;
+                        } else {
+                            const mapping = fallbackMapping.relacionamento;
+                            cpf = row.getCell(mapping.cpf).value;
+                            fase = row.getCell(mapping.livre1).value;
+                            nome = row.getCell(mapping.nome).value;
+                            fone1 = row.getCell(mapping.fone1).value;
+                            email = row.getCell(mapping.chave).value;
+                            cashIn = row.getCell(mapping.livre2).value;
+                            faturamento = row.getCell(mapping.livre3).value;
+                        }
+
+                        newRowData = {
+                            nome: nome, cpf: cpf ? Number(String(cpf).replace(/\D/g, '')) : null, livre1: fase, chave: email, livre2: cashIn, livre3: faturamento, fone1: fone1 ? Number(String(fone1).replace(/\D/g, '')) : null
                         };
                     }
                     
