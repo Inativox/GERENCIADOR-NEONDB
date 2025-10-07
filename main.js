@@ -13,7 +13,7 @@ const { Pool } = require('pg');
 
 autoUpdater.logger = require("electron-log");
 autoUpdater.logger.transports.file.level = "info";
-
+//coment
 const store = new Store();
 
 // #################################################################
