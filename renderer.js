@@ -50,6 +50,27 @@ document.addEventListener('DOMContentLoaded', () => {
             logoutBtn.style.display = 'inline-flex';
         }
         setupUIForRole(role, teamId);
+
+        // NOVO: Lógica para forçar a verificação de blocklist para usuários específicos.
+        const checkBlocklistCheckbox = document.getElementById('checkBlocklistCheckbox');
+        if (checkBlocklistCheckbox) {
+            // Se o usuário NÃO for 'Davi', a opção se torna obrigatória.
+            if (username !== 'Davi') {
+                checkBlocklistCheckbox.checked = true;
+                checkBlocklistCheckbox.disabled = true;
+                
+                // Adiciona um feedback visual para o usuário.
+                const parentSwitch = checkBlocklistCheckbox.closest('.toggle-switch');
+                if (parentSwitch) {
+                    parentSwitch.style.opacity = '0.7';
+                    parentSwitch.style.cursor = 'not-allowed';
+                    parentSwitch.title = 'Esta opção é obrigatória para o seu perfil de usuário.';
+                }
+            } else {
+                // Garante que para o usuário 'Davi' a opção esteja sempre habilitada.
+                checkBlocklistCheckbox.disabled = false;
+            }
+        }
     });
 
     if (logoutBtn) {
