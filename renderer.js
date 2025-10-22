@@ -106,6 +106,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'localGrid': 'local-sections',
         'apiGrid': 'api-sections',
         'enrichmentGrid': 'enrichment-sections',
+        // NOVO: Adiciona a grid da nova aba
+        'blocklistGrid': 'blocklist-sections',
     };
 
     let sortableInstances = {};
@@ -208,6 +210,10 @@ document.addEventListener('DOMContentLoaded', () => {
             title: 'Enriquecimento de Dados',
             description: 'Amplie suas bases com informações valiosas, como telefones e outros dados de contato, a partir de fontes confiáveis. Maximize o potencial de suas campanhas.'
         },
+        'Blocklist': {
+            title: 'Gerenciador de Blocklist',
+            description: 'Administre a lista de telefones restritos. Alimente a base de dados e prepare arquivos para garantir a conformidade e eficiência das suas campanhas.'
+        },
         'Monitoramento': {
             title: 'Monitoramento de Relatórios',
             description: 'Acompanhe os dados de chamadas em tempo real. Filtre e visualize informações para análise de performance e tomada de decisão.'
@@ -234,13 +240,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const body = document.body;
-        body.classList.remove('c6-theme', 'enrichment-theme', 'monitoring-theme');
+        body.classList.remove('c6-theme', 'enrichment-theme', 'monitoring-theme', 'blocklist-theme');
         if (tabNameId === 'api') {
             body.classList.add('c6-theme');
         } else if (tabNameId === 'enriquecimento') {
             body.classList.add('enrichment-theme');
         } else if (tabNameId === 'monitoramento') {
             body.classList.add('monitoring-theme');
+        } else if (tabNameId === 'blocklist') {
+            body.classList.add('blocklist-theme');
+            updateBlocklistStats(); // Atualiza as estatísticas ao abrir a aba
         }
 
         const tabButtonText = evt ? evt.currentTarget.textContent.trim() : '';
@@ -312,6 +321,128 @@ document.addEventListener('DOMContentLoaded', () => {
     const linesPerSplitInput = document.getElementById('linesPerSplit');
     const splitListBtn = document.getElementById('splitListBtn');
     const shuffleResultCheckbox = document.getElementById('shuffleResultCheckbox');
+    
+    // NOVO: Captura dos novos elementos da Blocklist
+    const feedBlocklistBtn = document.getElementById('feedBlocklistBtn');
+    const checkBlocklistCheckbox = document.getElementById('checkBlocklistCheckbox');
+
+    // --- INÍCIO: LÓGICA ABRANGENTE DE SALVAR/CARREGAR ESTADO DA UI ---
+
+    // Função para salvar o estado atual dos controles da UI
+    function saveCurrentUiSettings() {
+        const settings = {
+            // Aba Limpeza Local
+            backup: backupCheckbox.querySelector('input').checked,
+            autoAdjust: autoAdjustPhonesCheckbox.checked,
+            checkDb: checkDbCheckbox.checked,
+            saveToDb: saveToDbCheckbox.checked,
+            checkBlocklist: checkBlocklistCheckbox.checked,
+            autoRoot: autoRootBtn.dataset.on === 'true',
+            rootCol: rootColSelect.value,
+            destCol: destColSelect.value,
+            organizeType: document.querySelector('input[name="organizeType"]:checked')?.value || 'bernardo',
+            mergeStrategy: document.querySelector('input[name="mergeStrategy"]:checked')?.value || 'all',
+            customMergeCount: customMergeCountInput.value,
+            removeDuplicates: removeDuplicatesCheckbox.checked,
+            shuffleResult: shuffleResultCheckbox.checked,
+            linesPerSplit: linesPerSplitInput.value,
+
+            // Aba API
+            apiKeySelection: apiKeySelection.value,
+            apiRemoveClients: document.getElementById('apiRemoveClientsCheckbox').checked,
+            apiExtractClients: document.getElementById('apiExtractClientsCheckbox').checked,
+
+            // Aba Enriquecimento
+            masterFileYear: document.getElementById('master-file-year-input').value,
+            enrichmentYear: document.getElementById('enrichment-year-input').value,
+            enrichStrategy: document.querySelector('input[name="enrichStrategy"]:checked')?.value || 'append',
+
+            // Aba Blocklist
+            linesPerCsvSplit: linesPerCsvSplitInput.value,
+        };
+        window.electronAPI.saveUiSettings(settings);
+    }
+
+    // Função para carregar e aplicar as configurações salvas
+    async function loadAndApplyUiSettings() {
+        const settings = await window.electronAPI.getUiSettings();
+        if (!settings || Object.keys(settings).length === 0) return; // Nenhuma configuração salva
+
+        // Helper para definir valor e disparar evento 'change'
+        const setValue = (element, value, event = 'change') => {
+            if (element && value !== undefined && value !== null) {
+                element.value = value;
+                element.dispatchEvent(new Event(event));
+            }
+        };
+        const setChecked = (element, checked, event = 'change') => {
+            if (element && checked !== undefined && checked !== null) {
+                element.checked = checked;
+                element.dispatchEvent(new Event(event));
+            }
+        };
+        const setRadio = (name, value, event = 'change') => {
+            if (value) {
+                const radio = document.querySelector(`input[name="${name}"][value="${value}"]`);
+                if (radio) {
+                    radio.checked = true;
+                    radio.dispatchEvent(new Event(event));
+                }
+            }
+        };
+
+        // Aba Limpeza Local
+        setChecked(backupCheckbox.querySelector('input'), settings.backup);
+        setChecked(autoAdjustPhonesCheckbox, settings.autoAdjust);
+        setChecked(checkDbCheckbox, settings.checkDb);
+        setChecked(saveToDbCheckbox, settings.saveToDb);
+        setChecked(checkBlocklistCheckbox, settings.checkBlocklist);
+        setValue(rootColSelect, settings.rootCol);
+        setValue(destColSelect, settings.destCol);
+        setRadio('organizeType', settings.organizeType);
+        setRadio('mergeStrategy', settings.mergeStrategy);
+        setValue(customMergeCountInput, settings.customMergeCount);
+        setChecked(removeDuplicatesCheckbox, settings.removeDuplicates);
+        setChecked(shuffleResultCheckbox, settings.shuffleResult);
+        setValue(linesPerSplitInput, settings.linesPerSplit);
+
+        // Aplica a configuração do Auto Raiz
+        if (settings.autoRoot && autoRootBtn.dataset.on !== 'true') {
+            autoRootBtn.click(); // Simula o clique para garantir que a UI seja atualizada corretamente
+        } else if (!settings.autoRoot && autoRootBtn.dataset.on === 'true') {
+            autoRootBtn.click();
+        }
+
+        // Aba API
+        setValue(apiKeySelection, settings.apiKeySelection);
+        setChecked(document.getElementById('apiRemoveClientsCheckbox'), settings.apiRemoveClients);
+        setChecked(document.getElementById('apiExtractClientsCheckbox'), settings.apiExtractClients);
+
+        // Aba Enriquecimento
+        setValue(document.getElementById('master-file-year-input'), settings.masterFileYear);
+        setValue(document.getElementById('enrichment-year-input'), settings.enrichmentYear);
+        setRadio('enrichStrategy', settings.enrichStrategy);
+
+        // Aba Blocklist
+        setValue(linesPerCsvSplitInput, settings.linesPerCsvSplit);
+
+        appendLog('Configurações da última sessão foram restauradas.');
+    }
+
+    // Carrega as configurações quando o DOM estiver pronto
+    loadAndApplyUiSettings();
+
+    // Adiciona listeners para salvar as configurações em todos os elementos relevantes
+    document.querySelectorAll('input[type="checkbox"], input[type="radio"], select, input[type="number"], input[type="text"]').forEach(el => {
+        el.addEventListener('change', saveCurrentUiSettings);
+        el.addEventListener('keyup', saveCurrentUiSettings); // Para campos de texto
+    });
+    document.querySelectorAll('button[data-on]').forEach(el => {
+        el.addEventListener('click', saveCurrentUiSettings);
+    });
+
+    // --- FIM: LÓGICA ABRANGENTE DE SALVAR/CARREGAR ESTADO DA UI ---
+
     function addFileToUI(container, filePath, isSingle) { if (isSingle) { container.innerHTML = ''; } const fileDiv = document.createElement('div'); fileDiv.className = 'file-item new-item'; fileDiv.textContent = getBasename(filePath); container.appendChild(fileDiv); setTimeout(() => { fileDiv.classList.remove('new-item'); }, 500); }
     function resetUploadProgress() { if (uploadProgressContainer) uploadProgressContainer.style.display = 'none'; if (uploadProgressBarFill) uploadProgressBarFill.style.width = '0%'; if (uploadProgressText) uploadProgressText.textContent = ''; }
     if (backupCheckbox) backupCheckbox.addEventListener('change', (e) => { backupEnabled = e.target.querySelector('input').checked; });
@@ -325,8 +456,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if (autoRootBtn) autoRootBtn.addEventListener('click', () => { if (autoRootBtn.dataset.on) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = "Auto Raiz: OFF"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">Usará arquivo local selecionado</span>'; selectRootBtn.disabled = false; } else { autoRootBtn.dataset.on = 'true'; autoRootBtn.textContent = "Auto Raiz: ON"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--accent-light); font-weight: 600;">Usará a base de dados Raiz</span>'; selectRootBtn.disabled = true; } appendLog(`Auto Raiz: ${autoRootBtn.dataset.on ? 'ON (usando Banco de Dados)' : 'OFF'}`); });
     if (updateBlocklistBtn) updateBlocklistBtn.addEventListener('click', async () => { const result = await window.electronAPI.updateBlocklist(backupEnabled); appendLog(result.success ? result.message : `Erro: ${result.message}`); });
     if (addCleanFileBtn) addCleanFileBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para limpar', multi: true }); if (!files?.length) return; cleanFiles = []; selectedCleanFilesDiv.innerHTML = ''; progressContainer.innerHTML = ''; files.forEach(file => { const id = `clean-${cleanFiles.length}`; cleanFiles.push({ path: file, id }); appendLog(`Adicionado para limpeza: ${file}`); addFileToUI(selectedCleanFilesDiv, file, false); progressContainer.innerHTML += `<div class="file-progress" style="margin-bottom: 15px;"><strong>${getBasename(file)}</strong><div class="progress-bar-container"><div class="progress-bar-fill" id="${id}"></div></div></div>`; }); });
-    if (startCleaningBtn) startCleaningBtn.addEventListener('click', () => { const isAutoRoot = autoRootBtn.dataset.on === 'true'; if (!isAutoRoot && !rootFile) { return appendLog('ERRO: Selecione o arquivo raiz ou ative o Auto Raiz.'); } if (!cleanFiles.length) { return appendLog('ERRO: Adicione ao menos um arquivo para limpar.'); } resetUploadProgress(); appendLog('Iniciando limpeza...'); window.electronAPI.startCleaning({ isAutoRoot, rootFile: isAutoRoot ? null : rootFile, cleanFiles, rootCol: rootColSelect.value, destCol: destColSelect.value, backup: backupEnabled, checkDb: checkDbEnabled, saveToDb: saveToDbEnabled, autoAdjust: autoAdjustPhones }); });
-    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; mergeFiles = []; backupEnabled = false; autoAdjustPhones = false; checkDbEnabled = false; saveToDbEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (selectedMergeFilesDiv) selectedMergeFilesDiv.innerHTML = ''; if (batchIdInput) batchIdInput.value = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.checked = false; if (checkDbCheckbox) checkDbCheckbox.checked = false; if (saveToDbCheckbox) saveToDbCheckbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } resetUploadProgress(); appendLog('Módulo de Limpeza Local reiniciado.'); });
+    
+    if (startCleaningBtn) {
+        startCleaningBtn.addEventListener('click', () => {
+            const isAutoRoot = autoRootBtn.dataset.on === 'true';
+            if (!isAutoRoot && !rootFile) { return appendLog('ERRO: Selecione o arquivo raiz ou ative o Auto Raiz.'); }
+            if (!cleanFiles.length) { return appendLog('ERRO: Adicione ao menos um arquivo para limpar.'); }
+            resetUploadProgress();
+            appendLog('Iniciando limpeza...');
+    
+            // MODIFICADO: Adiciona o 'checkBlocklist' ao objeto de argumentos
+            window.electronAPI.startCleaning({
+                isAutoRoot,
+                rootFile: isAutoRoot ? null : rootFile,
+                cleanFiles,
+                rootCol: rootColSelect.value,
+                destCol: destColSelect.value,
+                backup: backupEnabled,
+                checkDb: checkDbEnabled,
+                saveToDb: saveToDbEnabled,
+                autoAdjust: autoAdjustPhones,
+                checkBlocklist: checkBlocklistCheckbox.checked // Adicionado aqui
+            });
+        });
+    }
+
+    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; mergeFiles = []; backupEnabled = false; autoAdjustPhones = false; checkDbEnabled = false; saveToDbEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (selectedMergeFilesDiv) selectedMergeFilesDiv.innerHTML = ''; if (batchIdInput) batchIdInput.value = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.checked = false; if (checkDbCheckbox) checkDbCheckbox.checked = false; if (saveToDbCheckbox) saveToDbCheckbox.checked = false; if (checkBlocklistCheckbox) checkBlocklistCheckbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } resetUploadProgress(); appendLog('Módulo de Limpeza Local reiniciado.'); });
     if (adjustPhonesBtn) adjustPhonesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivo para ajustar fones', multi: false }); if (!files?.length) return appendLog('Nenhum arquivo selecionado.'); window.electronAPI.startAdjustPhones({ filePath: files[0], backup: backupEnabled }); });
     if (selectMergeFilesBtn) selectMergeFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para mesclar', multi: true }); if (!files?.length) return; mergeFiles = files; selectedMergeFilesDiv.innerHTML = ''; files.forEach(f => { addFileToUI(selectedMergeFilesDiv, f, false); }); });
     
@@ -362,6 +517,29 @@ document.addEventListener('DOMContentLoaded', () => {
             
             appendLog('Iniciando mesclagem com as opções selecionadas...');
             window.electronAPI.startMerge(mergeOptions);
+        });
+    }
+
+    // NOVO: Event listener para o botão de alimentar a blocklist
+    if (feedBlocklistBtn) {
+        feedBlocklistBtn.addEventListener('click', async () => {
+            appendLog('Selecionando arquivo(s) para alimentar a Blocklist de Telefones...');
+            const files = await window.electronAPI.selectFile({
+                title: 'Selecione planilhas com telefones para a Blocklist',
+                multi: true
+            });
+            if (!files || files.length === 0) {
+                appendLog('Nenhum arquivo selecionado. Operação cancelada.');
+                return;
+            }
+            feedBlocklistBtn.disabled = true;
+            appendLog(`Iniciando o processo de alimentação da Blocklist com ${files.length} arquivo(s).`);
+            window.electronAPI.feedBlocklist(files);
+            // Re-habilita o botão após um tempo para evitar spam,
+            // idealmente, você teria um evento 'feed-blocklist-finished' do main.js
+            setTimeout(() => {
+                feedBlocklistBtn.disabled = false;
+            }, 5000); 
         });
     }
 
@@ -604,6 +782,124 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.onDbLoadProgress(({ current, total, fileName, cnpjsProcessed }) => { const percent = Math.round((current / total) * 100); dbLoadProgressBarFill.style.width = `${percent}%`; dbLoadProgressPercent.textContent = `${percent}%`; dbLoadProgressText.textContent = `Processando: ${fileName}`; dbLoadProgressStats.textContent = `${cnjsProcessed} CNPJs processados`; });
     window.electronAPI.onDbLoadFinished(() => { if (startLoadToDbBtn) startLoadToDbBtn.disabled = false; updateEnrichedCnpjCount(); setTimeout(() => { dbLoadProgressContainer.style.display = 'none'; }, 3000); dbLoadProgressTitle.textContent = 'Carga Concluída!'; dbLoadProgressBarFill.style.width = '100%'; dbLoadProgressPercent.textContent = '100%'; dbLoadProgressText.textContent = 'Finalizado com sucesso'; });
     window.electronAPI.onEnrichmentFinished(() => { if (startEnrichmentBtn) startEnrichmentBtn.disabled = false; });
+
+    // #################################################################
+    // #           NOVA LÓGICA - ABA BLOCKLIST                       #
+    // #################################################################
+    const blocklistLogDiv = document.getElementById('blocklistLog');
+    const refreshBlocklistStatsBtn = document.getElementById('refreshBlocklistStatsBtn');
+    const blocklistTotalCountSpan = document.getElementById('blocklist-total-count');
+    const blocklistTodayCountSpan = document.getElementById('blocklist-today-count');
+    const feedBlocklistFromTabBtn = document.getElementById('feedBlocklistFromTabBtn');
+    const selectCsvToSplitBtn = document.getElementById('selectCsvToSplitBtn');
+    const csvToSplitPathDiv = document.getElementById('csvToSplitPath');
+    const linesPerCsvSplitInput = document.getElementById('linesPerCsvSplit');
+    const splitCsvBtn = document.getElementById('splitCsvBtn');
+    let csvToSplitFile = null;
+
+    // NOVO: Elementos para verificação de números na blocklist
+    // Adicione estes elementos no seu index.html dentro da aba de Blocklist
+    const checkNumbersInput = document.getElementById('check-numbers-input');
+    const checkNumbersBtn = document.getElementById('check-numbers-btn');
+    const checkNumbersResults = document.getElementById('check-numbers-results');
+
+    function appendBlocklistLog(msg) {
+        if (!blocklistLogDiv) return;
+        if (blocklistLogDiv.textContent === 'Aguardando início...') {
+            blocklistLogDiv.innerHTML = '';
+        }
+        blocklistLogDiv.innerHTML += `> ${msg.replace(/\n/g, '<br>> ')}\n`;
+        blocklistLogDiv.scrollTop = blocklistLogDiv.scrollHeight;
+    }
+
+    async function updateBlocklistStats() {
+        if (!blocklistTotalCountSpan || !blocklistTodayCountSpan) return;
+        appendBlocklistLog('Atualizando estatísticas da blocklist...');
+        blocklistTotalCountSpan.textContent = 'Carregando...';
+        blocklistTodayCountSpan.textContent = 'Carregando...';
+        const result = await window.electronAPI.getBlocklistStats();
+        if (result.success) {
+            blocklistTotalCountSpan.textContent = result.data.total.toLocaleString('pt-BR');
+            blocklistTodayCountSpan.textContent = result.data.addedToday.toLocaleString('pt-BR');
+            appendBlocklistLog('Estatísticas atualizadas com sucesso.');
+        } else {
+            blocklistTotalCountSpan.textContent = 'Erro';
+            blocklistTodayCountSpan.textContent = 'Erro';
+            appendBlocklistLog(`❌ Erro ao buscar estatísticas: ${result.message}`);
+        }
+    }
+
+    if (refreshBlocklistStatsBtn) {
+        refreshBlocklistStatsBtn.addEventListener('click', updateBlocklistStats);
+    }
+
+    if (feedBlocklistFromTabBtn) {
+        feedBlocklistFromTabBtn.addEventListener('click', async () => {
+            appendBlocklistLog('Selecionando arquivos para alimentar a Blocklist...');
+            const files = await window.electronAPI.selectFile({ title: 'Selecione planilhas com telefones', multi: true });
+            if (!files || files.length === 0) return appendBlocklistLog('Nenhum arquivo selecionado.');
+            appendBlocklistLog(`Iniciando alimentação com ${files.length} arquivo(s).`);
+            window.electronAPI.feedBlocklist(files); // Reutiliza o handler existente
+        });
+    }
+
+    if (selectCsvToSplitBtn) {
+        selectCsvToSplitBtn.addEventListener('click', async () => {
+            const files = await window.electronAPI.selectFile({ title: 'Selecione o arquivo CSV para dividir', multi: false, filters: [{ name: "CSV", extensions: ["csv"] }] });
+            if (files && files.length > 0) { csvToSplitFile = files[0]; addFileToUI(csvToSplitPathDiv, csvToSplitFile, true); appendBlocklistLog(`Arquivo para divisão selecionado: ${csvToSplitFile}`); }
+        });
+    }
+
+    if (splitCsvBtn) { splitCsvBtn.addEventListener('click', () => { const linesPerSplit = parseInt(linesPerCsvSplitInput.value, 10); if (!csvToSplitFile) return appendBlocklistLog('❌ ERRO: Selecione um arquivo CSV para dividir.'); if (!linesPerSplit || linesPerSplit <= 0) return appendBlocklistLog('❌ ERRO: Insira um número de linhas válido e maior que zero.'); window.electronAPI.splitLargeCsv({ filePath: csvToSplitFile, linesPerSplit }); }); }
+    window.electronAPI.onBlocklistLog((msg) => appendBlocklistLog(msg));
+
+    // NOVO: Lógica para verificação de números na blocklist
+    if (checkNumbersBtn) {
+        checkNumbersBtn.addEventListener('click', async () => {
+            const rawInput = checkNumbersInput.value.trim();
+            if (!rawInput) {
+                appendBlocklistLog('⚠️ Por favor, insira um ou mais números para verificar.');
+                return;
+            }
+
+            const numbers = rawInput
+                .split(/[,;\s\n]+/) // Divide por vírgula, ponto e vírgula, espaços ou quebras de linha
+                .map(num => num.replace(/\D/g, '').trim()) // Remove não-dígitos e espaços
+                .filter(num => num.length >= 8); // Filtra números válidos
+
+            if (numbers.length === 0) {
+                appendBlocklistLog('⚠️ Nenhum número válido encontrado na entrada.');
+                return;
+            }
+
+            appendBlocklistLog(`Verificando ${numbers.length} número(s) na blocklist...`);
+            checkNumbersBtn.disabled = true;
+            checkNumbersResults.innerHTML = '<p>Verificando...</p>';
+
+            const result = await window.electronAPI.checkBlocklistNumbers(numbers);
+
+            if (result.success) {
+                const { found, notFound } = result.data;
+                let resultHTML = '';
+                if (found.length > 0) {
+                    // MODIFICADO: Agora itera sobre objetos e exibe a data de adição.
+                    const foundItems = found.map(item => 
+                        `<li>${item.telefone} <span style="color: var(--text-muted); font-size: 11px;">(Adicionado em: ${item.data_adicao})</span></li>`
+                    ).join('');
+                    resultHTML += `<h4>Encontrados na Blocklist (${found.length}):</h4><ul class="result-list found">${foundItems}</ul>`;
+                }
+                if (notFound.length > 0) {
+                    resultHTML += `<h4>Não Encontrados (${notFound.length}):</h4><ul class="result-list not-found"><li>${notFound.join('</li><li>')}</li></ul>`;
+                }
+                checkNumbersResults.innerHTML = resultHTML || '<p>Nenhum resultado para exibir.</p>';
+                appendBlocklistLog(`Verificação concluída. Encontrados: ${found.length}, Não encontrados: ${notFound.length}.`);
+            } else {
+                checkNumbersResults.innerHTML = `<p class="error">Erro: ${result.message}</p>`;
+                appendBlocklistLog(`❌ Erro na verificação: ${result.message}`);
+            }
+            checkNumbersBtn.disabled = false;
+        });
+    }
 
     // #################################################################
     // #           LÓGICA PARA A ABA DE MONITORAMENTO (ATUALIZADA)     #

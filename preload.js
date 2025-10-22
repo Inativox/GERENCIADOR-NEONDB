@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // --- NOVO: Funções de Configuração do BD ---
     getDbConnectionString: () => ipcRenderer.invoke('get-db-connection-string'),
     saveAndTestDbConnection: (connectionString) => ipcRenderer.invoke('save-and-test-db-connection', connectionString),
+
+    // --- Funções de Configuração da UI ---
+    getUiSettings: () => ipcRenderer.invoke('get-ui-settings'),
+    saveUiSettings: (settings) => ipcRenderer.send('save-ui-settings', settings),
     // --- FIM DA MODIFICAÇÃO ---
 
     // --- Funções da Aba de Monitoramento ---
@@ -25,7 +29,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     startMerge: (files) => ipcRenderer.send("start-merge", files),
     startDbOnlyCleaning: (args) => ipcRenderer.send("start-db-only-cleaning", args),
     feedRootDatabase: (filePaths) => ipcRenderer.send("feed-root-database", filePaths),
+    feedBlocklist: (filePaths) => ipcRenderer.send("feed-blocklist", filePaths), // NOVO
+    getBlocklistStats: () => ipcRenderer.invoke("get-blocklist-stats"), // NOVO
+    checkBlocklistNumbers: (numbers) => ipcRenderer.invoke("check-blocklist-numbers", numbers), // NOVO
     splitList: (args) => ipcRenderer.send("split-list", args),
+    splitLargeCsv: (args) => ipcRenderer.send("split-large-csv", args), // NOVO
     saveStoredCnpjsToExcel: () => ipcRenderer.invoke("save-stored-cnpjs-to-excel"),
     deleteBatch: (batchId) => ipcRenderer.invoke("delete-batch", batchId),
     organizeDailySheet: (filePath, organizationType) => ipcRenderer.send('organize-daily-sheet', filePath, organizationType),
@@ -58,6 +66,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onEnrichmentProgress: (callback) => ipcRenderer.on("enrichment-progress", (event, ...args) => callback(...args)),
     onDbLoadProgress: (callback) => ipcRenderer.on("db-load-progress", (event, ...args) => callback(...args)),
     onDbLoadFinished: (callback) => ipcRenderer.on("db-load-finished", (event, ...args) => callback(...args)),
+    onBlocklistLog: (callback) => ipcRenderer.on("blocklist-log", (event, ...args) => callback(...args)), // NOVO
     onEnrichmentFinished: (callback) => ipcRenderer.on("enrichment-finished", (event, ...args) => callback(...args)),
     onUpdateMessage: (callback) => ipcRenderer.on("update-message", (event, ...args) => callback(...args)),
     onRootFeedFinished: (callback) => ipcRenderer.on('root-feed-finished', (event, ...args) => callback(...args)),

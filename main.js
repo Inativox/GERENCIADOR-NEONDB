@@ -10,10 +10,11 @@ const axios = require("axios");
 const os = require('os');
 const Store = require('electron-store');
 const { Pool } = require('pg');
+const { parse } = require('csv-parse');
 
 autoUpdater.logger = require("electron-log");
 autoUpdater.logger.transports.file.level = "info";
-//coment
+
 const store = new Store();
 
 // #################################################################
@@ -66,7 +67,7 @@ async function initializePool(connectionString, windowToLog) {
         pool = null;
         throw error;
     }
-} 
+}
 
 
 // #################################################################
@@ -75,6 +76,8 @@ async function initializePool(connectionString, windowToLog) {
 
 const users = {
     'Pablo': { password: 'Vasco@2025', role: 'admin' },
+    'Thalles': { password: 'Flamengo@2025', role: 'admin' },
+    'Matheus Kauss': { password: 'Flamengo@2025', role: 'admin' },
     'Matheus': { password: 'Botafogo@2025', role: 'admin' },
     'Felipe': { password: 'Flamengo@2025', role: 'admin' },
     'Davi': { password: '080472Fr*', role: 'admin' },
@@ -173,6 +176,15 @@ ipcMain.on('logout', () => {
     }
 });
 
+ipcMain.handle('get-ui-settings', () => {
+    // Retorna as configurações salvas, ou um objeto vazio como padrão.
+    return store.get('ui_settings', {});
+});
+
+ipcMain.on('save-ui-settings', (event, settings) => {
+    store.set('ui_settings', settings);
+});
+
 const isAdmin = () => {
     return currentUser && currentUser.role === 'admin';
 };
@@ -182,6 +194,7 @@ const isAdmin = () => {
 // #           LÓGICA DE INICIALIZAÇÃO (COM MODIFICAÇÕES)          #
 // #################################################################
 let storedCnpjs = new Set();
+let blocklistPhones = new Set(); // NOVO: Set para armazenar a blocklist em memória
 
 async function loadStoredCnpjs() {
     if (!isAdmin() || !pool) {
@@ -205,6 +218,7 @@ async function loadStoredCnpjs() {
         }
     }
 }
+
 
 function createMainWindow() {
     mainWindow = new BrowserWindow({
@@ -676,6 +690,227 @@ async function runPhoneAdjustment(filePath, event, backup) {
     } 
 }
 
+// NOVO: Handler para dividir arquivos CSV grandes (POSIÇÃO CORRIGIDA)
+ipcMain.on("split-large-csv", async (event, { filePath, linesPerSplit }) => {
+    const log = (msg) => event.sender.send("blocklist-log", msg);
+
+    if (!fs.existsSync(filePath)) {
+        log(`❌ ERRO: O arquivo de entrada não foi encontrado em: ${filePath}`);
+        return;
+    }
+
+    log(`--- Iniciando divisão do arquivo: ${path.basename(filePath)} ---`);
+    log(`⚙️  Configuração: ${linesPerSplit.toLocaleString('pt-BR')} linhas por arquivo.`);
+
+    const inputStream = fs.createReadStream(filePath);
+    const parser = parse({
+        delimiter: ',',
+        from_line: 1
+    });
+
+    let fileCounter = 1;
+    let lineCounter = 0;
+    let rowsForCurrentFile = [];
+    const outputDir = path.dirname(filePath);
+    const baseName = path.basename(filePath, '.csv');
+
+    // Função para salvar um lote de linhas em um arquivo CSV (lógica do split-csv.js)
+    const saveChunkToCsv = async (rows, partNumber) => {
+        if (rows.length === 0) return;
+
+        const outputFilePath = path.join(outputDir, `${baseName}_parte_${partNumber}.csv`);
+        log(`\n⏳ Gerando arquivo: ${path.basename(outputFilePath)} com ${rows.length.toLocaleString('pt-BR')} linhas...`);
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Telefones');
+        worksheet.columns = [{ header: 'telefone', key: 'telefone', width: 20 }];
+        
+        const cleanedRows = rows.map(row => {
+            const cleanedPhone = String(row[1] || '').replace(/\D/g, '');
+            return { telefone: cleanedPhone };
+        }).filter(r => r.telefone); // Garante que não adiciona linhas vazias
+
+        worksheet.addRows(cleanedRows);
+        
+        await workbook.csv.writeFile(outputFilePath, { formatterOptions: { delimiter: ';' } });
+        log(`✅ Arquivo salvo: ${path.basename(outputFilePath)}`);
+    };
+
+    for await (const row of inputStream.pipe(parser)) {
+        rowsForCurrentFile.push(row);
+        lineCounter++;
+        if (lineCounter % 100000 === 0) log(`... ${lineCounter.toLocaleString('pt-BR')} linhas processadas`);
+        if (rowsForCurrentFile.length >= linesPerSplit) { await saveChunkToCsv(rowsForCurrentFile, fileCounter); rowsForCurrentFile = []; fileCounter++; }
+    }
+    if (rowsForCurrentFile.length > 0) { await saveChunkToCsv(rowsForCurrentFile, fileCounter); }
+    log(`\n\n🎉 Processo concluído! Total de ${lineCounter.toLocaleString('pt-BR')} linhas divididas em ${fileCounter} arquivo(s).`);
+    shell.showItemInFolder(outputDir);
+});
+
+// NOVO: Handler para alimentar a base de dados da blocklist
+ipcMain.on("feed-blocklist", async (event, filePaths) => {
+    if (!isAdmin() || !pool) {
+        log("❌ Acesso negado ou conexão com BD inativa.");
+        event.sender.send("blocklist-log", "❌ Acesso negado ou conexão com BD inativa.");
+        return;
+    }
+    const log = (msg) => event.sender.send("blocklist-log", msg); // CORRIGIDO: Envia para o log da aba correta
+    log(`--- Iniciando Alimentação da Blocklist na nova aba ---`);
+    
+    const DB_BATCH_SIZE = 50000; // Tamanho do lote para enviar ao banco de dados
+    let totalNewPhonesAdded = 0;
+
+    const processChunk = async (phoneChunk) => {
+        if (phoneChunk.size === 0) return;
+        try {
+            const query = `
+                INSERT INTO blocklist (telefone)
+                SELECT unnest($1::text[])
+                ON CONFLICT (telefone) DO NOTHING;
+            `;
+            const result = await pool.query(query, [Array.from(phoneChunk)]);
+            const newCount = result.rowCount;
+            if (newCount > 0) {
+                log(`✅ Lote salvo. ${newCount} novos telefones adicionados à blocklist.`);
+                phoneChunk.forEach(phone => blocklistPhones.add(phone));
+                totalNewPhonesAdded += newCount;
+            }
+        } catch (e) {
+            log(`❌ Erro ao salvar lote na blocklist: ${e.message}`);
+        }
+    };
+
+    for (const filePath of filePaths) {
+        const fileName = path.basename(filePath);
+        log(`\nIniciando processamento do arquivo: ${fileName}`);
+        
+        let phonesInBatch = new Set();
+        let rowsProcessed = 0;
+        const fileStream = fs.createReadStream(filePath);
+
+        try {
+            const processRow = (row) => {
+                row.eachCell({ includeEmpty: true }, (cell) => {
+                    const phone = cell.value ? String(cell.value).replace(/\D/g, "").trim() : null;
+                    if (phone && phone.length >= 8) {
+                        phonesInBatch.add(phone);
+                    }
+                });
+            };
+
+            const checkAndProcessBatch = async () => {
+                if (phonesInBatch.size >= DB_BATCH_SIZE) {
+                    await processChunk(phonesInBatch);
+                    phonesInBatch.clear();
+                }
+            };
+
+            const logProgress = () => {
+                rowsProcessed++;
+                if (rowsProcessed % 100000 === 0) {
+                    log(`... ${rowsProcessed.toLocaleString('pt-BR')} linhas do arquivo "${fileName}" lidas...`);
+                }
+            };
+
+            if (path.extname(filePath).toLowerCase().endsWith('.csv')) {
+                const csvStream = fileStream.pipe(parse({ delimiter: [',', ';'], relax_column_count: true }));
+                for await (const record of csvStream) {
+                    record.forEach(value => {
+                        const phone = String(value || '').replace(/\D/g, "").trim();
+                        if (phone && phone.length >= 8) phonesInBatch.add(phone);
+                    });
+                    await checkAndProcessBatch();
+                    logProgress();
+                }
+            } else {
+                const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(fileStream);
+                for await (const worksheetReader of workbookReader) {
+                    for await (const row of worksheetReader) {
+                        processRow(row);
+                        await checkAndProcessBatch();
+                        logProgress();
+                    }
+                }
+            }
+
+            // Processa o lote final que sobrou
+            if (phonesInBatch.size > 0) {
+                await processChunk(phonesInBatch);
+            }
+            log(`\n✅ Finalizado o processamento do arquivo ${fileName}. Total de ${rowsProcessed.toLocaleString('pt-BR')} linhas lidas.`);
+        } catch (err) {
+            log(`❌ Erro catastrófico ao processar o arquivo ${fileName}: ${err.message}`);
+        }
+    }
+    log(`\n--- Alimentação da Blocklist Concluída ---`);
+    log(`Total de telefones novos adicionados: ${totalNewPhonesAdded}. Total na blocklist agora: ${blocklistPhones.size}`);
+});
+
+// NOVO: Handler para buscar estatísticas da blocklist
+ipcMain.handle("get-blocklist-stats", async () => {
+    if (!isAdmin() || !pool) {
+        return { success: false, message: "Acesso negado ou conexão com BD inativa.", data: { total: 0, addedToday: 0 } };
+    }
+    try {
+        const totalQuery = 'SELECT COUNT(*) FROM blocklist;';
+        // A query abaixo considera o dia atual no fuso horário do servidor do BD.
+        const todayQuery = "SELECT COUNT(*) FROM blocklist WHERE data_adicao >= current_date;";
+
+        const [totalResult, todayResult] = await Promise.all([
+            pool.query(totalQuery),
+            pool.query(todayQuery)
+        ]);
+
+        const stats = {
+            total: parseInt(totalResult.rows[0].count, 10) || 0,
+            addedToday: parseInt(todayResult.rows[0].count, 10) || 0,
+        };
+        return { success: true, data: stats };
+    } catch (error) {
+        console.error("Erro ao buscar estatísticas da blocklist:", error);
+        return { success: false, message: error.message, data: { total: 0, addedToday: 0 } };
+    }
+});
+
+// NOVO: Handler para verificar números na blocklist
+ipcMain.handle("check-blocklist-numbers", async (event, numbers) => {
+    if (!isAdmin() || !pool) {
+        return { success: false, message: "Acesso negado ou conexão com BD inativa." };
+    }
+    if (!numbers || numbers.length === 0) {
+        return { success: false, message: "Nenhum número fornecido para verificação." };
+    }
+
+    try {
+        // MODIFICADO: A query agora busca a data de adição e a formata.
+        const query = `
+            SELECT 
+                telefone, 
+                to_char(data_adicao, 'DD/MM/YYYY HH24:MI:SS') as data_formatada 
+            FROM blocklist 
+            WHERE telefone = ANY($1::text[])
+        `;
+        const result = await pool.query(query, [numbers]);
+        
+        // MODIFICADO: Usamos um Map para associar o número à sua data.
+        const foundNumbersMap = new Map(result.rows.map(row => [row.telefone, row.data_formatada]));
+        const notFoundNumbers = numbers.filter(num => !foundNumbersMap.has(num));
+
+        // MODIFICADO: O array 'found' agora contém objetos com o telefone e a data.
+        const foundData = Array.from(foundNumbersMap.entries()).map(([telefone, data]) => ({ telefone, data_adicao: data }));
+
+        return { 
+            success: true, 
+            data: {
+                found: foundData,
+                notFound: notFoundNumbers
+            } 
+        };
+    } catch (error) {
+        return { success: false, message: `Erro ao consultar a blocklist: ${error.message}` };
+    }
+});
+
 
 // --- FUNÇÃO PARA ALIMENTAR A BASE RAIZ (Refatorada para PostgreSQL) ---
 ipcMain.on("feed-root-database", async (event, filePaths) => {
@@ -778,8 +1013,8 @@ ipcMain.on("start-cleaning", async (event, args) => {
     if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado."); return; }
     const log = (msg) => event.sender.send("log", msg);
 
-    if ((args.isAutoRoot || args.checkDb || args.saveToDb) && !pool) {
-        return log("❌ ERRO: As opções de Banco de Dados estão ativadas, mas a conexão com o BD falhou ou não foi configurada.");
+    if ((args.isAutoRoot || args.checkDb || args.saveToDb || args.checkBlocklist) && !pool) { // MODIFICADO
+        return log("❌ ERRO: Uma ou mais opções de Banco de Dados estão ativadas, mas a conexão com o BD falhou ou não foi configurada.");
     }
 
     try {
@@ -795,12 +1030,16 @@ ipcMain.on("start-cleaning", async (event, args) => {
             if (!args.rootFile || !fs.existsSync(args.rootFile)) { return log(`❌ Arquivo raiz não encontrado: ${args.rootFile}`); } const rootIdx = letterToIndex(args.rootCol); const wbRoot = await readSpreadsheet(args.rootFile); const sheetRoot = wbRoot.Sheets[wbRoot.SheetNames[0]]; const rowsRoot = XLSX.utils.sheet_to_json(sheetRoot, { header: 1 }).map(r => r[rootIdx]).filter(v => v).map(v => String(v).trim()); rowsRoot.forEach(item => rootSet.add(item)); log(`Lista raiz do arquivo carregada com ${rootSet.size} valores.`);
         }
         log(`Histórico de CNPJs em memória com ${storedCnpjs.size} registros.`);
-        if (args.checkDb) log("Opção \"Consultar Banco de Dados\" está ATIVADA."); if (args.saveToDb) log("Opção \"Salvar no Banco de Dados\" está ATIVADA."); if (args.autoAdjust) log("Opção \"Ajustar Fones Pós-Limpeza\" está ATIVADA.");
+        if (args.checkDb) log("Opção \"Consultar Banco de Dados\" está ATIVADA.");
+        if (args.checkBlocklist) log(`Opção "Verificar Blocklist" está ATIVADA (consulta via BD).`); // NOVO LOG
+        if (args.saveToDb) log("Opção \"Salvar no Banco de Dados\" está ATIVADA.");
+        if (args.autoAdjust) log("Opção \"Ajustar Fones Pós-Limpeza\" está ATIVADA.");
         log(`FILTRO DE CNAE PROIBIDO: ATIVADO (Padrão).`);
 
         const allNewCnpjs = new Set();
         for (const fileObj of args.cleanFiles) {
-            const newlyFoundInFile = await processFile(fileObj, rootSet, args.destCol, event, args.backup, args.checkDb, args.saveToDb, storedCnpjs);
+            // MODIFICADO: Passa o novo argumento 'checkBlocklist' para a função de processo
+            const newlyFoundInFile = await processFile(fileObj, rootSet, args.destCol, event, args.backup, args.checkDb, args.saveToDb, storedCnpjs, args.checkBlocklist);
             if (args.saveToDb && newlyFoundInFile.size > 0) {
                 newlyFoundInFile.forEach(cnpj => allNewCnpjs.add(cnpj));
             }
@@ -834,11 +1073,20 @@ ipcMain.on("start-cleaning", async (event, args) => {
 // #################################################################
 // #           FUNÇÃO DE LIMPEZA PRINCIPAL (MODIFICADA)            #
 // #################################################################
-async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, saveToDb, cnpjsHistory) {
+async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, saveToDb, cnpjsHistory, checkBlocklist) { // MODIFICADO: adiciona 'checkBlocklist'
     const file = fileObj.path;
     const id = fileObj.id;
     const log = (msg) => event.sender.send("log", msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
+
+    /**
+     * Limpa o nome do cliente, removendo números e caracteres especiais do início e do fim.
+     * Ex: "123.456 NOME CLIENTE 789" -> "NOME CLIENTE"
+     */
+    const cleanClientName = (name) => {
+        if (!name || typeof name !== 'string') return name;
+        return name.replace(/^[\d.\- ]+|[\d.\- ]+$/g, '').trim();
+    };
 
     log(`\nProcessando arquivo de limpeza: ${path.basename(file)}...`);
     if (!fs.existsSync(file)) return new Set();
@@ -864,15 +1112,25 @@ async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, sa
 
     // Identifica colunas CPF, FONE e a nova coluna CNAE/LIVRE3
     const cpfColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "cpf");
+    const nomeColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "nome"); // NOVO: Encontra a coluna 'nome'
     const cnaeColIdx = header.findIndex(h => ["cnae", "livre3"].includes(String(h).trim().toLowerCase()));
     const foneIdxs = header.reduce((acc, cell, i) => {
-        if (typeof cell === "string" && cell.trim().toLowerCase().startsWith("fone")) acc.push(i);
+        // MODIFICADO: Captura todas as colunas de fone1 a fone16 (e além, se houver)
+        if (typeof cell === "string" && /^fone([1-9]|1[0-9])$/.test(cell.trim().toLowerCase())) {
+            acc.push(i);
+        }
         return acc;
     }, []);
 
     if (cpfColIdx === -1) {
         log(`❌ ERRO: A coluna "cpf" não foi encontrada no arquivo ${path.basename(file)}. Pulando este arquivo.`);
         return new Set();
+    }
+    if (nomeColIdx === -1) { // NOVO: Avisa se a coluna 'nome' não for encontrada
+        log(`⚠️ AVISO: Nenhuma coluna "nome" encontrada em ${path.basename(file)}. A limpeza de nomes será ignorada para este arquivo.`);
+    }
+    if (foneIdxs.length === 0 && checkBlocklist) { // NOVO
+        log(`⚠️ AVISO: A verificação de blocklist está ativa, mas nenhuma coluna 'fone' (fone1 a fone16) foi encontrada.`);
     }
     if (cnaeColIdx === -1) {
         log(`⚠️ AVISO: Nenhuma coluna "cnae" ou "livre3" encontrada em ${path.basename(file)}. A verificação de CNAE será ignorada para este arquivo.`);
@@ -882,8 +1140,10 @@ async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, sa
     const cleaned = [header];
     let removedByRoot = 0;
     let removedDuplicates = 0;
-    let removedByCnae = 0; // Novo contador para CNAEs
+    let removedByCnae = 0;
+    let removedByBlocklist = 0; // NOVO: Contador para blocklist
     let cleanedPhones = 0;
+    const BATCH_SIZE = 1000; // Lote para verificação de blocklist
     const totalRows = data.length - 1;
     const newCnpjsInThisFile = new Set();
 
@@ -892,41 +1152,83 @@ async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, sa
         const key = row[destColIdx] ? String(row[destColIdx]).trim() : "";
         const cnpj = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : "";
 
-        // Verificação 1: Banco de Dados (se ativado)
         if (checkDb && cnpj && cnpjsHistory.has(cnpj)) {
             removedDuplicates++;
             continue;
         }
 
-        // Verificação 2: Lista Raiz
         if (key && rootSet.has(key)) {
             removedByRoot++;
             continue;
         }
 
-        // Verificação 3: CNAE Proibido (NOVO)
         if (cnaeColIdx !== -1) {
             const cnaeValue = row[cnaeColIdx] ? String(row[cnaeColIdx]).replace(/\D/g, "").trim() : "";
             if (cnaeValue && PROHIBITED_CNAES.has(cnaeValue)) {
                 removedByCnae++;
-                continue; // Pula para a próxima linha se o CNAE for proibido
+                continue;
             }
         }
 
-        // Limpeza de Fones
         foneIdxs.forEach(idx => {
             const v = row[idx] ? String(row[idx]).trim() : "";
-            if (/^\d{10}$/.test(v)) {
-                // Define como 'null' para garantir que a célula fique verdadeiramente vazia.
-                // Usar "" (string vazia) pode fazer a célula parecer preenchida em alguns leitores de planilha.
-                row[idx] = null;
-                cleanedPhones++;
-            }
+            if (/^\d{10}$/.test(v)) { row[idx] = null; cleanedPhones++; }
         });
+
+        // NOVO: Aplica a limpeza na coluna 'nome', se ela existir
+        if (nomeColIdx !== -1 && row[nomeColIdx]) {
+            row[nomeColIdx] = cleanClientName(row[nomeColIdx]);
+        }
 
         cleaned.push(row);
         if (saveToDb && cnpj && !cnpjsHistory.has(cnpj)) {
             newCnpjsInThisFile.add(cnpj);
+        }
+    }
+
+    // Se a verificação de blocklist estiver desativada, podemos pular a próxima etapa
+    if (!checkBlocklist || foneIdxs.length === 0) {
+        const finalWB = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(finalWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]);
+        writeSpreadsheet(finalWB, file);
+        progress(100);
+        log(`Arquivo: ${path.basename(file)}\n • Clientes repetidos (BD): ${removedDuplicates}\n • Removidos pela Raiz: ${removedByRoot}\n • Removidos por Blocklist (Fone): ${removedByBlocklist}\n • Removidos por CNAE Proibido: ${removedByCnae}\n • Fones limpos: ${cleanedPhones}\n • Total final: ${cleaned.length - 1}`);
+        return newCnpjsInThisFile;
+    }
+
+    // Verificação de Blocklist em Lotes
+    log(`Iniciando verificação de blocklist para ${cleaned.length - 1} linhas...`);
+    const finalCleaned = [header];
+    const dataToVerify = cleaned.slice(1);
+
+    for (let i = 0; i < dataToVerify.length; i += BATCH_SIZE) {
+        const batch = dataToVerify.slice(i, i + BATCH_SIZE);
+        const phonesInBatch = new Set();
+        batch.forEach(row => {
+            foneIdxs.forEach(foneIdx => {
+                const phoneValue = row[foneIdx] ? String(row[foneIdx]).replace(/\D/g, "").trim() : "";
+                if (phoneValue) phonesInBatch.add(phoneValue);
+            });
+        });
+
+        const blockedPhonesInBatch = new Set();
+        if (phonesInBatch.size > 0) {
+            const query = 'SELECT telefone FROM blocklist WHERE telefone = ANY($1::text[])';
+            const { rows } = await pool.query(query, [Array.from(phonesInBatch)]);
+            rows.forEach(row => blockedPhonesInBatch.add(row.telefone));
+        }
+
+        for (const row of batch) {
+            const isBlocked = foneIdxs.some(foneIdx => {
+                const phoneValue = row[foneIdx] ? String(row[foneIdx]).replace(/\D/g, "").trim() : "";
+                return phoneValue && blockedPhonesInBatch.has(phoneValue);
+            });
+
+            if (isBlocked) {
+                removedByBlocklist++;
+            } else {
+                finalCleaned.push(row);
+            }
         }
 
         if (i % 2000 === 0) {
@@ -936,12 +1238,11 @@ async function processFile(fileObj, rootSet, destCol, event, backup, checkDb, sa
     }
 
     const newWB = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]);
+    XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(finalCleaned), wb.SheetNames[0]);
     writeSpreadsheet(newWB, file);
     progress(100);
 
-    // Log final atualizado para incluir a contagem de CNAE
-    log(`Arquivo: ${path.basename(file)}\n • Clientes repetidos (BD): ${removedDuplicates}\n • Removidos pela Raiz: ${removedByRoot}\n • Removidos por CNAE Proibido: ${removedByCnae}\n • Fones limpos: ${cleanedPhones}\n • Total final: ${cleaned.length - 1}`);
+    log(`Arquivo: ${path.basename(file)}\n • Clientes repetidos (BD): ${removedDuplicates}\n • Removidos pela Raiz: ${removedByRoot}\n • Removidos por Blocklist (Fone): ${removedByBlocklist}\n • Removidos por CNAE Proibido: ${removedByCnae}\n • Fones limpos: ${cleanedPhones}\n • Total final: ${finalCleaned.length - 1}`);
 
     return newCnpjsInThisFile;
 }
@@ -973,18 +1274,29 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
 // =================================================================
 // =           *** INÍCIO DA MODIFICAÇÃO *** =
 // =================================================================
-ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => {
+ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => { // MODIFICADO
     const log = (msg) => event.sender.send("log", msg);
+
+    /** 
+     * Limpa o nome do cliente, removendo números e caracteres especiais do início e do fim.
+     * Ex: "123.456 NOME CLIENTE 789" -> "NOME CLIENTE"
+     */
+    const cleanClientName = (name) => {
+        if (!name || typeof name !== 'string') return name;
+        return name.replace(/^[\d.\- ]+|[\d.\- ]+$/g, '').trim();
+    };
+
     log(`--- Iniciando Organização (${organizationType}) da Planilha Diária ---`);
     
     // --- LÓGICA PARA NOVA FUNCIONALIDADE DE SEPARAR POR ABAS (CADÊNCIAS) ---
     if (organizationType === 'cadencia') {
+        const fileNameLower = path.basename(filePath).toLowerCase();
         const dir = path.dirname(filePath);
         const originalName = path.parse(filePath).name;
         
         try {
             const workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.readFile(filePath);
+            await workbook.xlsx.readFile(filePath); 
             let processedSheetCount = 0;
 
             for (const worksheet of workbook.worksheets) {
@@ -992,53 +1304,114 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
                 log(`\nProcessando aba: "${sheetName}"...`);
                 processedSheetCount++;
 
-                const newFilePath = path.join(dir, `${originalName}_${sheetName}_organizado.xlsx`);
-                
-                const writerOptions = {
-                    filename: newFilePath,
-                    useStyles: true,
-                    useSharedStrings: true
-                };
-                const writer = new ExcelJS.stream.xlsx.WorkbookWriter(writerOptions);
-                const newWorksheet = writer.addWorksheet('Organizado');
-                
-                // Define a estrutura do arquivo de saída
-                newWorksheet.columns = [
-                    { header: 'nome', key: 'nome', width: 40 },
-                    { header: 'cpf', key: 'cpf', width: 20, style: { numFmt: '0' } },
-                    { header: 'fone1', key: 'fone1', width: 15, style: { numFmt: '0' } },
-                    { header: 'chave', key: 'chave', width: 30 },
-                    { header: 'livre7', key: 'livre7', width: 10 }
-                ];
+                // MODIFICADO: O caminho do arquivo agora é .csv
+                const newFilePath = path.join(dir, `${originalName}_${sheetName.replace(/[^a-zA-Z0-9]/g, '_')}_organizado.csv`);
 
-                let processedRows = 0;
-                worksheet.eachRow((row, rowNumber) => {
-                    if (rowNumber > 1) { // Pula o cabeçalho
-                        const cnpjValue = row.getCell('B').value;
-                        const nomeValue = row.getCell('F').value;
-                        const foneValue = row.getCell('L').value;
-                        const emailValue = row.getCell('M').value;
-
-                        const newRowData = {
-                            nome: nomeValue,
-                            cpf: cnpjValue ? Number(String(cnpjValue).replace(/\D/g, '')) : null,
-                            fone1: foneValue ? Number(String(foneValue).replace(/\D/g, '')) : null,
-                            chave: emailValue,
-                            livre7: 'C6'
-                        };
-
-                        newWorksheet.addRow(newRowData).commit();
-                        processedRows++;
+                // NOVO: Lógica para mapeamento de colunas (dinâmico com fallback)
+                const headerRow = worksheet.getRow(1);
+                const headerMap = {};
+                headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                    if (cell.value) {
+                        const normalizedHeader = String(cell.value).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                        headerMap[normalizedHeader] = colNumber;
                     }
                 });
 
-                await writer.commit();
-                log(`✅ Aba "${sheetName}" concluída. ${processedRows} linhas salvas em: ${path.basename(newFilePath)}`);
+                const findColumn = (possibleNames, fallback) => {
+                    for (const name of possibleNames) {
+                        const normalizedName = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                        for (const headerKey in headerMap) {
+                            if (headerKey.includes(normalizedName)) {
+                                return headerMap[headerKey];
+                            }
+                        }
+                    }
+                    log(`⚠️ Cabeçalho para "${possibleNames[0]}" não encontrado. Usando fallback para coluna ${fallback}.`);
+                    return fallback; // Retorna a letra da coluna como fallback
+                };
+                // FIM DA NOVA LÓGICA DE MAPEAMENTO
+
+                const dataForCsv = []; // MODIFICADO: Array para armazenar os dados para o CSV
+                worksheet.eachRow((row, rowNumber) => {
+                    if (rowNumber > 1 && row.values.length > 1) { // Pula o cabeçalho e ignora linhas vazias
+                        let newRowData = null;
+                        let nome, cpf, fone1, chave;
+
+                        if (fileNameLower.includes('lista gomes')) {
+                            let mapping;
+                            if (sheetName.toLowerCase().includes('lista 4')) {
+                                mapping = {
+                                    nome: findColumn(['nome_responsavel'], 'D'),
+                                    cpf: findColumn(['cnpj_cliente'], 'B'),
+                                    chave: findColumn(['email_responsavel'], 'E'),
+                                    fone1: findColumn(['celular_responsavel'], 'F')
+                                };
+                            } else if (sheetName.toLowerCase().includes('lista 3') || sheetName.toLowerCase().includes('lista 1')) {
+                                mapping = {
+                                    cpf: findColumn(['cnpj'], 'A'),
+                                    nome: findColumn(['nome do negocio'], 'D'),
+                                    fone1: findColumn(['telefone celular'], 'G'),
+                                    chave: findColumn(['e-mail'], 'H')
+                                };
+                            }
+
+                            if (mapping) {
+                                nome = row.getCell(mapping.nome).value;
+                                cpf = row.getCell(mapping.cpf).value;
+                                fone1 = row.getCell(mapping.fone1).value;
+                                chave = row.getCell(mapping.chave).value;
+                            }
+                        } else {
+                            // Lógica original para "Cadência Equipes"
+                            nome = row.getCell('F').value;
+                            cpf = row.getCell('B').value;
+                            fone1 = row.getCell('L').value;
+                            chave = row.getCell('M').value;
+                        }
+
+                        if (nome || cpf) { // Processa se houver pelo menos nome ou cpf
+                            newRowData = {
+                                nome: cleanClientName(nome) || '',
+                                cpf: cpf ? String(cpf).replace(/\D/g, '') : '',
+                                fone1: fone1 ? String(fone1).replace(/\D/g, '') : '',
+                                chave: chave || '',
+                                livre7: 'C6' // Este valor é fixo
+                            };
+                        }
+                        // MODIFICADO: Adiciona a linha ao array de dados
+                        if (newRowData) {
+                            dataForCsv.push(newRowData);
+                        }
+                    }
+                });
+
+                // MODIFICADO: Lógica para escrever o arquivo CSV
+                if (dataForCsv.length > 0) {
+                    const csvWorkbook = new ExcelJS.Workbook();
+                    const csvWorksheet = csvWorkbook.addWorksheet('Organizado');
+                    csvWorksheet.columns = [
+                        { header: 'nome', key: 'nome' },
+                        { header: 'cpf', key: 'cpf' },
+                        { header: 'fone1', key: 'fone1' },
+                        { header: 'chave', key: 'chave' },
+                        { header: 'livre7', key: 'livre7' }
+                    ];
+                    csvWorksheet.addRows(dataForCsv);
+                    // MODIFICADO: Adiciona opções para usar ';' como delimitador
+                    await csvWorkbook.csv.writeFile(newFilePath, {
+                        formatterOptions: {
+                            delimiter: ';'
+                        }
+                    });
+                    log(`✅ Aba "${sheetName}" concluída. ${dataForCsv.length} linhas salvas em: ${path.basename(newFilePath)}`);
+                } else {
+                    log(`⚠️ Nenhum dado processado para a aba "${sheetName}". Arquivo não foi gerado.`);
+                }
             }
 
             if (processedSheetCount > 0) {
-                log(`\n--- ✅ Processo de separação por equipes finalizado com sucesso! ---`);
-                shell.showItemInFolder(path.join(dir, `${workbook.worksheets[0].name}_CAD.xlsx`));
+                log(`\n--- ✅ Processo de separação por abas finalizado com sucesso! ---`);
+                shell.showItemInFolder(dir); // Abre a pasta onde os arquivos foram salvos
             } else {
                 log(`⚠️ Nenhuma aba encontrada no arquivo.`);
             }
@@ -1157,9 +1530,13 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
                     let newRowData;
 
                     if (organizationType === 'bernardo') {
-                        const getValue = (colName) => row.getCell(headerMap[colName.toLowerCase()]).value;
+                        const getValue = (colName) => {
+                            const colIndex = headerMap[colName.toLowerCase()];
+                            // Se a coluna não for encontrada no mapa, retorna null para evitar o erro.
+                            return colIndex ? row.getCell(colIndex).value : null;
+                        };
                         newRowData = {
-                            nome: getValue('razao_social'),
+                            nome: cleanClientName(getValue('razao_social')),
                             cpf: getValue('cnpj_pk') ? Number(String(getValue('cnpj_pk')).replace(/\D/g, '')) : null,
                             livre1: getValue('data_inicio_atividade_formatado'),
                             chave: getValue('correiro_eletronico'),
@@ -1205,7 +1582,7 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
                         }
 
                         newRowData = {
-                            nome: razao,
+                            nome: cleanClientName(razao),
                             cpf: cnpj ? Number(String(cnpj).replace(/\D/g, '')) : null,
                             livre1: dataInicio,
                             chave: email,
@@ -1248,7 +1625,10 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
                         }
 
                         newRowData = {
-                            nome: nome, cpf: cpf ? Number(String(cpf).replace(/\D/g, '')) : null, livre1: fase, chave: email, livre2: cashIn, livre3: faturamento, fone1: fone1 ? Number(String(fone1).replace(/\D/g, '')) : null
+                            nome: cleanClientName(nome),
+                            cpf: cpf ? Number(String(cpf).replace(/\D/g, '')) : null,
+                            livre1: fase, chave: email, livre2: cashIn, livre3: faturamento,
+                            fone1: fone1 ? Number(String(fone1).replace(/\D/g, '')) : null
                         };
                     }
                     
@@ -1954,7 +2334,7 @@ async function runApiConsultation(filePath, options, log, progress) {
     const BATCH_SIZE_SINGLE = 20000;
     const BATCH_SIZE_DUAL = 40000;
     const RETRY_MS = 2 * 60 * 1000;
-    const DELAY_SUCESSO_MS = 90 * 1000;
+    const DELAY_SUCESSO_MS = 2 * 60 * 1000;
     const MAX_RETRIES = 5;
 
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -2176,4 +2556,4 @@ async function runApiConsultation(filePath, options, log, progress) {
         console.error(error);
         return { success: false, clientData: { header: null, rows: [] } };
     }
-} 
+}
