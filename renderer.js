@@ -860,7 +860,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const files = await window.electronAPI.selectFile({ title: 'Selecione planilhas com telefones', multi: true });
             if (!files || files.length === 0) return appendBlocklistLog('Nenhum arquivo selecionado.');
             appendBlocklistLog(`Iniciando alimentação com ${files.length} arquivo(s).`);
-            window.electronAPI.feedBlocklist(files); // Reutiliza o handler existente
+            const sendEmail = document.getElementById('sendBlocklistEmailCheckbox').checked;
+            window.electronAPI.feedBlocklist({ filePaths: files, sendEmail }); // MODIFICADO: Envia o objeto com a opção de e-mail
         });
     }
 

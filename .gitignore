@@ -10,6 +10,8 @@ firebase-debug.*.log*
 # Firebase
 .firebase/
 .firebaserc
+.split-csv.js
+.custo.html
 
 # Ambiente
 .env

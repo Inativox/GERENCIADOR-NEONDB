@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Custo de Chamadas</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --accent: #22d3ee;
+            --surface: rgba(255, 255, 255, 0.88);
+            --surface-muted: rgba(255, 255, 255, 0.65);
+            --border: rgba(148, 163, 184, 0.45);
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --background: linear-gradient(145deg, #f8fbff 0%, #eef2ff 52%, #f5f3ff 100%);
+        }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--background);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 3rem 1.5rem;
+        }
+        .app-shell {
+            width: min(980px, 100%);
+            background: var(--surface);
+            border-radius: 20px;
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
+            padding: 2.8rem clamp(1.5rem, 3vw, 3rem);
+            backdrop-filter: blur(18px);
+        }
+        .app-header {
+            text-align: center;
+            margin-bottom: 2.2rem;
+        }
+        .app-header h1 {
+            margin: 0;
+            font-size: clamp(1.9rem, 2.4vw, 2.4rem);
+            letter-spacing: -0.015em;
+        }
+        .app-header p {
+            margin: 0.75rem auto 0;
+            max-width: 520px;
+            color: var(--text-muted);
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+        .app-grid {
+            display: grid;
+            gap: 1.75rem;
+            grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+        }
+        .panel {
+            background: #fff;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: clamp(1.5rem, 3vw, 1.9rem);
+            box-shadow: 0 12px 25px rgba(15, 23, 42, 0.08);
+        }
+        .panel--log {
+            display: flex;
+            flex-direction: column;
+        }
+        .panel__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 1.1rem;
+        }
+        .panel__header h2 {
+            margin: 0;
+            font-size: 1.15rem;
+        }
+        .panel__hint {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        label.field-label {
+            display: block;
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+        }
+        input[type="file"] {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px dashed var(--border);
+            background-color: #f8fafc;
+            padding: 1rem;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            transition: border-color 0.2s ease, background-color 0.2s ease;
+        }
+        input[type="file"]::file-selector-button {
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            padding: 0.6rem 1rem;
+            border-radius: 10px;
+            margin-right: 1rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s ease;
+        }
+        input[type="file"]:hover {
+            border-color: var(--primary);
+            background-color: #f1f5ff;
+        }
+        input[type="file"]::file-selector-button:hover {
+            background: var(--primary-dark);
+        }
+        .helper {
+            display: block;
+            margin-top: 0.55rem;
+            font-size: 0.88rem;
+            color: var(--text-muted);
+        }
+        button {
+            margin-top: 1.6rem;
+            width: 100%;
+            padding: 0.95rem 1.2rem;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+            box-shadow: 0 12px 22px rgba(37, 99, 235, 0.25);
+        }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 18px 30px rgba(37, 99, 235, 0.25);
+            filter: brightness(1.03);
+        }
+        button:disabled {
+            cursor: not-allowed;
+            filter: grayscale(0.2);
+            transform: none;
+            box-shadow: none;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.55) 0%, rgba(59, 130, 246, 0.4) 100%);
+        }
+        .result-card {
+            margin-top: 1.8rem;
+            background: #f8fafc;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 14px;
+            padding: 1.4rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        .result-card .result-label {
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.12em;
+            color: var(--text-muted);
+        }
+        .result-card .result-value {
+            font-size: clamp(1.4rem, 2.2vw, 1.8rem);
+            font-weight: 700;
+            color: var(--primary-dark);
+        }
+        .breakdown {
+            margin-top: 1.5rem;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: #fff;
+            padding: 1.2rem 1.4rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .breakdown h2 {
+            margin: 0 0 0.85rem;
+            font-size: 1.05rem;
+        }
+        .breakdown__list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            font-size: 0.95rem;
+        }
+        .breakdown__item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            padding: 0.75rem 0.9rem;
+            border-radius: 12px;
+            background: #f8fafc;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+        }
+        .breakdown__item strong {
+            font-weight: 600;
+        }
+        .breakdown__detail {
+            color: var(--text-muted);
+            font-size: 0.88rem;
+        }
+        #log {
+            background: #0f172a;
+            color: #e2e8f0;
+            border: none;
+            box-shadow: 0 18px 35px rgba(15, 23, 42, 0.35);
+        }
+        #log h2 {
+            color: #f8fafc;
+        }
+        #logList {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            overflow-y: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+            font-size: 0.82rem;
+        }
+        #logList li {
+            margin: 0;
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid rgba(148, 163, 184, 0.14);
+            padding: 0.55rem 0.7rem;
+            border-radius: 8px;
+            word-break: break-word;
+            color: #f1f5f9;
+        }
+        .is-hidden {
+            display: none !important;
+        }
+        @media (max-width: 920px) {
+            .app-grid {
+                grid-template-columns: 1fr;
+            }
+            body {
+                padding: 2.5rem 1rem;
+            }
+            .app-shell {
+                padding: 2.3rem clamp(1.2rem, 4vw, 1.8rem);
+            }
+        }
+        @media (max-width: 520px) {
+            button {
+                font-size: 0.95rem;
+            }
+            .panel__header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.4rem;
+            }
+            .result-card .result-value {
+                font-size: 1.45rem;
+            }
+            input[type="file"]::file-selector-button {
+                margin-bottom: 0.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="app-header">
+            <h1>Calculadora de Custo de Chamadas</h1>
+            <p>Faça o upload da planilha para obter o custo total e um detalhamento por campanha ou por faixa de tempo faturada.</p>
+        </header>
+        <main class="app-grid">
+            <section class="panel">
+                <label class="field-label" for="excelFile">Selecione o arquivo (.xlsx ou .csv)</label>
+                <input type="file" id="excelFile" accept=".xlsx,.xls,.csv">
+                <span class="helper">A coluna F deve conter as durações no formato HH:MM:SS e a coluna O as campanhas.</span>
+                <button id="calculateBtn">Calcular custo</button>
+                <div id="result" class="result-card">
+                    <span class="result-label">Custo total</span>
+                    <span id="resultValue" class="result-value">Aguardando arquivo...</span>
+                </div>
+                <div id="breakdown" class="breakdown is-hidden">
+                    <h2 id="breakdownTitle">Detalhamento por categoria</h2>
+                    <ul id="breakdownList" class="breakdown__list"></ul>
+                </div>
+            </section>
+            <section class="panel panel--log" id="log">
+                <div class="panel__header">
+                    <h2>Log de processamento</h2>
+                    <span class="panel__hint">As mensagens mais recentes aparecem no final.</span>
+                </div>
+                <ul id="logList"></ul>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        const fileInput = document.getElementById('excelFile');
+        const calculateBtn = document.getElementById('calculateBtn');
+        const resultValue = document.getElementById('resultValue');
+        const breakdownContainer = document.getElementById('breakdown');
+        const breakdownTitle = document.getElementById('breakdownTitle');
+        const breakdownList = document.getElementById('breakdownList');
+        const logContainer = document.getElementById('log');
+        const logList = document.getElementById('logList');
+
+        const COLUMN_INDEX = 5; // Coluna F (indice zero-based)
+        const CAMPAIGN_COLUMN_INDEX = 14; // Coluna O (indice zero-based)
+        const CHUNK_SIZE = 20000;
+        const MAX_WARNING_LOGS = 5;
+        const YIELD_EVERY_CHUNKS = 3;
+
+        function clearLog() {
+            logList.innerHTML = '';
+            logContainer.scrollTop = 0;
+        }
+
+        function resetBreakdown() {
+            breakdownList.innerHTML = '';
+            breakdownTitle.textContent = 'Detalhamento por categoria';
+            breakdownContainer.classList.add('is-hidden');
+        }
+
+        function appendLog(message) {
+            const entry = document.createElement('li');
+            const timestamp = new Date().toLocaleTimeString('pt-BR', { hour12: false });
+            entry.textContent = `[${timestamp}] ${message}`;
+            logList.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function formatBytes(bytes) {
+            if (!Number.isFinite(bytes) || bytes <= 0) {
+                return '0 B';
+            }
+
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let value = bytes;
+            let unitIndex = 0;
+
+            while (value >= 1024 && unitIndex < units.length - 1) {
+                value /= 1024;
+                unitIndex += 1;
+            }
+
+            const formatted = value >= 100 || unitIndex === 0 ? Math.round(value) : value.toFixed(1);
+            return `${formatted} ${units[unitIndex]}`;
+        }
+
+        function formatUnitPrice(value) {
+            return value.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+                minimumFractionDigits: 5,
+                maximumFractionDigits: 5
+            });
+        }
+
+        function formatCurrency(value) {
+            return value.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            });
+        }
+
+        function formatCategoryLabel(seconds) {
+            if (!Number.isFinite(seconds) || seconds <= 0) {
+                return '0s';
+            }
+
+            if (seconds % 60 === 0) {
+                const minutes = seconds / 60;
+                const label = minutes === 1 ? '1 minuto' : `${minutes} minutos`;
+                return `${label} (${seconds}s)`;
+            }
+
+            return `${seconds}s`;
+        }
+
+        function sanitizeCampaignName(value) {
+            if (value === null || value === undefined) {
+                return 'Sem campanha';
+            }
+
+            const text = String(value).trim();
+            return text || 'Sem campanha';
+        }
+
+        function renderCategoryBreakdown(categories, campaignName = '') {
+            resetBreakdown();
+
+            if (!Array.isArray(categories) || categories.length === 0) {
+                return;
+            }
+
+            breakdownTitle.textContent = campaignName
+                ? `Detalhamento por categoria – ${campaignName}`
+                : 'Detalhamento por categoria';
+
+            const fragment = document.createDocumentFragment();
+
+            categories.forEach((category) => {
+                const item = document.createElement('li');
+                item.className = 'breakdown__item';
+
+                const countLine = document.createElement('strong');
+                countLine.textContent = `${category.chamadas.toLocaleString('pt-BR')} chamadas de ${formatCategoryLabel(category.segundos)}`;
+
+                const detailLine = document.createElement('span');
+                detailLine.className = 'breakdown__detail';
+                detailLine.textContent = `x ${formatUnitPrice(category.custoUnitario)} = ${formatCurrency(category.custoTotal)}`;
+
+                item.appendChild(countLine);
+                item.appendChild(detailLine);
+                fragment.appendChild(item);
+            });
+
+            breakdownList.appendChild(fragment);
+            breakdownContainer.classList.remove('is-hidden');
+        }
+
+        function renderCampaignTotals(campaigns) {
+            resetBreakdown();
+
+            if (!Array.isArray(campaigns) || campaigns.length === 0) {
+                return;
+            }
+
+            breakdownTitle.textContent = 'Totais por campanha';
+
+            const fragment = document.createDocumentFragment();
+
+            campaigns.forEach((campaign) => {
+                const item = document.createElement('li');
+                item.className = 'breakdown__item';
+
+                const nameLine = document.createElement('strong');
+                nameLine.textContent = campaign.nome;
+
+                const totalLine = document.createElement('span');
+                totalLine.className = 'breakdown__detail';
+                totalLine.textContent = formatCurrency(campaign.custoTotal);
+
+                item.appendChild(nameLine);
+                item.appendChild(totalLine);
+                fragment.appendChild(item);
+            });
+
+            breakdownList.appendChild(fragment);
+            breakdownContainer.classList.remove('is-hidden');
+        }
+
+
+        function inferCsvDelimiter(headerLine) {
+            const delimiters = [',', ';', '	', '|'];
+            let bestDelimiter = ',';
+            let bestScore = -1;
+
+            delimiters.forEach((delimiter) => {
+                const segments = headerLine.split(delimiter).length;
+                if (segments > bestScore) {
+                    bestScore = segments;
+                    bestDelimiter = delimiter;
+                }
+            });
+
+            return bestDelimiter;
+        }
+
+        function parseCsvRow(line, delimiter) {
+            const result = [];
+            let current = '';
+            let insideQuotes = false;
+const sanitizedLine = line.replace(/\r?$/, '');
+
+            for (let index = 0; index < sanitizedLine.length; index += 1) {
+                const char = sanitizedLine[index];
+
+                if (char === '"') {
+                    if (insideQuotes && sanitizedLine[index + 1] === '"') {
+                        current += '"';
+                        index += 1;
+                    } else {
+                        insideQuotes = !insideQuotes;
+                    }
+                    continue;
+                }
+
+                if (char === delimiter && !insideQuotes) {
+                    result.push(current);
+                    current = '';
+                    continue;
+                }
+
+                current += char;
+            }
+
+            result.push(current);
+            return result;
+        }
+
+                
+
+        async function contarLinhasCsv(file, logFn) {
+            const reader = file.stream().getReader();
+            const decoder = new TextDecoder('utf-8');
+            let partial = '';
+            let headerProcessed = false;
+            let totalRows = 0;
+            let iterations = 0;
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (value) {
+                    partial += decoder.decode(value, { stream: true });
+                    const lines = partial.split(/\r?\n/);
+                    partial = lines.pop() ?? '';
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) {
+                            continue;
+                        }
+
+                        if (!headerProcessed) {
+                            headerProcessed = true;
+                            continue;
+                        }
+
+                        totalRows += 1;
+                    }
+
+                    iterations += 1;
+                    if (iterations % YIELD_EVERY_CHUNKS === 0) {
+                        await new Promise((resolve) => setTimeout(resolve, 0));
+                    }
+                }
+
+                if (done) {
+                    break;
+                }
+            }
+
+            const remaining = decoder.decode();
+            const finalLine = (partial + remaining).trim();
+            if (finalLine) {
+                if (!headerProcessed) {
+                    headerProcessed = true;
+                } else {
+                    totalRows += 1;
+                }
+            }
+
+            return totalRows;
+        }
+
+
+
+
+
+
+
+
+
+                
+
+        async function processarCsv(file, totalRows, onProgress, logFn) {
+            const decoder = new TextDecoder('utf-8');
+            const reader = file.stream().getReader();
+            const categoriasMap = new Map();
+            const campanhasMap = new Map();
+            const totalBytes = file.size || 0;
+
+            let processedRows = 0;
+            let custoTotal = 0;
+            let invalidCount = 0;
+            let warningsShown = 0;
+            let delimiter = ',';
+            let headerProcessed = false;
+            let partial = '';
+            let rowsInCurrentChunk = 0;
+            let chunkIndex = 0;
+            const totalChunks = totalRows > 0 ? Math.ceil(totalRows / CHUNK_SIZE) : 0;
+            let lastDisplayRow = 1;
+            let bytesProcessed = 0;
+            let lastPercentLogged = -1;
+
+            logFn?.(`Processamento em lotes de ${CHUNK_SIZE} linhas iniciado.`);
+
+            const flushChunk = async (chunkEndRow, rowsInChunk) => {
+                if (rowsInChunk <= 0) {
+                    return;
+                }
+
+                chunkIndex += 1;
+
+                if (onProgress) {
+                    const chunkStartRow = chunkEndRow - rowsInChunk + 1;
+                    onProgress({
+                        processedRows,
+                        totalRows,
+                        chunkIndex,
+                        totalChunks,
+                        chunkStartRow,
+                        chunkEndRow
+                    });
+                }
+
+                if (chunkIndex % YIELD_EVERY_CHUNKS === 0) {
+                    await new Promise((resolve) => setTimeout(resolve, 0));
+                }
+            };
+
+            const processLine = async (rawLine) => {
+                const trimmed = rawLine.trim();
+                if (!trimmed) {
+                    return;
+                }
+
+                if (!headerProcessed) {
+                    delimiter = inferCsvDelimiter(trimmed);
+                    headerProcessed = true;
+                    return;
+                }
+
+                const cells = parseCsvRow(rawLine, delimiter);
+
+                processedRows += 1;
+                rowsInCurrentChunk += 1;
+                lastDisplayRow = processedRows + 1;
+
+                const durationCell = cells[COLUMN_INDEX];
+                const campaignCell = cells[CAMPAIGN_COLUMN_INDEX];
+                const durationValue = typeof durationCell === 'string' ? durationCell.trim() : durationCell;
+                const resultado = calcularCustoChamada(durationValue);
+
+                if (!resultado.valido) {
+                    invalidCount += 1;
+                    if (warningsShown < MAX_WARNING_LOGS && logFn) {
+                        logFn(`Linha ${lastDisplayRow} ignorada: ${resultado.motivo}.`);
+                        warningsShown += 1;
+                    }
+                    return;
+                }
+
+                custoTotal += resultado.custo;
+
+                const campaignKey = sanitizeCampaignName(campaignCell);
+                const campanha = campanhasMap.get(campaignKey) || {
+                    nome: campaignKey,
+                    chamadas: 0,
+                    custoTotal: 0
+                };
+                campanha.chamadas += 1;
+                campanha.custoTotal += resultado.custo;
+                campanhasMap.set(campaignKey, campanha);
+
+                if (resultado.categoriaSegundos != null) {
+                    const key = resultado.categoriaSegundos;
+                    const categoria = categoriasMap.get(key) || {
+                        chamadas: 0,
+                        custoUnitario: resultado.custo,
+                        custoTotal: 0
+                    };
+                    categoria.chamadas += 1;
+                    categoria.custoTotal += resultado.custo;
+                    categoriasMap.set(key, categoria);
+                }
+
+                if (rowsInCurrentChunk >= CHUNK_SIZE) {
+                    const rowsInChunk = rowsInCurrentChunk;
+                    rowsInCurrentChunk = 0;
+                    await flushChunk(lastDisplayRow, rowsInChunk);
+                }
+            };
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (value) {
+                    bytesProcessed += value.byteLength;
+                    if (totalBytes > 0) {
+                        const percent = Math.floor((bytesProcessed / totalBytes) * 100);
+                        if (percent !== lastPercentLogged && (percent % 10 === 0 || percent === 100)) {
+                            logFn?.(`Leitura do arquivo: ${percent}% (${formatBytes(bytesProcessed)} de ${formatBytes(totalBytes)}).`);
+                            lastPercentLogged = percent;
+                        }
+                    }
+
+                    partial += decoder.decode(value, { stream: true });
+                    const lines = partial.split(/\r?\n/);
+                    partial = lines.pop() ?? '';
+
+                    for (const line of lines) {
+                        await processLine(line);
+                    }
+                }
+
+                if (done) {
+                    const remaining = decoder.decode();
+                    const finalLine = partial + remaining;
+                    if (finalLine) {
+                        await processLine(finalLine);
+                    }
+                    break;
+                }
+            }
+
+            if (!headerProcessed) {
+                return { custoTotal: 0, invalidCount: 0, categorias: [], campanhas: [] };
+            }
+
+            if (rowsInCurrentChunk > 0) {
+                await flushChunk(lastDisplayRow, rowsInCurrentChunk);
+            }
+
+            if (invalidCount > warningsShown && logFn) {
+                const remainingInvalid = invalidCount - warningsShown;
+                logFn(`${remainingInvalid} linhas adicionais possuem duracoes invalidas e foram ignoradas.`);
+            }
+
+            const categorias = Array.from(categoriasMap.entries())
+                .map(([segundos, dados]) => ({
+                    segundos,
+                    chamadas: dados.chamadas,
+                    custoUnitario: dados.custoUnitario,
+                    custoTotal: dados.custoTotal
+                }))
+                .sort((a, b) => a.segundos - b.segundos);
+
+            const campanhas = Array.from(campanhasMap.values());
+
+            return { custoTotal, invalidCount, categorias, campanhas };
+        }
+
+
+
+
+
+
+
+
+
+        function readFileAsArrayBuffer(file, onProgress) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+
+                reader.onerror = () => {
+                    reject(new Error(reader.error?.message || 'Falha ao ler arquivo.'));
+                };
+
+                reader.onprogress = (event) => {
+                    if (!onProgress) {
+                        return;
+                    }
+
+                    if (event.lengthComputable) {
+                        onProgress(event.loaded, event.total);
+                    } else {
+                        onProgress(event.loaded);
+                    }
+                };
+
+                reader.onload = () => {
+                    const result = reader.result;
+                    if (!(result instanceof ArrayBuffer)) {
+                        reject(new Error('Leitura retornou um formato inesperado.'));
+                        return;
+                    }
+                    resolve(result);
+                };
+
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function readFileAsText(file, onProgress) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+
+                reader.onerror = () => {
+                    reject(new Error(reader.error?.message || 'Falha ao ler arquivo.'));
+                };
+
+                reader.onprogress = (event) => {
+                    if (!onProgress) {
+                        return;
+                    }
+
+                    if (event.lengthComputable) {
+                        onProgress(event.loaded, event.total);
+                    } else {
+                        onProgress(event.loaded);
+                    }
+                };
+
+                reader.onload = () => {
+                    const result = reader.result;
+                    if (typeof result !== 'string') {
+                        reject(new Error('Leitura retornou um formato inesperado.'));
+                        return;
+                    }
+                    resolve(result);
+                };
+
+                reader.readAsText(file, 'utf-8');
+            });
+        }
+
+        function parseDuration(value) {
+            if (typeof value === 'number') {
+                const secondsInDay = 24 * 60 * 60;
+                const seconds = Math.round(value * secondsInDay);
+                return { seconds, valid: true };
+            }
+
+            if (typeof value !== 'string') {
+                return { seconds: 0, valid: false, message: 'valor diferente de texto ou numero' };
+            }
+
+            const trimmed = value.trim();
+            if (!trimmed) {
+                return { seconds: 0, valid: false, message: 'campo vazio' };
+            }
+
+            const parts = trimmed.split(':');
+            if (parts.length !== 3) {
+                return { seconds: 0, valid: false, message: 'formato diferente de HH:MM:SS' };
+            }
+
+            const numbers = parts.map((segment) => Number(segment));
+            if (numbers.some((segment) => Number.isNaN(segment))) {
+                return { seconds: 0, valid: false, message: 'formato contem caracteres invalidos' };
+            }
+
+            const [hours, minutes, seconds] = numbers;
+            if (minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+                return { seconds: 0, valid: false, message: 'minutos ou segundos fora do intervalo 00-59' };
+            }
+
+            const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+            if (totalSeconds < 0) {
+                return { seconds: 0, valid: false, message: 'valor negativo informado' };
+            }
+
+            return { seconds: totalSeconds, valid: true };
+        }
+
+        function calcularCustoChamada(durationValue) {
+            const { seconds, valid, message } = parseDuration(durationValue);
+            if (!valid) {
+                return { custo: 0, valido: false, motivo: message };
+            }
+
+            if (seconds <= 0) {
+                return { custo: 0, valido: true, categoriaSegundos: null };
+            }
+
+            const custoBase = 0.0185;
+            if (seconds <= 30) {
+                return { custo: custoBase, valido: true, categoriaSegundos: 30 };
+            }
+
+            const segundosExcedentes = seconds - 30;
+            const blocosAdicionais = Math.ceil(segundosExcedentes / 6);
+            const categoriaSegundos = 30 + blocosAdicionais * 6;
+            const custoAdicional = blocosAdicionais * 0.0037;
+            const custoTotal = custoBase + custoAdicional;
+
+            return { custo: custoTotal, valido: true, categoriaSegundos };
+        }
+
+        async function processarEmLotes(worksheet, onProgress, onWarning) {
+            const rangeRef = worksheet['!ref'];
+            if (!rangeRef) {
+                return { custoTotal: 0, invalidCount: 0, categorias: [], campanhas: [] };
+            }
+
+            const range = XLSX.utils.decode_range(rangeRef);
+            const startRow = range.s.r + 1; // Ignora cabecalho
+            const endRow = range.e.r;
+
+            if (startRow > endRow) {
+                return { custoTotal: 0, invalidCount: 0, categorias: [], campanhas: [] };
+            }
+
+            const totalRows = endRow - startRow + 1;
+            const totalChunks = Math.ceil(totalRows / CHUNK_SIZE);
+            const useDenseAccess = Array.isArray(worksheet);
+
+            let processedRows = 0;
+            let custoTotal = 0;
+            let invalidCount = 0;
+            let warningsShown = 0;
+            const categoriasMap = new Map();
+            const campanhasMap = new Map();
+
+            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+                const chunkStartRow = startRow + chunkIndex * CHUNK_SIZE;
+                const chunkEndRow = Math.min(chunkStartRow + CHUNK_SIZE - 1, endRow);
+
+                for (let currentRow = chunkStartRow; currentRow <= chunkEndRow; currentRow += 1) {
+                    let durationValue;
+                    let campaignValue;
+
+                    if (useDenseAccess) {
+                        const denseRow = worksheet[currentRow];
+                        const denseCell = denseRow ? denseRow[COLUMN_INDEX] : undefined;
+                        const denseCampaignCell = denseRow ? denseRow[CAMPAIGN_COLUMN_INDEX] : undefined;
+                        durationValue = denseCell ? denseCell.v : undefined;
+                        campaignValue = denseCampaignCell ? denseCampaignCell.v : undefined;
+                    } else {
+                        const durationRef = XLSX.utils.encode_cell({ c: COLUMN_INDEX, r: currentRow });
+                        const campaignRef = XLSX.utils.encode_cell({ c: CAMPAIGN_COLUMN_INDEX, r: currentRow });
+                        const durationCell = worksheet[durationRef];
+                        const campaignCell = worksheet[campaignRef];
+                        durationValue = durationCell ? durationCell.v : undefined;
+                        campaignValue = campaignCell ? campaignCell.v : undefined;
+                    }
+
+                    const resultado = calcularCustoChamada(durationValue);
+
+                    if (!resultado.valido) {
+                        invalidCount += 1;
+                        if (warningsShown < MAX_WARNING_LOGS && onWarning) {
+                            const displayRow = currentRow + 1;
+                            onWarning(`Linha ${displayRow} ignorada: ${resultado.motivo}.`);
+                            warningsShown += 1;
+                        }
+                        continue;
+                    }
+
+                    custoTotal += resultado.custo;
+
+                    const campaignKey = sanitizeCampaignName(campaignValue);
+                    const campanha = campanhasMap.get(campaignKey) || {
+                        nome: campaignKey,
+                        chamadas: 0,
+                        custoTotal: 0
+                    };
+                    campanha.chamadas += 1;
+                    campanha.custoTotal += resultado.custo;
+                    campanhasMap.set(campaignKey, campanha);
+
+                    if (resultado.categoriaSegundos != null) {
+                        const key = resultado.categoriaSegundos;
+                        const categoria = categoriasMap.get(key) || {
+                            chamadas: 0,
+                            custoUnitario: resultado.custo,
+                            custoTotal: 0
+                        };
+
+                        categoria.chamadas += 1;
+                        categoria.custoTotal += resultado.custo;
+                        categoriasMap.set(key, categoria);
+                    }
+                }
+
+                const linhasProcessadas = chunkEndRow - chunkStartRow + 1;
+                processedRows += linhasProcessadas;
+
+                if (onProgress) {
+                    onProgress({
+                        processedRows,
+                        totalRows,
+                        chunkIndex: chunkIndex + 1,
+                        totalChunks,
+                        chunkStartRow: chunkStartRow + 1,
+                        chunkEndRow: chunkEndRow + 1
+                    });
+                }
+
+                if ((chunkIndex + 1) % YIELD_EVERY_CHUNKS === 0) {
+                    await new Promise((resolve) => setTimeout(resolve, 0));
+                }
+            }
+
+            if (invalidCount > warningsShown && onWarning) {
+                const remaining = invalidCount - warningsShown;
+                onWarning(`${remaining} linhas adicionais possuem duracoes invalidas e foram ignoradas.`);
+            }
+
+            const categorias = Array.from(categoriasMap.entries())
+                .map(([segundos, dados]) => ({
+                    segundos,
+                    chamadas: dados.chamadas,
+                    custoUnitario: dados.custoUnitario,
+                    custoTotal: dados.custoTotal
+                }))
+                .sort((a, b) => a.segundos - b.segundos);
+
+            const campanhas = Array.from(campanhasMap.values());
+
+            return { custoTotal, invalidCount, categorias, campanhas };
+        }
+
+        async function processarXlsxEmLotes(file, onProgress, logFn) {
+            logFn?.('Preparando leitura do arquivo para memoria.');
+            const readStart = performance.now();
+            let lastPercentLogged = -1;
+            let lastBytesLogged = 0;
+
+            const fileContent = await readFileAsArrayBuffer(file, (loaded, total) => {
+                if (!logFn) return;
+                if (typeof total === 'number' && total > 0) {
+                    const percent = Math.floor((loaded / total) * 100);
+                    if (percent !== lastPercentLogged && (percent % 10 === 0 || percent === 100)) {
+                        logFn(`Leitura do arquivo: ${percent}% (${formatBytes(loaded)} de ${formatBytes(total)}).`);
+                        lastPercentLogged = percent;
+                    }
+                } else if (loaded - lastBytesLogged >= 10 * 1024 * 1024) {
+                    logFn(`Leitura do arquivo: ${formatBytes(loaded)} carregados.`);
+                    lastBytesLogged = loaded;
+                }
+            });
+
+            const readDuration = Math.round(performance.now() - readStart);
+            logFn?.(`Arquivo carregado (${formatBytes(fileContent.byteLength)}) em ${readDuration} ms.`);
+
+            const parseStart = performance.now();
+            const workbook = XLSX.read(fileContent, { type: 'array', cellDates: false });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const parseDuration = Math.round(performance.now() - parseStart);
+            logFn?.(`Planilha ativa: ${sheetName}. Parsing inicial em ${parseDuration} ms.`);
+
+            const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+            const totalRows = range.e.r - range.s.r; // Ignora cabeçalho
+            const totalChunks = Math.ceil(totalRows / CHUNK_SIZE);
+
+            let custoTotal = 0;
+            let invalidCount = 0;
+            let warningsShown = 0;
+            const categoriasMap = new Map();
+            const campanhasMap = new Map();
+
+            logFn?.(`Processamento em lotes de ${CHUNK_SIZE} linhas iniciado.`);
+
+            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+                const chunkStartRow = range.s.r + 1 + chunkIndex * CHUNK_SIZE;
+                const chunkEndRow = Math.min(chunkStartRow + CHUNK_SIZE - 1, range.e.r);
+
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+                    header: 1,
+                    range: { s: { r: chunkStartRow, c: 0 }, e: { r: chunkEndRow, c: CAMPAIGN_COLUMN_INDEX } },
+                    defval: null
+                });
+
+                for (let i = 0; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    const durationValue = row[COLUMN_INDEX];
+                    const campaignValue = row[CAMPAIGN_COLUMN_INDEX];
+                    const resultado = calcularCustoChamada(durationValue);
+
+                    if (!resultado.valido) {
+                        invalidCount++;
+                        if (warningsShown < MAX_WARNING_LOGS && logFn) {
+                            const displayRow = chunkStartRow + i + 1;
+                            logFn(`Linha ${displayRow} ignorada: ${resultado.motivo}.`);
+                            warningsShown++;
+                        }
+                        continue;
+                    }
+
+                    custoTotal += resultado.custo;
+
+                    const campaignKey = sanitizeCampaignName(campaignValue);
+                    const campanha = campanhasMap.get(campaignKey) || { nome: campaignKey, chamadas: 0, custoTotal: 0 };
+                    campanha.chamadas++;
+                    campanha.custoTotal += resultado.custo;
+                    campanhasMap.set(campaignKey, campanha);
+
+                    if (resultado.categoriaSegundos != null) {
+                        const key = resultado.categoriaSegundos;
+                        const categoria = categoriasMap.get(key) || { chamadas: 0, custoUnitario: resultado.custo, custoTotal: 0 };
+                        categoria.chamadas++;
+                        categoria.custoTotal += resultado.custo;
+                        categoriasMap.set(key, categoria);
+                    }
+                }
+
+                onProgress?.({ processedRows: (chunkIndex + 1) * CHUNK_SIZE, totalRows, chunkIndex: chunkIndex + 1, totalChunks, chunkStartRow: chunkStartRow + 1, chunkEndRow: chunkEndRow + 1 });
+                await new Promise(resolve => setTimeout(resolve, 0)); // Libera a UI
+            }
+
+            if (invalidCount > warningsShown && logFn) {
+                logFn(`${invalidCount - warningsShown} linhas adicionais possuem durações inválidas e foram ignoradas.`);
+            }
+
+            const categorias = Array.from(categoriasMap.entries()).map(([segundos, dados]) => ({ segundos, ...dados })).sort((a, b) => a.segundos - b.segundos);
+            const campanhas = Array.from(campanhasMap.values());
+            return { custoTotal, invalidCount, categorias, campanhas };
+        }
+
+async function lerPlanilhaECalcularCusto(file, onProgress, logFn) {
+    if (!file) {
+        throw new Error('Nenhum arquivo selecionado.');
+    }
+
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    const isCsv = extension === 'csv';
+
+    if (isCsv) {
+        logFn?.('Arquivo identificado como CSV. Preparando processamento em fluxo.');
+        const countStart = performance.now();
+        const totalRows = await contarLinhasCsv(file, logFn);
+        const countDuration = Math.round(performance.now() - countStart);
+        logFn?.(`Estimativa de ${totalRows.toLocaleString('pt-BR')} linhas de dados concluida em ${countDuration} ms.`);
+        return processarCsv(file, totalRows, onProgress, logFn);
+    }
+
+    // Para arquivos XLSX, usamos o novo processador em lotes.
+    return processarXlsxEmLotes(
+        file,
+        onProgress,
+        logFn
+    );
+}
+
+
+
+
+        calculateBtn.addEventListener('click', async () => {
+            clearLog();
+            resetBreakdown();
+            appendLog('Botao "Calcular custo" acionado.');
+
+            try {
+                calculateBtn.disabled = true;
+                resultValue.textContent = 'Processando...';
+
+                const file = fileInput.files[0];
+                if (!file) {
+                    appendLog('Nenhum arquivo foi selecionado.');
+                    throw new Error('Nenhum arquivo selecionado.');
+                }
+
+                appendLog(`Arquivo selecionado: ${file.name} (${formatBytes(file.size)}).`);
+
+                const { custoTotal, invalidCount, categorias, campanhas } = await lerPlanilhaECalcularCusto(
+                    file,
+                    (progress) => {
+                        const { processedRows, totalRows, chunkIndex, totalChunks, chunkStartRow, chunkEndRow } = progress;
+                        const percentage = totalRows > 0 ? Math.round((processedRows / totalRows) * 100) : 100;
+                        resultValue.textContent = `Processando... ${processedRows}/${totalRows} linhas (${percentage}%)`;
+                        appendLog(`Lote ${chunkIndex}/${totalChunks} finalizado (linhas ${chunkStartRow} a ${chunkEndRow}).`);
+                    },
+                    appendLog
+                );
+
+                const isSingleCampaign = campanhas.length <= 1;
+                resultValue.textContent = formatCurrency(custoTotal);
+
+                if (isSingleCampaign) {
+                    const campaignName = campanhas[0]?.nome || '';
+                    renderCategoryBreakdown(categorias, campaignName);
+                } else {
+                    renderCampaignTotals(campanhas);
+                }
+
+                appendLog('Processamento finalizado com sucesso.');
+                if (invalidCount > 0) {
+                    appendLog(`${invalidCount} linhas foram ignoradas por duracoes invalidas.`);
+                }
+            } catch (error) {
+                resultValue.textContent = error.message;
+                appendLog(`Erro: ${error.message}`);
+            } finally {
+                calculateBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

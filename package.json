@@ -1,6 +1,6 @@
 {
   "name": "gerenciador-de-bases",
-  "version": "1.2.4",
+  "version": "1.2.6",
   "description": "App unificado para limpeza, consulta e enriquecimento de bases.",
   "author": "Davi Abraão",
   "main": "main.js",
@@ -21,6 +21,7 @@
     "electron-store": "^7.0.3",
     "electron-updater": "^6.1.1",
     "exceljs": "^4.4.0",
+    "nodemailer": "^7.0.9",
     "pg": "^8.16.3",
     "xlsx": "^0.18.5"
   },
@@ -31,7 +32,6 @@
   "build": {
     "appId": "com.daviabraao.gerenciadordebases",
     "productName": "Gerenciador de Bases",
-  
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"

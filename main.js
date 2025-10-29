@@ -11,6 +11,7 @@ const os = require('os');
 const Store = require('electron-store');
 const { Pool } = require('pg');
 const { parse } = require('csv-parse');
+const nodemailer = require('nodemailer'); // NOVO: Para envio de e-mail
 
 autoUpdater.logger = require("electron-log");
 autoUpdater.logger.transports.file.level = "info";
@@ -747,13 +748,52 @@ ipcMain.on("split-large-csv", async (event, { filePath, linesPerSplit }) => {
     shell.showItemInFolder(outputDir);
 });
 
+// --- INÍCIO: NOVA LÓGICA DE ENVIO DE E-MAIL ---
+async function sendBlocklistUpdateEmail(totalNewPhones, finalTotalCount) {
+    // ATENÇÃO: Use uma senha de aplicativo se o Gmail tiver 2FA ativado.
+    // É altamente recomendado usar variáveis de ambiente para credenciais em um app real.
+    const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true, // true for 465, false for other ports
+        auth: {
+            user: "dabraao888@gmail.com", // SEU E-MAIL GMAIL
+            pass: "nvcw jsxi pdam yfke", // SUA SENHA DE APLICATIVO DO GMAIL
+        },
+    });
+
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const formattedTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+    const mailOptions = {
+        from: '"Gerenciador de Bases" <dabraao888@gmail.com>',
+        to: "tatiane@mbfinance.com.br", // Destinatários principais, separados por vírgula
+        cc: "rodrigo.gadelha@mbnegocios.com.br, fabiano@mbfinance.com.br", // Pessoas em cópia (CC), separadas por vírgula
+        subject: "✅ Atualização da Blocklist Concluída",
+        html: `
+            <div style="font-family: Arial, sans-serif; color: #333;">
+                <h2>Relatório de Atualização da Blocklist</h2>
+                <p>A base de dados da blocklist foi atualizada com sucesso.</p>
+                <hr>
+                <p><strong>Novos números adicionados:</strong> ${totalNewPhones.toLocaleString('pt-BR')}</p>
+                <p><strong>Total de números na blocklist:</strong> ${finalTotalCount.toLocaleString('pt-BR')}</p>
+                <hr>
+                <p style="font-size: 12px; color: #777;">
+                    Data da atualização: ${formattedDate} às ${formattedTime}<br>
+                    Processo executado por: ${currentUser.username}
+                </p>
+            </div>
+        `,
+    };
+
+    return transporter.sendMail(mailOptions);
+}
+// --- FIM: NOVA LÓGICA DE ENVIO DE E-MAIL ---
+
 // NOVO: Handler para alimentar a base de dados da blocklist
-ipcMain.on("feed-blocklist", async (event, filePaths) => {
-    if (!isAdmin() || !pool) {
-        log("❌ Acesso negado ou conexão com BD inativa.");
-        event.sender.send("blocklist-log", "❌ Acesso negado ou conexão com BD inativa.");
-        return;
-    }
+ipcMain.on("feed-blocklist", async (event, { filePaths, sendEmail }) => { // MODIFICADO: Recebe a opção de e-mail
+    if (!isAdmin() || !pool) { event.sender.send("blocklist-log", "❌ Acesso negado ou conexão com BD inativa."); return; }
     const log = (msg) => event.sender.send("blocklist-log", msg); // CORRIGIDO: Envia para o log da aba correta
     log(`--- Iniciando Alimentação da Blocklist na nova aba ---`);
     
@@ -772,7 +812,7 @@ ipcMain.on("feed-blocklist", async (event, filePaths) => {
             const newCount = result.rowCount;
             if (newCount > 0) {
                 log(`✅ Lote salvo. ${newCount} novos telefones adicionados à blocklist.`);
-                phoneChunk.forEach(phone => blocklistPhones.add(phone));
+                // phoneChunk.forEach(phone => blocklistPhones.add(phone)); // REMOVIDO: A contagem em memória é imprecisa.
                 totalNewPhonesAdded += newCount;
             }
         } catch (e) {
@@ -842,8 +882,25 @@ ipcMain.on("feed-blocklist", async (event, filePaths) => {
             log(`❌ Erro catastrófico ao processar o arquivo ${fileName}: ${err.message}`);
         }
     }
+
     log(`\n--- Alimentação da Blocklist Concluída ---`);
-    log(`Total de telefones novos adicionados: ${totalNewPhonesAdded}. Total na blocklist agora: ${blocklistPhones.size}`);
+    log(`Total de telefones novos adicionados: ${totalNewPhonesAdded.toLocaleString('pt-BR')}.`);
+
+    try {
+        const finalCountResult = await pool.query('SELECT COUNT(*) FROM blocklist;');
+        const finalTotalCount = parseInt(finalCountResult.rows[0].count, 10);
+        log(`Total na blocklist agora: ${finalTotalCount.toLocaleString('pt-BR')}.`);
+
+        if (sendEmail) {
+            log(`\n📧 Opção de e-mail ativada. Enviando notificação para tatiane@mbfinance.com.br...`);
+            await sendBlocklistUpdateEmail(totalNewPhonesAdded, finalTotalCount);
+            log(`✅ E-mail de notificação enviado com sucesso!`);
+        }
+
+    } catch (error) {
+        log(`❌ Erro na etapa final (contagem/e-mail): ${error.message}`);
+        console.error("Erro na etapa final da blocklist:", error);
+    }
 });
 
 // NOVO: Handler para buscar estatísticas da blocklist
