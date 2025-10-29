@@ -12,6 +12,7 @@ const Store = require('electron-store');
 const { Pool } = require('pg');
 const { parse } = require('csv-parse');
 const nodemailer = require('nodemailer'); // NOVO: Para envio de e-mail
+require('dotenv').config(); // Carrega as variáveis de ambiente do arquivo .env
 
 autoUpdater.logger = require("electron-log");
 autoUpdater.logger.transports.file.level = "info";
@@ -753,12 +754,12 @@ async function sendBlocklistUpdateEmail(totalNewPhones, finalTotalCount) {
     // ATENÇÃO: Use uma senha de aplicativo se o Gmail tiver 2FA ativado.
     // É altamente recomendado usar variáveis de ambiente para credenciais em um app real.
     const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true, // true for 465, false for other ports
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: parseInt(process.env.SMTP_PORT, 10) || 465,
+        secure: (process.env.SMTP_PORT || "465") === "465", // true for 465, false for other ports
         auth: {
-            user: "dabraao888@gmail.com", // SEU E-MAIL GMAIL
-            pass: "nvcw jsxi pdam yfke", // SUA SENHA DE APLICATIVO DO GMAIL
+            user: process.env.SMTP_USER, // Carregado do .env
+            pass: process.env.SMTP_PASS, // Carregado do .env
         },
     });
 
@@ -767,7 +768,7 @@ async function sendBlocklistUpdateEmail(totalNewPhones, finalTotalCount) {
     const formattedTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     const mailOptions = {
-        from: '"Gerenciador de Bases" <dabraao888@gmail.com>',
+        from: `"Gerenciador de Bases" <${process.env.SMTP_USER}>`,
         to: "tatiane@mbfinance.com.br", // Destinatários principais, separados por vírgula
         cc: "rodrigo.gadelha@mbnegocios.com.br, fabiano@mbfinance.com.br", // Pessoas em cópia (CC), separadas por vírgula
         subject: "✅ Atualização da Blocklist Concluída",
