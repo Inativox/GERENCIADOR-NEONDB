@@ -9,120 +9,113 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-primary: #0a0b0f;
-            --bg-secondary: #1a1d23;
-            --glass-bg: rgba(26, 29, 35, 0.6); /* Made it less transparent for better readability */
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --text-primary: #e2e8f0; /* Slightly softer white */
-            --text-secondary: #94a3b8;
-            --accent-primary: #00d4ff;
-            --accent-secondary: #8b5cf6;
-            --danger: #ef4444;
-            --success: #10b981;
-            --glow-primary: rgba(0, 212, 255, 0.3);
-            --glow-secondary: rgba(139, 92, 246, 0.3);
+            --bg-app: #0d1117;
+            --bg-card: #161b22;
+            --bg-element: #21262d;
+            --text-primary: #f1f5f9;
+            --text-secondary: #8b949e;
+            --border-color: #30363d;
+            --accent-blue: #3081f2;
+            --accent-purple: #a371f7;
+            --accent-red: #e5534b;
+            --accent-green: #2da44e;
+            --radius: 0.75rem;
+            --transition-speed: 0.3s;
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-        }
-
-        html {
-            font-size: 16px;
+            font-family: 'Inter', sans-serif;
         }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-primary);
+            background: var(--bg-app);
             color: var(--text-primary);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             overflow: hidden;
-            position: relative;
         }
 
         /* --- ANIMATIONS --- */
-        .bg-animation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 0; }
-        .particle { position: absolute; width: 2px; height: 2px; background: var(--accent-primary); border-radius: 50%; animation: float 6s ease-in-out infinite; opacity: 0.6; }
-        .particle:nth-child(odd) { background: var(--accent-secondary); animation-duration: 8s; }
+        .bg-animation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 0; pointer-events: none; }
+        .particle { position: absolute; width: 2px; height: 2px; background: var(--accent-blue); border-radius: 50%; animation: float 6s ease-in-out infinite; opacity: 0.6; }
+        .particle:nth-child(odd) { background: var(--accent-purple); animation-duration: 8s; }
         @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-25px); } }
         
         /* --- MAIN CONTAINER --- */
         .login-container {
-            background: var(--glass-bg);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border);
-            border-radius: 1rem; /* 16px */
-            padding: 2.5rem; /* 40px */
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 2.5rem;
             width: 100%;
-            max-width: 450px; /* Increased max-width slightly */
+            max-width: 450px;
             position: relative;
             z-index: 10;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
             animation: slideIn 0.7s cubic-bezier(0.25, 1, 0.5, 1);
         }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(20px); }
+            from { opacity: 0; transform: translateY(30px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
         /* --- HEADER --- */
         .login-header {
             text-align: center;
-            margin-bottom: 2.5rem; /* 40px */
+            margin-bottom: 2.5rem;
         }
         .login-title {
-            font-size: 2.25rem; /* 36px */
+            font-size: 2.25rem;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 0.5rem; /* 8px */
+            margin-bottom: 0.5rem;
             animation: glow 2s ease-in-out infinite alternate;
         }
         @keyframes glow {
-            from { filter: drop-shadow(0 0 4px var(--glow-primary)); }
-            to { filter: drop-shadow(0 0 12px var(--glow-secondary)); }
+            from { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-blue) 50%, transparent)); }
+            to { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent-purple) 50%, transparent)); }
         }
         .login-subtitle {
             color: var(--text-secondary);
-            font-size: 1rem; /* 16px */
+            font-size: 1rem;
         }
 
         /* --- FORM ELEMENTS --- */
         .form-group {
-            margin-bottom: 1.5rem; /* 24px */
+            margin-bottom: 1.5rem;
             position: relative;
         }
         .form-label {
             display: block;
-            margin-bottom: 0.5rem; /* 8px */
+            margin-bottom: 0.5rem;
             color: var(--text-secondary);
-            font-size: 0.875rem; /* 14px */
+            font-size: 0.875rem;
             font-weight: 500;
         }
         .form-input {
             width: 100%;
-            padding: 1rem 1.25rem; /* 16px 20px */
-            background: var(--bg-secondary);
-            border: 1px solid var(--glass-border);
-            border-radius: 0.75rem; /* 12px */
+            padding: 1rem;
+            background-color: var(--bg-element);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
             color: var(--text-primary);
             font-size: 1rem;
             transition: all 0.3s ease;
         }
         .form-input:focus {
             outline: none;
-            border-color: var(--accent-primary);
-            background: var(--bg-primary);
-            box-shadow: 0 0 0 3px var(--glow-primary);
+            border-color: var(--accent-blue);
+            background-color: var(--bg-card);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 25%, transparent);
         }
         .form-input::placeholder {
             color: var(--text-secondary);
@@ -131,21 +124,21 @@
 
         /* --- DB CONNECTION GROUP --- */
         .db-connection-group {
-            display: flex;
-            gap: 0.75rem; /* 12px */
+            display: flex; 
+            gap: 0.75rem;
             align-items: flex-end;
         }
         .db-connection-group .form-group {
             flex-grow: 1;
             margin-bottom: 0;
         }
-        .test-connection-btn {
-            padding: 0.75rem 1rem;
-            height: 58px; /* Match input height */
-            background: var(--bg-secondary);
-            border: 1px solid var(--glass-border);
+        .test-connection-btn { 
+            padding: 0.9rem 1rem;
+            height: 54px; /* Match input height */
+            background-color: var(--bg-element);
+            border: 1px solid var(--border-color);
             color: var(--text-secondary);
-            border-radius: 0.75rem;
+            border-radius: var(--radius);
             cursor: pointer;
             font-size: 0.875rem;
             font-weight: 600;
@@ -153,8 +146,8 @@
             flex-shrink: 0;
         }
         .test-connection-btn:hover:not(:disabled) {
-            border-color: var(--accent-secondary);
-            color: var(--accent-secondary);
+            border-color: var(--accent-purple);
+            color: var(--accent-purple);
         }
         .test-connection-btn:disabled {
              opacity: 0.5;
@@ -162,21 +155,21 @@
         }
         #db-status-message {
             font-size: 0.875rem;
-            text-align: center;
-            min-height: 24px; /* Increased height */
-            padding-top: 0.5rem; /* Spacing */
+            text-align: center; 
+            min-height: 24px;
+            padding-top: 0.5rem;
             animation: fadeIn 0.5s ease;
         }
 
         /* --- FORM OPTIONS --- */
         .form-options {
-            display: flex;
+            display: flex; 
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem; /* 24px */
+            margin-bottom: 1.5rem;
             font-size: 0.875rem;
         }
-        .remember-me {
+        .remember-me { 
             display: flex;
             align-items: center;
             cursor: pointer;
@@ -184,9 +177,9 @@
         }
         .remember-me input {
             margin-right: 0.5rem;
-            accent-color: var(--accent-primary);
+            accent-color: var(--accent-blue);
         }
-        #logout-link {
+        #logout-link { 
             color: var(--accent-primary);
             text-decoration: none;
             cursor: pointer;
@@ -198,29 +191,33 @@
 
         /* --- BUTTON & MESSAGES --- */
         .login-button {
+            --base-color: var(--accent-blue); /* Usando a cor de destaque do tema */
+            --grad-light: color-mix(in srgb, var(--base-color) 95%, #ffffff); /* Mais base, menos branco */
+            --grad-dark: color-mix(in srgb, var(--base-color) 60%, #000000);  /* Mais base, menos preto */
+            --border-btn: color-mix(in srgb, var(--base-color) 70%, #000000); /* Borda mais escura */
             width: 100%;
             padding: 1rem;
-            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
-            border: none;
-            border-radius: 0.75rem;
+            background: linear-gradient(145deg, var(--grad-light), var(--grad-dark));
+            border: 1px solid var(--border-btn);
+            border-radius: var(--radius);
             color: var(--text-primary);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.4); /* Sombra no texto para contraste */
+            text-shadow: 0 1px 2px rgba(0,0,0,0.4);
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: all var(--transition-speed) ease;
             margin-bottom: 1.25rem; /* 20px */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
+            box-shadow: inset 0 1px 1px color-mix(in srgb, var(--grad-light) 50%, transparent), 0 4px 8px rgba(0,0,0,0.3); /* Sombra padrão */
         }
         .login-button:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px var(--glow-primary);
+            filter: brightness(1.2);
+            box-shadow: inset 0 1px 1px color-mix(in srgb, var(--grad-light) 50%, transparent), 0 6px 12px rgba(0,0,0,0.4), 0 0 15px var(--base-color); /* Efeito neon no hover */
         }
         .login-button:disabled {
             opacity: 0.5;
-            cursor: not-allowed;
+            cursor: not-allowed; 
             background: var(--bg-secondary);
         }
         .spinner {
@@ -240,8 +237,8 @@
             min-height: 20px;
             animation: fadeIn 0.5s ease;
         }
-        .error-message { color: var(--danger); }
-        .success-message { color: var(--success); }
+        .error-message { color: var(--accent-red); }
+        .success-message { color: var(--accent-green); }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     </style>
@@ -357,8 +354,8 @@
         const setDbStatus = (text, type = 'info') => {
             dbStatusMessage.textContent = text;
             dbStatusMessage.className = 'db-status-message';
-            if (type === 'success') dbStatusMessage.style.color = 'var(--success)';
-            else if (type === 'error') dbStatusMessage.style.color = 'var(--danger)';
+            if (type === 'success') dbStatusMessage.style.color = 'var(--accent-green)';
+            else if (type === 'error') dbStatusMessage.style.color = 'var(--accent-red)';
             else dbStatusMessage.style.color = 'var(--text-secondary)';
         };
 
@@ -389,10 +386,10 @@
             try {
                 const result = await window.electronAPI.saveAndTestDbConnection(connectionString);
                 if (result.success) {
-                    setDbStatus('Conexão bem-sucedida e chave salva!', 'success');
-                    dbConnectionStringInput.style.borderColor = 'var(--success)';
+                    setDbStatus('Conexão bem-sucedida e chave salva!', 'success'); 
+                    dbConnectionStringInput.style.borderColor = 'var(--accent-green)';
                 } else {
-                    throw new Error(result.message);
+                    throw new Error(result.message); 
                 }
             } catch (error) {
                 setDbStatus(`Falha na conexão: ${error.message}`, 'error');
@@ -437,7 +434,7 @@
         testDbBtn.addEventListener('click', handleTestDbConnection);
 
         dbConnectionStringInput.addEventListener('input', () => {
-            dbConnectionStringInput.style.borderColor = 'var(--glass-border)';
+            dbConnectionStringInput.style.borderColor = 'var(--border-color)';
             setDbStatus('');
         });
 

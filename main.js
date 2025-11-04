@@ -226,12 +226,17 @@ function createMainWindow() {
     mainWindow = new BrowserWindow({
         width: 1400,
         height: 950,
+        frame: false, // Remove a barra de título padrão
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
             preload: path.join(__dirname, "preload.js")
         }
     });
+    // Adiciona handlers para os novos botões da janela
+    ipcMain.on('minimize-window', () => mainWindow.minimize());
+    ipcMain.on('maximize-window', () => { if (mainWindow.isMaximized()) { mainWindow.unmaximize(); } else { mainWindow.maximize(); } });
+    ipcMain.on('close-window', () => mainWindow.close());
     mainWindow.loadFile("index.html");
 
     mainWindow.webContents.on("did-finish-load", async () => {
@@ -770,7 +775,7 @@ async function sendBlocklistUpdateEmail(totalNewPhones, finalTotalCount) {
     const mailOptions = {
         from: `"Gerenciador de Bases" <${process.env.SMTP_USER}>`,
         to: "tatiane@mbfinance.com.br", // Destinatários principais, separados por vírgula
-        cc: "rodrigo.gadelha@mbnegocios.com.br, fabiano@mbfinance.com.br", // Pessoas em cópia (CC), separadas por vírgula
+        cc: "rodrigo.gadelha@mbfinance.com.br", // Pessoas em cópia (CC), separadas por vírgula
         subject: "✅ Atualização da Blocklist Concluída",
         html: `
             <div style="font-family: Arial, sans-serif; color: #333;">

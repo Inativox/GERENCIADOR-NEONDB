@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
+    // --- NOVO: Funções de Controle da Janela ---
+    minimizeWindow: () => ipcRenderer.send('minimize-window'),
+    maximizeWindow: () => ipcRenderer.send('maximize-window'),
+    closeWindow: () => ipcRenderer.send('close-window'),
+
     // --- Funções de Login e Sessão ---
     loginAttempt: (username, password, rememberMe) => ipcRenderer.invoke('login-attempt', username, password, rememberMe),
     logout: () => ipcRenderer.send('logout'),

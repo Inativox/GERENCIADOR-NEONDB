@@ -2,11 +2,14 @@ console.log('--- RENDERER.JS CARREGADO - VERSÃO NOVA ---');
 document.addEventListener('DOMContentLoaded', () => {
     const getBasename = (p) => p.split(/[\\/]/).pop();
 
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
+    // --- SELETORES GLOBAIS ---
+    const navLinks = document.querySelectorAll('.sidebar-nav .tab-button');
+    const pageContents = document.querySelectorAll('.page-content');
     const currentTabTitle = document.getElementById('current-tab-title');
     const currentTabDescription = document.getElementById('current-tab-description');
     const mainTitle = document.getElementById("main-app-title");
+    const sidebar = document.querySelector('.sidebar');
+    const mainContent = document.querySelector('.main-content');
     const logoutBtn = document.getElementById('logoutBtn');
     const monitoringTeamTitle = document.getElementById('monitoring-team-title');
      const organizeDailySheetBtn = document.getElementById('organizeDailySheetBtn');
@@ -87,16 +90,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (role === 'limited' || role === 'master') {
-            tabButtons.forEach(button => {
+            navLinks.forEach(button => {
                 const tabName = button.dataset.tabName;
-                if (tabName !== 'monitoramento') {
-                    button.style.display = 'none';
+                if (tabName !== 'monitoramento') { // Esta lógica pode ser ajustada se o monitoramento for reativado
+                    button.parentElement.style.display = 'none';
                 }
             });
             const monitoringTabButton = document.querySelector('.tab-button[data-tab-name="monitoramento"]');
             if (monitoringTabButton) {
                 monitoringTabButton.click();
             }
+
+            // Oculta a aba de monitoramento para todos, por enquanto
+            document.getElementById('nav-monitoramento').style.display = 'none';
 
             if (role === 'limited' && teamId && monitoringTeamTitle) {
                 const team = gruposOperador.find(g => g.id === teamId);
@@ -106,13 +112,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } else if (role === 'admin') {
-            tabButtons.forEach(button => {
-                button.style.display = 'inline-flex';
+            navLinks.forEach(button => {
+                button.parentElement.style.display = 'list-item';
             });
             const adminDefaultTab = document.querySelector('.tab-button[data-tab-name="local"]');
             if (adminDefaultTab) {
                 adminDefaultTab.click();
             }
+
+            // Oculta a aba de monitoramento para todos, por enquanto
+            document.getElementById('nav-monitoramento').style.display = 'none';
         }
     }
     window.electronAPI.onUpdateMessage((message) => {
@@ -122,6 +131,72 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- LÓGICA DE TEMA (CLARO/ESCURO) ---
+    const lightThemeBtn = document.getElementById('light-theme-btn');
+    const darkThemeBtn = document.getElementById('dark-theme-btn');
+    const body = document.body;
+
+    const applyTheme = (theme) => {
+        body.className = `${theme}-theme`;
+        localStorage.setItem('app-theme', theme);
+        lightThemeBtn.classList.toggle('active', theme === 'light');
+        darkThemeBtn.classList.toggle('active', theme === 'dark');
+    };
+
+    lightThemeBtn.addEventListener('click', () => applyTheme('light'));
+    darkThemeBtn.addEventListener('click', () => applyTheme('dark'));
+
+    // Carrega o tema salvo ao iniciar
+    const savedTheme = localStorage.getItem('app-theme') || 'dark';
+    applyTheme(savedTheme);
+
+    // Adiciona a classe do tema ao body para que as variáveis CSS funcionem
+    body.classList.add(`${savedTheme}-theme`);
+
+    window.electronAPI.onUpdateMessage((message) => {
+        const updateMessageElement = document.getElementById('update-message');
+        if (updateMessageElement) { updateMessageElement.innerText = message; }
+    });
+
+    // --- LÓGICA DA BARRA DE TÍTULO PERSONALIZADA ---
+    document.getElementById('minimize-btn').addEventListener('click', () => window.electronAPI.minimizeWindow());
+    document.getElementById('maximize-btn').addEventListener('click', () => window.electronAPI.maximizeWindow());
+    document.getElementById('close-btn').addEventListener('click', () => window.electronAPI.closeWindow());
+
+
+    // --- LÓGICA DOS PAINÉIS EXPANSÍVEIS ---
+    const expandablePanelTriggers = document.querySelectorAll('[id^="toggle-"]');
+    const panelOverlays = document.querySelectorAll('.expandable-panel-overlay');
+    const panelCloseButtons = document.querySelectorAll('[data-close-panel]');
+
+    expandablePanelTriggers.forEach(button => {
+        button.addEventListener('click', () => {
+            const panelId = button.id.replace('toggle-', '').replace('-btn', '') + '-panel';
+            const panel = document.getElementById(panelId);
+            if (panel) {
+                panel.classList.add('active');
+            }
+        });
+    });
+
+    const closePanel = (panelId) => {
+        const panel = document.getElementById(panelId);
+        if (panel) {
+            panel.classList.remove('active');
+        }
+    };
+
+    panelCloseButtons.forEach(button => {
+        button.addEventListener('click', () => closePanel(button.dataset.closePanel));
+    });
+
+    panelOverlays.forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) { // Fecha somente se clicar no fundo escuro
+                closePanel(overlay.id);
+            }
+        });
+    });
 
     const gridConfigs = {
         'localGrid': 'local-sections',
@@ -133,25 +208,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let sortableInstances = {};
 
+    // MODIFICADO: Salva também largura e altura
     function saveSectionState(tabId, sections) {
         const state = sections.map(section => ({
             id: section.dataset.sectionId,
-            visible: !section.classList.contains('hidden')
+            visible: !section.classList.contains('hidden'),
+            width: section.style.width,
+            height: section.style.height
         }));
-        localStorage.setItem(`sections-${tabId}`, JSON.stringify(state));
+        localStorage.setItem(`sections-layout-${tabId}`, JSON.stringify(state));
     }
 
+    // MODIFICADO: Carrega do novo local de armazenamento
     function loadSectionState(tabId) {
-        const saved = localStorage.getItem(`sections-${tabId}`);
+        const saved = localStorage.getItem(`sections-layout-${tabId}`);
         return saved ? JSON.parse(saved) : null;
     }
 
+    // MODIFICADO: Aplica também largura e altura
     function applySectionState(grid, state) {
         if (!state) return;
 
         const sections = Array.from(grid.querySelectorAll('.section'));
 
-        state.forEach((savedSection, index) => {
+        // Primeiro, aplica os estilos e visibilidade
+        sections.forEach(section => {
+            const savedSection = state.find(s => s.id === section.dataset.sectionId);
+            if (savedSection) {
+                section.style.width = savedSection.width || '';
+                section.style.height = savedSection.height || '';
+            }
+        });
+
+        // Depois, reordena
+        state.forEach(savedSection => {
             const section = sections.find(s => s.dataset.sectionId === savedSection.id);
             if (section) {
                 grid.appendChild(section);
@@ -171,6 +261,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
+    }
+
+    // NOVO: Função para resetar o layout de uma aba
+    function resetLayout(gridId, storageKey) {
+        localStorage.removeItem(`sections-layout-${storageKey}`);
+        const grid = document.getElementById(gridId);
+        if (grid) {
+            grid.querySelectorAll('.section').forEach(section => {
+                section.style.width = '';
+                section.style.height = '';
+                section.classList.remove('hidden');
+            });
+            // Recarrega a página para reordenar para o padrão do HTML
+            location.reload();
+        }
     }
 
     function initializeSortable(gridId, storageKey) {
@@ -194,6 +299,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         sortableInstances[gridId] = sortable;
 
+        // NOVO: Observer para salvar o tamanho dos cards ao redimensionar
+        const resizeObserver = new ResizeObserver(() => {
+            // Usamos um timeout para evitar salvar em cada pixel do redimensionamento
+            clearTimeout(grid.resizeTimeout);
+            grid.resizeTimeout = setTimeout(() => {
+                const sections = Array.from(grid.querySelectorAll('.section'));
+                saveSectionState(storageKey, sections);
+            }, 500);
+        });
+
+        // Adiciona listeners para os botões e o observer
         grid.addEventListener('click', function (e) {
             if (e.target.classList.contains('hide-section')) {
                 const section = e.target.closest('.section');
@@ -211,6 +327,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const sections = Array.from(grid.querySelectorAll('.section'));
                 saveSectionState(storageKey, sections);
             }
+        });
+
+        grid.querySelectorAll('.section').forEach(section => {
+            resizeObserver.observe(section);
         });
     }
 
@@ -241,39 +361,61 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    function openTab(evt, tabNameId) {
-        tabContents.forEach(content => {
-            content.classList.remove('active');
-            content.style.display = 'none';
-        });
+    const resetLayoutBtn = document.querySelector('.reset-layout-btn');
+    let isTransitioning = false; // Flag para evitar cliques duplos durante a transição
 
-        tabButtons.forEach(button => {
+    function openTab(event, tabNameId) {
+        if (isTransitioning) return;
+        isTransitioning = true;
+
+        let activePage = document.querySelector('.page-content.active');
+
+        navLinks.forEach(button => {
             button.classList.remove('active');
         });
 
-        const currentTabContent = document.getElementById(tabNameId);
-        if (currentTabContent) {
-            currentTabContent.style.display = 'block';
-            currentTabContent.classList.add('active');
-        }
-        if (evt && evt.currentTarget) {
-            evt.currentTarget.classList.add('active');
+        if (event && event.currentTarget) {
+            event.currentTarget.classList.add('active');
         }
 
-        const body = document.body;
-        body.classList.remove('c6-theme', 'enrichment-theme', 'monitoring-theme', 'blocklist-theme');
+        const showNewPage = () => {
+            pageContents.forEach(content => content.classList.remove('active', 'fade-out')); // Remove fade-out também
+            const newPage = document.getElementById(tabNameId);
+            if (newPage) {
+                newPage.classList.add('active');
+            }
+            isTransitioning = false;
+        };
+        
+        if (activePage && activePage.id !== tabNameId) {
+            activePage.classList.add('fade-out'); // Adiciona a classe de fade-out
+            // A duração do setTimeout deve corresponder à duração da animação fadeOut no CSS
+            setTimeout(showNewPage, 300); 
+        } else {
+            showNewPage();
+        }
+
+        const mainContent = document.querySelector('.main-content');
+        // Reseta as classes de tema, mas mantém as classes base
+        mainContent.classList.remove('c6-theme', 'enrichment-theme', 'monitoring-theme', 'blocklist-theme');
+        // mainContent.className = 'main-content custom-scrollbar'; // Isso remove outras classes que podem ser importantes
+        // Melhor remover apenas as classes de tema
+
+        let themeClass = '';
         if (tabNameId === 'api') {
-            body.classList.add('c6-theme');
+            themeClass = 'c6-theme';
         } else if (tabNameId === 'enriquecimento') {
-            body.classList.add('enrichment-theme');
+            themeClass = 'enrichment-theme';
         } else if (tabNameId === 'monitoramento') {
-            body.classList.add('monitoring-theme');
+            themeClass = 'monitoring-theme';
         } else if (tabNameId === 'blocklist') {
-            body.classList.add('blocklist-theme');
+            themeClass = 'blocklist-theme';
             updateBlocklistStats(); // Atualiza as estatísticas ao abrir a aba
         }
+        if (themeClass) mainContent.classList.add(themeClass);
 
-        const tabButtonText = evt ? evt.currentTarget.textContent.trim() : '';
+
+        const tabButtonText = event ? event.currentTarget.querySelector('span').textContent.trim() : '';
         if (tabInfo[tabButtonText]) {
             mainTitle.classList.add("hidden");
             currentTabTitle.textContent = tabInfo[tabButtonText].title;
@@ -283,9 +425,21 @@ document.addEventListener('DOMContentLoaded', () => {
             currentTabTitle.textContent = "";
             currentTabDescription.textContent = "";
         }
+
+        // NOVO: Configura o botão de reset para a aba atual
+        if (resetLayoutBtn) {
+            const gridId = `${tabNameId}Grid`;
+            const storageKey = gridConfigs[gridId];
+            if (storageKey) {
+                resetLayoutBtn.style.display = 'inline-flex';
+                resetLayoutBtn.onclick = () => resetLayout(gridId, storageKey);
+            } else {
+                resetLayoutBtn.style.display = 'none';
+            }
+        }
     }
 
-    tabButtons.forEach(button => {
+    navLinks.forEach(button => {
         button.addEventListener('click', (event) => {
             const tabNameId = event.currentTarget.dataset.tabName;
             if (tabNameId) {
@@ -578,8 +732,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (splitListBtn) {
         splitListBtn.addEventListener('click', () => {
             const linesPerSplit = parseInt(linesPerSplitInput.value, 10);
-            if (!listToSplitFile) return appendLog('❌ ERRO: Selecione um arquivo para dividir.');
-            if (!linesPerSplit || linesPerSplit <= 0) return appendLog('❌ ERRO: Insira um número de linhas válido e maior que zero.');
+            if (!listToSplitFile) {
+                appendLog('❌ ERRO: Selecione um arquivo para dividir.');
+                return;
+            }
+            if (!linesPerSplit || linesPerSplit <= 0) {
+                appendLog('❌ ERRO: Insira um número de linhas válido e maior que zero.');
+                return;
+            }
             window.electronAPI.splitList({ filePath: listToSplitFile, linesPerSplit });
         });
     }
@@ -589,7 +749,20 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.onLog((msg) => appendLog(msg));
     window.electronAPI.onProgress(({ id, progress }) => { const bar = document.getElementById(id); if (bar) bar.style.width = `${progress}%`; });
     window.electronAPI.onUploadProgress(({ current, total }) => { uploadProgressContainer.style.display = 'block'; uploadProgressTitle.textContent = 'Enviando para o Banco de Dados Compartilhado:'; const percent = Math.round((current / total) * 100); uploadProgressBarFill.style.width = `${percent}%`; uploadProgressText.textContent = `Enviando lote ${current} de ${total}...`; if (current === total) { uploadProgressTitle.textContent = 'Envio para o Banco de Dados Concluído!'; } });
-    function appendLog(msg) { if (!logDiv) return; if (logDiv.textContent === 'Aguardando início do sistema...') { logDiv.innerHTML = ''; } logDiv.innerHTML += `> ${msg.replace(/\n/g, '<br>> ')}\n`; logDiv.scrollTop = logDiv.scrollHeight; }
+    // MODIFICADO: Função appendLog para melhor formatação
+    function appendLog(msg) {
+        if (!logDiv) return;
+        if (logDiv.textContent.trim() === 'Aguardando início do sistema...') {
+            logDiv.innerHTML = '';
+        }
+        const lines = msg.split('\n');
+        lines.forEach(line => {
+            const p = document.createElement('p');
+            p.textContent = `> ${line.trim()}`;
+            logDiv.appendChild(p);
+        });
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
     const apiDropzone = document.getElementById('apiDropzone');
     const apiProcessingDiv = document.getElementById('apiProcessing');
     const apiPendingDiv = document.getElementById('apiPending');
@@ -728,7 +901,18 @@ document.addEventListener('DOMContentLoaded', () => {
             apiStatusSpan.textContent = 'Aguardando início';
         }
     });
-    window.electronAPI.onApiLog((message) => { appendApiLog(message); });
+    // MODIFICADO: Função appendApiLog para melhor formatação
+    window.electronAPI.onApiLog((msg) => {
+        if (!apiLogDiv) return;
+        // apiLogDiv não tem mensagem inicial, apenas anexa
+        const lines = msg.split('\n');
+        lines.forEach(line => {
+            const p = document.createElement('p');
+            p.textContent = `> ${line.trim()}`;
+            apiLogDiv.appendChild(p);
+        });
+        apiLogDiv.scrollTop = apiLogDiv.scrollHeight;
+    });
     window.electronAPI.onApiProgress(({ current, total }) => { const percent = Math.round((current / total) * 100); apiProgressBarFill.style.width = `${percent}%`; apiStatusSpan.textContent = `Processando Lote ${current} de ${total}`; });
     function appendApiLog(msg) { if (apiLogDiv) { apiLogDiv.innerHTML += `> ${msg.replace(/\n/g, '<br>> ')}\n`; apiLogDiv.scrollTop = apiLogDiv.scrollHeight; } }
     const selectMasterFilesBtn = document.getElementById('selectMasterFilesBtn');
@@ -750,7 +934,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const dbLoadProgressStats = document.getElementById('dbLoadProgressStats');
     let enrichmentMasterFiles = [];
     let enrichmentEnrichFiles = [];
-    function appendEnrichmentLog(msg) { if (!enrichmentLogDiv) return; if (enrichmentLogDiv.textContent === 'Aguardando início...') { enrichmentLogDiv.innerHTML = ''; } enrichmentLogDiv.innerHTML += `> ${msg.replace(/\n/g, '<br>> ')}\n`; enrichmentLogDiv.scrollTop = enrichmentLogDiv.scrollHeight; }
+    // MODIFICADO: Função appendEnrichmentLog para melhor formatação
+    function appendEnrichmentLog(msg) {
+        if (!enrichmentLogDiv) return;
+        if (enrichmentLogDiv.textContent.trim() === 'Aguardando início...') {
+            enrichmentLogDiv.innerHTML = '';
+        }
+        const lines = msg.split('\n');
+        lines.forEach(line => {
+            const p = document.createElement('p');
+            p.textContent = `> ${line.trim()}`;
+            enrichmentLogDiv.appendChild(p);
+        });
+        enrichmentLogDiv.scrollTop = enrichmentLogDiv.scrollHeight;
+    }
     async function updateEnrichedCnpjCount() { if (!enrichedCnpjCountSpan) return; try { enrichedCnpjCountSpan.textContent = 'Carregando...'; const count = await window.electronAPI.getEnrichedCnpjCount(); enrichedCnpjCountSpan.textContent = count.toLocaleString('pt-BR'); } catch (error) { enrichedCnpjCountSpan.textContent = 'Erro'; appendEnrichmentLog(`❌ Erro ao carregar contador: ${error.message}`); } }
     if (enrichedCnpjCountSpan) updateEnrichedCnpjCount();
     if (refreshCountBtn) refreshCountBtn.addEventListener('click', updateEnrichedCnpjCount);
@@ -818,18 +1015,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const splitCsvBtn = document.getElementById('splitCsvBtn');
     let csvToSplitFile = null;
 
-    // NOVO: Elementos para verificação de números na blocklist
-    // Adicione estes elementos no seu index.html dentro da aba de Blocklist
     const checkNumbersInput = document.getElementById('check-numbers-input');
     const checkNumbersBtn = document.getElementById('check-numbers-btn');
     const checkNumbersResults = document.getElementById('check-numbers-results');
 
+    // MODIFICADO: Função appendBlocklistLog para melhor formatação
     function appendBlocklistLog(msg) {
         if (!blocklistLogDiv) return;
-        if (blocklistLogDiv.textContent === 'Aguardando início...') {
+        if (blocklistLogDiv.textContent.trim() === 'Aguardando início...') {
             blocklistLogDiv.innerHTML = '';
         }
-        blocklistLogDiv.innerHTML += `> ${msg.replace(/\n/g, '<br>> ')}\n`;
+        const lines = msg.split('\n');
+        lines.forEach(line => {
+            const p = document.createElement('p');
+            p.textContent = `> ${line.trim()}`;
+            blocklistLogDiv.appendChild(p);
+        });
         blocklistLogDiv.scrollTop = blocklistLogDiv.scrollHeight;
     }
 
