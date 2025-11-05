@@ -2198,6 +2198,7 @@ let isApiQueueRunning = false;
 let cancelCurrentApiTask = false;
 let isApiQueuePaused = false;
 let currentApiOptions = { keyMode: 'chave1', removeClients: true };
+let fishModeFilePath = null; // NOVO: para armazenar o caminho do arquivo no modo FISH
 
 ipcMain.on("add-files-to-api-queue", (event, filePaths) => {
     if (!isAdmin()) return;
@@ -2225,7 +2226,7 @@ ipcMain.on("resume-api-queue", (event) => {
     }
 });
 
-ipcMain.on("start-api-queue", (event, options) => {
+ipcMain.on("start-api-queue", async (event, options) => { // MODIFICADO para async
     if (!isAdmin()) return;
     if (isApiQueueRunning) return;
     currentApiOptions = options;
@@ -2233,6 +2234,13 @@ ipcMain.on("start-api-queue", (event, options) => {
     isApiQueuePaused = false;
     apiQueue.clientHeader = null;
     apiQueue.clientRows = [];
+    fishModeFilePath = null; // Reseta o caminho do arquivo FISH
+
+    // NOVO: Lógica para o modo FISH
+    if (options.isFishMode) {
+        event.sender.send("api-log", `🐟 Modo FISH ativado. Clientes serão enviados para o webhook N8N.`);
+    }
+
     cancelCurrentApiTask = false;
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
     processNextInApiQueue(event);
@@ -2244,6 +2252,7 @@ ipcMain.on("reset-api-queue", (event) => {
     cancelCurrentApiTask = true; // Signal to stop any ongoing process
     apiQueue = { pending: [], processing: null, completed: [], cancelled: [], clientHeader: null, clientRows: [] };
     isApiQueuePaused = false;
+    fishModeFilePath = null; // Limpa o caminho do arquivo
     event.sender.send("api-log", "Fila e status reiniciados.");
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
 });
@@ -2280,7 +2289,7 @@ ipcMain.on("cancel-current-api-task", (event) => {
 async function saveCollectedClients(event) {
     const log = (msg) => event.sender.send("api-log", msg);
 
-    if (!currentApiOptions.extractClients || apiQueue.clientRows.length === 0) {
+    if (currentApiOptions.isFishMode || !currentApiOptions.extractClients || apiQueue.clientRows.length === 0) {
         return; // Nothing to do
     }
 
@@ -2334,7 +2343,7 @@ async function processNextInApiQueue(event) {
         apiQueue.processing = null;
         isApiQueueRunning = false;
 
-        await saveCollectedClients(event);
+        if (!currentApiOptions.isFishMode) await saveCollectedClients(event); // Só salva no final se não for modo FISH
 
         event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
         return;
@@ -2344,7 +2353,7 @@ async function processNextInApiQueue(event) {
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
     event.sender.send("api-log", `--- Iniciando processamento de: ${path.basename(apiQueue.processing)} ---`);
     
-    const result = await runApiConsultation(apiQueue.processing, currentApiOptions, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }));
+    const result = await runApiConsultation(apiQueue.processing, currentApiOptions, (msg) => event.sender.send("api-log", msg), (current, total) => event.sender.send("api-progress", { current, total }), fishModeFilePath);
 
     if (result && result.success && currentApiOptions.extractClients && result.clientData.rows.length > 0) {
         if (!apiQueue.clientHeader) {
@@ -2377,8 +2386,8 @@ async function processNextInApiQueue(event) {
 
 
 // FUNÇÃO runApiConsultation ATUALIZADA COM LÓGICA DE RETENTATIVA CORRIGIDA
-async function runApiConsultation(filePath, options, log, progress) {
-    const { keyMode, removeClients } = options;
+async function runApiConsultation(filePath, options, log, progress, fishPath) {
+    const { keyMode, removeClients, isFishMode, extractClients } = options;
     const credentials = {
         c6: {
             CLIENT_ID: "EA8ZUFeZVSeqMGr49XJSsZKFuxSZub3i",
@@ -2395,13 +2404,56 @@ async function runApiConsultation(filePath, options, log, progress) {
     const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
 
     const BATCH_SIZE_SINGLE = 20000;
-    const BATCH_SIZE_DUAL = 40000;
+    const BATCH_SIZE_DUAL = 40000; // Mantido para referência, mas a lógica de envio é individual
     const RETRY_MS = 2 * 60 * 1000;
     const DELAY_SUCESSO_MS = 2 * 60 * 1000;
     const MAX_RETRIES = 5;
 
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const normalizeCnpj = (cnpj) => (String(cnpj).replace(/\D/g, "")).padStart(14, "0");
+
+    const sendToN8NWebhook = async (header, rowData) => {
+        const N8N_WEBHOOK_URL = 'https://n8n.upscales.com.br/webhook/2ccead38-deb8-48d0-9f44-0edccafcc026';
+        if (!rowData) return;
+
+        // Mapeia o cabeçalho para índices
+        const headerMap = {};
+        header.forEach((h, index) => {
+            if (h) headerMap[String(h).toLowerCase()] = index;
+        });
+
+        // Constrói um objeto com os parâmetros
+        const params = {};
+        params.nome = rowData[headerMap['nome']] || '';
+        params.cpf = rowData[headerMap['cpf']] || '';
+        params.chave = rowData[headerMap['chave']] || '';
+
+        // Adiciona todos os campos 'fone'
+        for (const key in headerMap) {
+            if (key.startsWith('fone')) {
+                const phoneValue = rowData[headerMap[key]];
+                if (phoneValue) {
+                    params[key] = phoneValue;
+                }
+            }
+        }
+
+        // Filtra chaves com valores vazios antes de criar a query string
+        const filteredParams = Object.fromEntries(
+            Object.entries(params).filter(([_, v]) => v !== null && v !== '' && v !== undefined)
+        );
+
+        const queryString = new URLSearchParams(filteredParams).toString();
+        const finalUrl = `${N8N_WEBHOOK_URL}?${queryString}`;
+
+        try {
+            await axios.get(finalUrl, { timeout: 15000 });
+            log(`🐟 FISH: Cliente ${params.cpf || 'sem CPF'} enviado para o N8N.`);
+        } catch (error) {
+            const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
+            log(`❌🐟 FISH ERRO: Falha ao enviar cliente para o N8N: ${errorMessage}`);
+        }
+    };
 
     const performApiCall = async (cnpjArray, creds) => {
         log(`Consultando ${cnpjArray.length} CNPJs com a chave: ${creds.name}`);
@@ -2427,6 +2479,7 @@ async function runApiConsultation(filePath, options, log, progress) {
 
         const COLUNA_CNPJ = "cpf";
         let cnpjColNumber = -1;
+        let fileHeader = worksheet.getRow(1).values; // Captura o cabeçalho
         worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
             if (cell.value && String(cell.value).trim().toLowerCase() === COLUNA_CNPJ) cnpjColNumber = colNumber;
         });
@@ -2529,14 +2582,19 @@ async function runApiConsultation(filePath, options, log, progress) {
 
                     log(`Atualizando planilha em memória...`);
                     let countDisponivel = 0;
-                    lote.forEach(({cnpj, rowNum }) => {
+                    
+                    for (const { cnpj, rowNum } of lote) {
+                        const row = worksheet.getRow(rowNum);
                         if (encontrados.has(cnpj)) {
-                            worksheet.getCell(`${COLUNA_RESPOSTA_LETTER}${rowNum}`).value = "disponível";
+                            row.getCell(COLUNA_RESPOSTA_LETTER).value = "disponível";
                             countDisponivel++;
                         } else {
-                            worksheet.getCell(`${COLUNA_RESPOSTA_LETTER}${rowNum}`).value = "cliente";
+                            row.getCell(COLUNA_RESPOSTA_LETTER).value = "cliente";
+                            if (isFishMode) { // Se o modo Fish estiver ativo, envia para o webhook
+                                await sendToN8NWebhook(fileHeader, row.values);
+                            }
                         }
-                    });
+                    }
 
                     const countCliente = lote.length - countDisponivel;
                     log(`Resultados do Lote: ${countDisponivel} disponível(is), ${countCliente} cliente(s).`);
@@ -2570,7 +2628,7 @@ async function runApiConsultation(filePath, options, log, progress) {
         }
         if (!cancelCurrentApiTask) {
             let collectedClients = { header: null, rows: [] };
-            if (options.extractClients) {
+            if (extractClients && !isFishMode) { // Só extrai no final se NÃO for modo FISH
                 log(`\nExtraindo dados de 'cliente' do arquivo...`);
                 // O objeto 'worksheet' já foi atualizado em memória durante o processamento dos lotes
                 collectedClients.header = worksheet.getRow(1).values;

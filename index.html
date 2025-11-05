@@ -24,12 +24,6 @@
         }
 
         .dark-theme {
-            --bg-app: #000000;          /* Fundo principal, preto absoluto para o neon */
-            --bg-sidebar: #0a0a0a;      /* Sidebar, quase preto */
-            --bg-main: #000000;         /* Fundo da área de conteúdo */
-            --bg-card: #111111;         /* Fundo dos cards e modais - um pouco mais claro */
-            --bg-element: #1a1a1a;      /* Fundo de inputs, botões secundários - mais claro */
-            --bg-element-hover: #1a1a1a;/* Hover de elementos */
             --bg-app: #0d1117;          /* Fundo principal, não mais preto absoluto */
             --bg-sidebar: #010409;      /* Sidebar, bem escura para contraste */
             --bg-main: #0d1117;         /* Fundo da área de conteúdo */
@@ -38,8 +32,6 @@
             --bg-element-hover: #30363d;/* Hover de elementos */
             --text-primary: #f1f5f9;
             --text-secondary: #8b949e;  /* Texto secundário, um pouco mais suave */
-            --text-muted: #586069;      /* Texto "muted", para placeholders e infos */
-            --border-color: #0f0f0f;    /* Cor da borda padrão */
             --text-muted: #6e7681;      /* Texto "muted", um pouco mais claro */
             --border-color: #30363d;    /* Cor da borda padrão */
             --border-hover: #8b949e;    /* Cor da borda em hover */
@@ -169,34 +161,31 @@
 
         hr { border: none; height: 1px; background: linear-gradient(90deg, transparent, var(--border-color), transparent); margin: 28px 0; }
 
-        /* MODIFICADO: Estilo de botão brilhante e colorido com efeito neon */
+        /* MODIFICADO: Estilo de botão com cores naturais e hover simples */
         button {
             --base-color: var(--active-accent, var(--accent-blue));
-            --grad-light: color-mix(in srgb, var(--base-color) 95%, #ffffff); /* Mais base, menos branco */
-            --grad-dark: color-mix(in srgb, var(--base-color) 60%, #000000);  /* Mais base, menos preto */
-            --border-btn: color-mix(in srgb, var(--base-color) 70%, #000000);
-            background: linear-gradient(145deg, var(--grad-light), var(--grad-dark));
+            background-color: transparent; /* Remove background colorido */
             font-family: var(--font-sans);
-            font-family: var(--font-sans); /* Mantém a fonte padrão para botões para legibilidade */
-            color: var(--accent-text);
-            text-shadow: 0 1px 2px rgba(0,0,0,0.4);
-            border: 1px solid var(--border-btn);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
             padding: 10px 16px; border-radius: var(--radius); cursor: pointer; margin: 4px 4px 4px 0;
             font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-            white-space: nowrap; /* Evita que o texto do botão quebre */
+            white-space: nowrap;
             transition: all var(--transition-speed) ease;
-	            box-shadow: 0 0 5px color-mix(in srgb, var(--base-color) 50%, transparent); /* Sombra inicial sutil */
-	        }
-	        button:hover:not(:disabled) { 
-	            filter: brightness(1.2); 
-	            transform: translateY(-1px); 
-	            box-shadow: 0 0 15px var(--base-color), 0 0 5px var(--base-color); /* Efeito neon mais forte */
-	        }
-	        button:active:not(:disabled) { 
-	            filter: brightness(0.9); 
-	            transform: translateY(0); 
-	            box-shadow: inset 0 0 10px var(--base-color); /* Efeito de pressão neon */
-	        }
+        }
+        button:hover:not(:disabled) {
+            background-color: var(--bg-element-hover); /* Hover simples */
+            border-color: var(--border-hover);
+            transform: none; /* Remove o efeito de levantar */
+            box-shadow: none; /* Remove o brilho/neon */
+            filter: none; /* Remove o brilho */
+        }
+        button:active:not(:disabled) {
+            background-color: var(--bg-element);
+            transform: none;
+            box-shadow: none;
+            filter: none;
+        }
         button:disabled { background-color: var(--bg-element); color: var(--text-muted); cursor: not-allowed; }
         button:disabled svg { fill: var(--text-muted); }
         .btn-danger { --base-color: var(--accent-red); }
@@ -208,12 +197,8 @@
             background-color: var(--bg-element);
             color: var(--text-primary);
             border: 1px solid var(--border-color);
-            padding: 10px 14px;
             border-radius: var(--radius);
-            font-family: var(--font-sans);
             padding: 10px 14px; 
-            border-radius: 4px; /* Bordas mais quadradas para tech */
-	            font-family: var(--font-mono); /* Usa mono para inputs para um visual mais tech */
             font-family: var(--font-sans); /* Fonte padrão para inputs */
 	            font-size: 13px;
 	            transition: all var(--transition-speed) ease;
@@ -337,25 +322,24 @@
         }
 
         /* MODIFICADO: Cards (Sections) ------------------------------------------------- */
-        .section {
-	            background-color: var(--bg-card);
-	            border: 1px solid var(--active-accent, var(--accent-blue)); /* Borda neon inicial */
-	            border-radius: 4px; /* Bordas mais quadradas para tech */
-	            padding: 1.5rem;
-	            box-shadow: 0 0 10px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 20%, transparent); /* Sombra neon sutil */
-	            position: relative;
-	            transition: all var(--transition-speed) ease;
-	            resize: both; 
-	            overflow: auto;
-	            min-width: 350px;
-	            display: flex;
-	            flex-direction: column;
-	            min-height: 200px; 
-	        }
-	        .section:hover { 
-	            border-color: var(--active-accent, var(--accent-blue)); 
-	            box-shadow: 0 0 20px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 40%, transparent); /* Brilho neon no hover */
-	        }
+.section {
+		            background-color: var(--bg-card);
+		            border: 1px solid var(--border-color); /* Borda neutra */
+		            padding: 1.5rem;
+		            box-shadow: 0 4px 6px var(--shadow-color); /* Sombra sutil */
+		            position: relative;
+		            transition: all var(--transition-speed) ease;
+		            resize: both; 
+		            overflow: auto;
+		            min-width: 350px;
+		            display: flex;
+		            flex-direction: column;
+		            min-height: 200px; 
+		        }
+		        .section:hover { 
+		            border-color: var(--border-hover); /* Borda neutra no hover */
+		            box-shadow: 0 6px 8px var(--shadow-color); /* Sombra um pouco mais forte no hover */
+		        }
         .section.sortable-ghost { opacity: 0.4; transform: rotate(5deg); }
         .section.sortable-drag { box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3); z-index: 1000; }
         .section.sortable-chosen { cursor: grabbing; }
@@ -366,8 +350,8 @@
 .section-control-btn { 
 	            width: 24px; height: 24px; 
 	            border: 1px solid var(--border-color); 
-	            border-radius: 2px; /* Botões menores e mais quadrados */
-	            background-color: var(--bg-element); 
+	            border-radius: 2px;
+	            background-color: transparent; 
 	            color: var(--text-secondary); 
 	            cursor: pointer; 
 	            display: flex; 
@@ -377,11 +361,10 @@
 	            font-size: 12px; 
 	            padding: 0;
 	        }
-	        .section-control-btn:hover { 
-	            background-color: var(--active-accent, var(--accent-blue)); 
-	            color: var(--accent-text); 
-	            transform: scale(1.05); 
-	            box-shadow: 0 0 8px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 50%, transparent); /* Brilho neon */
+	        .section-control-btn:hover {
+	            background-color: transparent; /* CORREÇÃO: Remove o fundo no hover */
+	            color: var(--text-primary); /* CORREÇÃO: Texto primário no hover */
+	            transform: scale(1.05);
 	        }
         .drag-handle { cursor: grab; } 
         .drag-handle:active { cursor: grabbing; }
@@ -396,41 +379,78 @@
         .section-content { flex-grow: 1; overflow-y: auto; }
 
         /* 4.3 File Lists ------------------------------------------------------- */
-        .files { 
-	            min-height: 40px; 
-	            padding: 14px; 
-	            background-color: var(--bg-element); 
+.files { 
+	            height: 52px; /* Altura fixa para alinhar com botões */
+	            padding: 14px;
 	            border-radius: 4px; /* Bordas mais quadradas */
-	            margin-top: 10px; 
-	            margin-bottom: 16px; 
-	            border: 1px solid var(--active-accent, var(--accent-blue)); /* Borda neon */
-	            position: relative; 
-	            overflow: auto; 
-	            box-shadow: inset 0 0 5px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 20%, transparent); /* Sombra interna neon */
-	        }
+	            margin-top: 10px;
+	            margin-bottom: 16px;
+	            border: 1px solid var(--border-color); /* Borda neutra */
+	            position: relative;
+	            overflow: hidden; /* Remove o scroll */
+	            box-shadow: none; /* Remove o brilho/neon */
+	            display: flex; /* Alinha o conteúdo verticalmente */
+	            align-items: center; /* Alinha o conteúdo verticalmente */
+		        }
         .files:empty::after { content: 'Nenhum arquivo selecionado'; color: var(--text-muted); font-style: italic; font-size: 13px; }
 .file-item { 
 	            background-color: var(--bg-card); 
 	            color: var(--text-primary); 
-	            padding: 8px 12px; /* Padding ajustado */
 	            border-radius: 2px; /* Bordas mais quadradas */
 	            margin-top: 6px; 
+            margin: 0; /* Reset de margem */
+            padding: 8px 12px;
+            width: 100%;
 	            font-size: 12px; 
 	            border: 1px solid var(--border-color); /* Borda sutil */
-	            border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque neon na esquerda */
-	            box-shadow: 0 0 5px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 10%, transparent); /* Sombra neon sutil */
-	            transition: all var(--transition-speed) ease; 
-	        }
-	        .file-item:hover { 
-	            transform: translateX(2px); 
-	            border-color: var(--active-accent, var(--accent-blue));
-	            box-shadow: 0 0 10px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 30%, transparent); /* Brilho neon no hover */
-	        }
-        .files, .file-item { max-width: 300px; /* MODIFICADO: Limita a largura dos campos de arquivo */ }
+border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com a cor da aba */
+		            box-shadow: none; /* Remove o brilho/neon */
+		            transition: all var(--transition-speed) ease; 
+		        }
+		        .file-item:hover { 
+		            transform: none; /* Remove o efeito de deslizar */
+		            border-color: var(--border-hover); 
+		            box-shadow: none; /* Remove o brilho/neon */
+		            background-color: var(--bg-element-hover); /* Hover simples */
+		        }
+        .files { 
+            cursor: pointer; /* Indica que a área é clicável */
+            max-width: 300px; /* Limita a largura dos campos de arquivo */ 
+        }
         .file-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+        
+        /* NOVO: Estilos específicos para a fila da API */
+        #apiQueueContainer h4 {
+            margin-top: 10px; /* Espaçamento superior reduzido */
+            margin-bottom: 5px; /* Espaçamento inferior reduzido */
+            font-size: 1rem; /* Título menor */
+            border-bottom: none; /* Remove borda inferior */
+            padding-bottom: 0; /* Remove padding inferior */
+        }
+
+        #apiQueueContainer .files {
+            height: auto; /* Altura se ajusta ao conteúdo */
+            min-height: 35px; /* Altura mínima menor */
+            padding: 8px 12px; /* Padding reduzido */
+            margin-top: 0; /* Remove margem superior, h4 já dá o espaçamento */
+            margin-bottom: 8px; /* Espaçamento reduzido entre os contêineres de arquivos */
+            display: block; /* Faz com que os itens se empilhem verticalmente */
+            overflow-y: visible; /* CORREÇÃO: Permite que o conteúdo expanda */
+            max-height: none; /* CORREÇÃO: Remove a altura máxima */
+        }
+
+        #apiQueueContainer .files .file-item {
+            margin-bottom: 4px; /* Espaçamento entre os itens empilhados */
+            padding: 6px 10px; /* Padding ligeiramente reduzido */
+            font-size: 11px; /* Tamanho da fonte menor */
+        }
+
+        #apiQueueContainer .files .file-item:last-child {
+            margin-bottom: 0; /* Remove margem do último item */
         }
 
         .file-actions {
@@ -440,7 +460,7 @@
 
         .queue-action-btn {
 	            border-radius: 2px; /* Mais quadrado */
-            background-color: var(--bg-element);
+            background-color: transparent;
             color: var(--text-secondary);
             border: 1px solid var(--border-color);
             border-radius: 5px;
@@ -456,35 +476,25 @@
         }
 
         .queue-action-btn:hover {
-	            background-color: var(--active-accent, var(--accent-blue));
+	            background-color: transparent; /* CORREÇÃO: Remove o fundo no hover */
 	            color: var(--accent-text);
 	            border-color: var(--active-accent, var(--accent-blue));
 	            box-shadow: 0 0 8px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 50%, transparent); /* Brilho neon */
 	        }
-            background-color: var(--active-accent, var(--accent-blue));
-            color: var(--accent-text);
-            border-color: var(--active-accent, var(--accent-blue));
-        }
 
         .queue-action-btn.remove:hover {
-	            background-color: var(--accent-red);
+	            background-color: transparent; /* CORREÇÃO: Remove o fundo no hover */
 	            border-color: var(--accent-red);
 	            box-shadow: 0 0 8px color-mix(in srgb, var(--accent-red) 50%, transparent); /* Brilho neon vermelho */
 	        }
-            background-color: var(--accent-red);
-            border-color: var(--accent-red);
-        }
         
         /* 4.4 Logs ------------------------------------------------------------- */
 .logs { 
 	            flex-grow: 1; 
 	            min-height: 150px;
 	            background-color: #050505; /* Fundo mais escuro para logs */
-	            border: 1px solid var(--accent-green); /* Borda verde neon para logs */
 	            color: var(--accent-green); /* Texto verde neon */
 	            border-radius: 4px; 
-	            flex-grow: 1;
-	            min-height: 150px; 
 	            background-color: var(--bg-element); /* Fundo do log mais claro */
 	            border: 1px solid var(--border-color); /* Borda padrão */
 	            color: #a6acb3; /* Cor do texto do log clareada */
@@ -566,7 +576,7 @@
         /* MODIFICADO: Adiciona estilo para o botão Auto Raiz ativo */
         #autoRootBtn[data-on='true'] {
             --base-color: var(--accent-blue);
-        }
+            border-color: #78d64a; /* Verde natural sutil */        }
         .action-group { background-color: var(--bg-element); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; margin-top: 20px; }
         .action-group .input-group { margin-top: 15px; margin-bottom: 15px; }
         .action-group button:last-of-type { margin-top: 10px; }
@@ -746,7 +756,6 @@
         /* NOVO: Estilos para a verificação da blocklist */
         .large-textarea { width: 100%; min-height: 80px; background-color: var(--bg-element); color: var(--text-primary); border: 1px solid var(--border-color); padding: 14px; border-radius: var(--radius); font-family: var(--font-sans);
             text-shadow: 0 0 1px rgba(255, 255, 255, 0.1); /* Suaviza o texto no fundo preto */ font-size: 13px; resize: vertical; margin-bottom: 10px; }
-            font-size: 13px; resize: vertical; margin-bottom: 10px; }
         .results-container { margin-top: 20px; padding: 15px; background-color: var(--bg-element); border-radius: var(--radius); border: 1px solid var(--border-color); min-height: 80px; max-height: 200px; overflow-y: auto; }
         .results-container h4 { color: var(--active-accent, var(--accent-red)); margin-top: 0; margin-bottom: 10px; }
         .results-container .result-list { list-style: none; padding-left: 0; margin: 0; }
@@ -957,7 +966,7 @@
             <div class="grid" id="apiGrid">
                 <div class="section" data-section-id="fila-processamento-api">
                     <div class="section-header">
-                        <h2>Fila de Processamento da API</h2>
+                        <h2>Fila de Processamento</h2>
                         <div class="section-controls">
                             <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
                             <button class="section-control-btn hide-section" title="Ocultar">👁</button>
@@ -1003,6 +1012,10 @@
                     <div class="toggle-switch" style="margin-bottom: 20px;">
                         <label class="switch"><input type="checkbox" id="apiExtractClientsCheckbox"><span class="slider"></span></label>
                         <span class="toggle-label">Extrair clientes em arquivo separado</span>
+                    </div>
+                    <div class="toggle-switch" style="margin-bottom: 20px;">
+                        <label class="switch"><input type="checkbox" id="apiFishModeCheckbox"><span class="slider"></span></label>
+                        <span class="toggle-label">Modo FISH</span>
                     </div>
                     <hr>
                     <button id="startApiBtn" style="display: inline-flex;" disabled><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>Iniciar Fila</button>
@@ -1395,6 +1408,21 @@
                 <button class="modal-close-btn">&times;</button>
             </div>
             <div id="suspicious-calls-list" class="modal-body custom-scrollbar">
+            </div>
+        </div>
+    </div>
+
+    <!-- NOVO: Modal para exibir a lista de arquivos de limpeza -->
+    <div id="clean-files-list-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Listas a Executar</h3>
+                <button class="modal-close-btn" data-close-modal="clean-files-list-modal">&times;</button>
+            </div>
+            <div class="modal-body custom-scrollbar">
+                <ul id="clean-files-list-items" class="detail-list" style="max-height: none;">
+                    <!-- Itens da lista serão inseridos aqui pelo JS -->
+                </ul>
             </div>
         </div>
     </div>

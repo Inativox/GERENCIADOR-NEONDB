@@ -526,6 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
             apiKeySelection: apiKeySelection.value,
             apiRemoveClients: document.getElementById('apiRemoveClientsCheckbox').checked,
             apiExtractClients: document.getElementById('apiExtractClientsCheckbox').checked,
+            apiFishMode: document.getElementById('apiFishModeCheckbox').checked, // NOVO
 
             // Aba Enriquecimento
             masterFileYear: document.getElementById('master-file-year-input').value,
@@ -592,6 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setValue(apiKeySelection, settings.apiKeySelection);
         setChecked(document.getElementById('apiRemoveClientsCheckbox'), settings.apiRemoveClients);
         setChecked(document.getElementById('apiExtractClientsCheckbox'), settings.apiExtractClients);
+        setChecked(document.getElementById('apiFishModeCheckbox'), settings.apiFishMode); // NOVO
 
         // Aba Enriquecimento
         setValue(document.getElementById('master-file-year-input'), settings.masterFileYear);
@@ -618,6 +620,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- FIM: LÓGICA ABRANGENTE DE SALVAR/CARREGAR ESTADO DA UI ---
 
+    // --- INÍCIO: LÓGICA DO MODAL DE LISTA DE ARQUIVOS DE LIMPEZA ---
+    const cleanFilesListModal = document.getElementById('clean-files-list-modal');
+    const cleanFilesListContainer = document.getElementById('clean-files-list-items');
+    const cleanFilesDivForModal = document.getElementById('selectedCleanFiles');
+
+    if (cleanFilesListModal) {
+        cleanFilesListModal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay') || e.target.dataset.closeModal === 'clean-files-list-modal') {
+                cleanFilesListModal.classList.add('hidden');
+            }
+        });
+    }
+
+    if (cleanFilesDivForModal) {
+        cleanFilesDivForModal.addEventListener('dblclick', () => {
+            if (cleanFiles.length > 0) {
+                cleanFilesListContainer.innerHTML = cleanFiles.map(f => `<li><span class="name">${getBasename(f.path)}</span></li>`).join('');
+                cleanFilesListModal.classList.remove('hidden');
+            }
+        });
+    }
+    // --- FIM: LÓGICA DO MODAL ---
+
     function addFileToUI(container, filePath, isSingle) { if (isSingle) { container.innerHTML = ''; } const fileDiv = document.createElement('div'); fileDiv.className = 'file-item new-item'; fileDiv.textContent = getBasename(filePath); container.appendChild(fileDiv); setTimeout(() => { fileDiv.classList.remove('new-item'); }, 500); }
     function resetUploadProgress() { if (uploadProgressContainer) uploadProgressContainer.style.display = 'none'; if (uploadProgressBarFill) uploadProgressBarFill.style.width = '0%'; if (uploadProgressText) uploadProgressText.textContent = ''; }
     if (backupCheckbox) backupCheckbox.addEventListener('change', (e) => { backupEnabled = e.target.querySelector('input').checked; });
@@ -630,7 +655,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectRootBtn) selectRootBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione a Lista Raiz', multi: false }); if (files && files.length > 0) { rootFile = files[0]; addFileToUI(rootFilePathSpan, rootFile, true); appendLog(`Arquivo raiz selecionado: ${rootFile}`); } });
     if (autoRootBtn) autoRootBtn.addEventListener('click', () => { if (autoRootBtn.dataset.on) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = "Auto Raiz: OFF"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">Usará arquivo local selecionado</span>'; selectRootBtn.disabled = false; } else { autoRootBtn.dataset.on = 'true'; autoRootBtn.textContent = "Auto Raiz: ON"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--accent-light); font-weight: 600;">Usará a base de dados Raiz</span>'; selectRootBtn.disabled = true; } appendLog(`Auto Raiz: ${autoRootBtn.dataset.on ? 'ON (usando Banco de Dados)' : 'OFF'}`); });
     if (updateBlocklistBtn) updateBlocklistBtn.addEventListener('click', async () => { const result = await window.electronAPI.updateBlocklist(backupEnabled); appendLog(result.success ? result.message : `Erro: ${result.message}`); });
-    if (addCleanFileBtn) addCleanFileBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para limpar', multi: true }); if (!files?.length) return; cleanFiles = []; selectedCleanFilesDiv.innerHTML = ''; progressContainer.innerHTML = ''; files.forEach(file => { const id = `clean-${cleanFiles.length}`; cleanFiles.push({ path: file, id }); appendLog(`Adicionado para limpeza: ${file}`); addFileToUI(selectedCleanFilesDiv, file, false); progressContainer.innerHTML += `<div class="file-progress" style="margin-bottom: 15px;"><strong>${getBasename(file)}</strong><div class="progress-bar-container"><div class="progress-bar-fill" id="${id}"></div></div></div>`; }); });
+    if (addCleanFileBtn) {
+        addCleanFileBtn.addEventListener('click', async () => {
+            const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para limpar', multi: true });
+            if (!files?.length) return;
+            cleanFiles = [];
+            selectedCleanFilesDiv.innerHTML = '';
+            progressContainer.innerHTML = '';
+            files.forEach(file => {
+                const id = `clean-${cleanFiles.length}`;
+                cleanFiles.push({ path: file, id });
+                appendLog(`Adicionado para limpeza: ${file}`);
+                progressContainer.innerHTML += `<div class="file-progress" style="margin-bottom: 15px;"><strong>${getBasename(file)}</strong><div class="progress-bar-container"><div class="progress-bar-fill" id="${id}"></div></div></div>`;
+            });
+            // Lógica de exibição resumida
+            const firstFileName = getBasename(files[0]);
+            const summaryText = files.length > 1 ? `${firstFileName} (e mais ${files.length - 1} arquivo(s))` : firstFileName;
+            addFileToUI(selectedCleanFilesDiv, summaryText, true);
+        });
+    }
     
     if (startCleaningBtn) {
         startCleaningBtn.addEventListener('click', () => {
@@ -787,7 +830,8 @@ document.addEventListener('DOMContentLoaded', () => {
             apiStatusSpan.textContent = 'Iniciando processamento da fila...';
             const removeClients = document.getElementById('apiRemoveClientsCheckbox').checked;
             const extractClients = document.getElementById('apiExtractClientsCheckbox').checked;
-            window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value, removeClients: removeClients, extractClients: extractClients });
+            const fishMode = document.getElementById('apiFishModeCheckbox').checked; // NOVO
+            window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value, removeClients: removeClients, extractClients: extractClients, isFishMode: fishMode }); // MODIFICADO
         });
     }
     if (resetApiBtn) resetApiBtn.addEventListener('click', () => { window.electronAPI.resetApiQueue(); });

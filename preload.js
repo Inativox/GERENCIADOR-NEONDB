@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     // --- Funções da Limpeza Local ---
     selectFile: (options) => ipcRenderer.invoke("select-file", options),
+    showSaveDialog: (options) => ipcRenderer.invoke("show-save-dialog", options), // NOVO
     openPath: (path) => ipcRenderer.send("open-path", path),
     updateBlocklist: (backup) => ipcRenderer.invoke("update-blocklist", backup),
     startCleaning: (args) => ipcRenderer.send("start-cleaning", args),
