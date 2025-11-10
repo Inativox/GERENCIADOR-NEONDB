@@ -53,6 +53,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     removeFromApiQueue: (filePath) => ipcRenderer.send("remove-from-api-queue", filePath),
     prioritizeInApiQueue: (filePath) => ipcRenderer.send("prioritize-in-api-queue", filePath),
     cancelCurrentApiTask: () => ipcRenderer.send("cancel-current-api-task"),
+    // Novas funções de agendamento
+    scheduleFishCleanup: (options) => ipcRenderer.send('schedule-fish-cleanup', options),
+    cancelFishSchedule: () => ipcRenderer.send('cancel-fish-schedule'),
 
     // --- Funções de Enriquecimento ---
     getEnrichedCnpjCount: () => ipcRenderer.invoke("get-enriched-cnpj-count"),
@@ -74,6 +77,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onDbLoadFinished: (callback) => ipcRenderer.on("db-load-finished", (event, ...args) => callback(...args)),
     onBlocklistLog: (callback) => ipcRenderer.on("blocklist-log", (event, ...args) => callback(...args)), // NOVO
     onEnrichmentFinished: (callback) => ipcRenderer.on("enrichment-finished", (event, ...args) => callback(...args)),
+    onFishScheduleUpdate: (callback) => ipcRenderer.on('fish-schedule-update', (event, ...args) => callback(...args)),
     onUpdateMessage: (callback) => ipcRenderer.on("update-message", (event, ...args) => callback(...args)),
     onRootFeedFinished: (callback) => ipcRenderer.on('root-feed-finished', (event, ...args) => callback(...args)),
 

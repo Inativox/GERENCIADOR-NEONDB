@@ -2197,6 +2197,7 @@ let apiQueue = { pending: [], processing: null, completed: [], cancelled: [], cl
 let isApiQueueRunning = false;
 let cancelCurrentApiTask = false;
 let isApiQueuePaused = false;
+let fishScheduleTimer = null; // NOVO: Timer para o agendamento
 let currentApiOptions = { keyMode: 'chave1', removeClients: true };
 let fishModeFilePath = null; // NOVO: para armazenar o caminho do arquivo no modo FISH
 
@@ -2244,6 +2245,69 @@ ipcMain.on("start-api-queue", async (event, options) => { // MODIFICADO para asy
     cancelCurrentApiTask = false;
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
     processNextInApiQueue(event);
+});
+
+// --- INÍCIO: NOVAS FUNÇÕES DE AGENDAMENTO FISH ---
+
+async function sendErrorEmail(subject, errorDetails) {
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        console.error("Credenciais SMTP não configuradas no .env. Não é possível enviar e-mail de erro.");
+        return;
+    }
+    const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: parseInt(process.env.SMTP_PORT, 10) || 465,
+        secure: (process.env.SMTP_PORT || "465") === "465",
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+
+    const mailOptions = {
+        from: `"Gerenciador de Bases" <${process.env.SMTP_USER}>`,
+        to: "davi.abraao@mbfinance.com.br",
+        subject: `🚨 FALHA: ${subject}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; color: #333;">
+                <h2>Relatório de Falha no Processo Agendado</h2>
+                <p>Ocorreu um erro durante a execução de uma tarefa agendada no Gerenciador de Bases.</p>
+                <hr>
+                <p><strong>Detalhes do Erro:</strong></p>
+                <pre style="background-color: #f4f4f4; padding: 10px; border-radius: 5px;">${errorDetails}</pre>
+                <hr>
+                <p style="font-size: 12px; color: #777;">
+                    Data da falha: ${new Date().toLocaleString('pt-BR')}<br>
+                    Usuário que agendou: ${currentUser.username}
+                </p>
+            </div>
+        `,
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log("E-mail de erro enviado com sucesso.");
+    } catch (emailError) {
+        console.error("Falha ao enviar o e-mail de erro:", emailError);
+    }
+}
+
+ipcMain.on('schedule-fish-cleanup', (event, scheduleOptions) => {
+    if (fishScheduleTimer) clearTimeout(fishScheduleTimer);
+
+    store.set('fish-schedule', scheduleOptions);
+    event.sender.send('api-log', `✅ Agendamento FISH confirmado para ${new Date(scheduleOptions.startTime).toLocaleString('pt-BR')}.`);
+    mainWindow.webContents.send('fish-schedule-update', scheduleOptions);
+
+    const delay = new Date(scheduleOptions.startTime).getTime() - Date.now();
+
+    if (delay > 0) {
+        fishScheduleTimer = setTimeout(() => runScheduledFishCleanup(scheduleOptions), delay);
+    }
+});
+
+ipcMain.on('cancel-fish-schedule', (event) => {
+    if (fishScheduleTimer) clearTimeout(fishScheduleTimer);
+    store.delete('fish-schedule');
+    event.sender.send('api-log', `❌ Agendamento cancelado pelo usuário.`);
+    mainWindow.webContents.send('fish-schedule-update', null);
 });
 
 ipcMain.on("reset-api-queue", (event) => {
@@ -2325,6 +2389,43 @@ async function saveCollectedClients(event) {
     }
 }
 
+async function runScheduledFishCleanup(schedule) {
+    console.log(`[AGENDADOR] Iniciando execução agendada: ${new Date().toLocaleString()}`);
+    const log = (msg) => {
+        if (mainWindow && mainWindow.webContents) {
+            mainWindow.webContents.send("api-log", `[AGENDADO] ${msg}`);
+        }
+        console.log(`[AGENDADO] ${msg}`);
+    };
+
+    try {
+        // Adiciona os arquivos agendados à fila principal
+        apiQueue.pending.push(...schedule.files);
+        apiQueue.pending = [...new Set(apiQueue.pending)];
+        if (mainWindow) mainWindow.webContents.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
+
+        // Inicia a fila com as opções agendadas
+        isApiQueueRunning = true;
+        isApiQueuePaused = false;
+        currentApiOptions = schedule.apiOptions;
+        cancelCurrentApiTask = false;
+
+        log(`Iniciando processamento de ${schedule.files.length} arquivo(s) agendados.`);
+        await processNextInApiQueue({ sender: mainWindow.webContents });
+
+        log("✅ Execução agendada concluída com sucesso.");
+
+    } catch (error) {
+        log(`❌ ERRO CRÍTICO na execução agendada: ${error.message}`);
+        console.error("[AGENDADOR] Erro:", error);
+        await sendErrorEmail("Falha na Execução Agendada FISH", `Erro: ${error.message}\n\nStack: ${error.stack}`);
+    } finally {
+        // Limpa o agendamento após a execução (seja sucesso ou falha)
+        store.delete('fish-schedule');
+        if (mainWindow) mainWindow.webContents.send('fish-schedule-update', null);
+    }
+}
+
 async function processNextInApiQueue(event) {
     if (!isApiQueueRunning) {
         apiQueue.processing = null;
@@ -2343,7 +2444,9 @@ async function processNextInApiQueue(event) {
         apiQueue.processing = null;
         isApiQueueRunning = false;
 
-        if (!currentApiOptions.isFishMode) await saveCollectedClients(event); // Só salva no final se não for modo FISH
+        if (currentApiOptions.extractClients && !currentApiOptions.isFishMode) {
+            await saveCollectedClients(event);
+        }
 
         event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
         return;
@@ -2662,6 +2765,12 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
                             keptRows++;
                         }
                     }
+                });
+
+                // NOVO: Limpa a coluna de resposta (C) no arquivo final.
+                log('Limpando a coluna de resposta (C) no arquivo final...');
+                newWorksheet.eachRow((row) => {
+                    row.getCell(COLUNA_RESPOSTA_LETTER).value = null; 
                 });
 
                 await newWorkbook.xlsx.writeFile(filePath);

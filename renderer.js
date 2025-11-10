@@ -203,6 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'apiGrid': 'api-sections',
         'enrichmentGrid': 'enrichment-sections',
         // NOVO: Adiciona a grid da nova aba
+        'api-tools-panel': 'api-tools-sections',
         'blocklistGrid': 'blocklist-sections',
     };
 
@@ -1809,4 +1810,127 @@ function renderComparisonList(fastwayData, bitrixData) {
         dashboardDetails.innerHTML += createDetailCard('Top Operadores', aggregators.nome_operador);
         dashboardDetails.innerHTML += createDetailCard('Top Campanhas', aggregators.nome_campanha);
     }
+
+    // #################################################################
+    // #           NOVA LÓGICA - AGENDAMENTO FISH (API)              #
+    // #################################################################
+    const toggleApiToolsBtn = document.getElementById('toggle-api-tools-btn');
+    const fishScheduleTitle = document.getElementById('fish-schedule-title');
+    const selectFishFilesBtn = document.getElementById('selectFishScheduleFilesBtn');
+    const selectedFishFilesDiv = document.getElementById('selectedFishScheduleFiles');
+    const scheduleDateInput = document.getElementById('fishScheduleDate');
+    const scheduleTimeInput = document.getElementById('fishScheduleTime');
+    const scheduleKeySelect = document.getElementById('fishScheduleApiKeySelection');
+    const scheduleFishBtn = document.getElementById('scheduleFishBtn');
+    const scheduleRemoveClientsCheckbox = document.getElementById('scheduleRemoveClientsCheckbox');
+    const scheduleExtractClientsCheckbox = document.getElementById('scheduleExtractClientsCheckbox');
+    const scheduleFishModeCheckbox = document.getElementById('scheduleFishModeCheckbox');
+    const fishScheduleStatusDiv = document.getElementById('fish-schedule-status');
+
+    let fishScheduleFiles = [];
+
+    // NOVO: Função para renderizar a lista de arquivos do agendamento com botão de remoção
+    function renderFishScheduleFiles() {
+        selectedFishFilesDiv.innerHTML = ''; // Limpa a lista atual
+        if (fishScheduleFiles.length === 0) {
+            selectedFishFilesDiv.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">Nenhum arquivo selecionado</span>';
+            return;
+        }
+
+        fishScheduleFiles.forEach(file => {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file-item';
+
+            const fileName = document.createElement('span');
+            fileName.className = 'file-name';
+            fileName.textContent = getBasename(file);
+            fileName.title = file; // Mostra o caminho completo no hover
+            fileDiv.appendChild(fileName);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'queue-action-btn remove';
+            removeBtn.innerHTML = '&#x2716;';
+            removeBtn.title = 'Remover';
+            removeBtn.onclick = (e) => {
+                e.stopPropagation(); // Impede que o clique se propague para outros elementos
+                fishScheduleFiles = fishScheduleFiles.filter(f => f !== file); // Remove o arquivo da lista
+                renderFishScheduleFiles(); // Re-renderiza a UI
+            };
+            fileDiv.appendChild(removeBtn);
+            selectedFishFilesDiv.appendChild(fileDiv);
+        });
+    }
+
+    if (selectFishFilesBtn) {
+        selectFishFilesBtn.addEventListener('click', async () => {
+            const files = await window.electronAPI.selectFile({ title: 'Selecione as listas para o agendamento', multi: true });
+            if (files && files.length > 0) {
+                // MODIFICADO: Acumula arquivos e remove duplicatas, em vez de substituir
+                const newFiles = files.filter(f => !fishScheduleFiles.includes(f));
+                fishScheduleFiles.push(...newFiles);
+                renderFishScheduleFiles(); // Re-renderiza a lista completa
+            }
+        });
+    }
+
+    if (scheduleFishBtn) {
+        scheduleFishBtn.addEventListener('click', () => {
+            const date = scheduleDateInput.value;
+            const time = scheduleTimeInput.value;
+
+            if (fishScheduleFiles.length === 0) {
+                alert('Por favor, selecione pelo menos um arquivo para agendar.');
+                return;
+            }
+            if (!date || !time) {
+                alert('Por favor, selecione a data e a hora para o agendamento.');
+                return;
+            }
+
+            const startDateTime = new Date(`${date}T${time}`);
+            if (startDateTime < new Date()) {
+                alert('A data e hora do agendamento não podem ser no passado.');
+                return;
+            }
+
+            const scheduleOptions = {
+                files: fishScheduleFiles,
+                startTime: startDateTime.toISOString(),
+                apiOptions: {
+                    keyMode: scheduleKeySelect.value, // Captura a seleção de chaves
+                    removeClients: scheduleRemoveClientsCheckbox.checked, // Captura a opção de remover clientes
+                    extractClients: scheduleExtractClientsCheckbox.checked, // Captura a opção de extrair clientes
+                    isFishMode: scheduleFishModeCheckbox.checked, // Captura a opção de modo FISH
+                }
+            };
+
+            window.electronAPI.scheduleFishCleanup(scheduleOptions);
+            closePanel('api-tools-panel'); // Fecha o painel após agendar
+        });
+    }
+
+    window.electronAPI.onFishScheduleUpdate((schedule) => {
+        if (schedule && schedule.startTime) {
+            const scheduleDate = new Date(schedule.startTime);
+            const formattedDate = scheduleDate.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            fishScheduleStatusDiv.style.display = 'block';
+            fishScheduleStatusDiv.innerHTML = `
+                <p style="margin: 0;"><strong>Agendamento Ativo:</strong> ${schedule.files.length} arquivo(s) para ${formattedDate}.</p>
+                <button id="cancel-fish-schedule-btn" class="btn-danger" style="padding: 4px 8px; font-size: 12px; margin-top: 8px;">Cancelar Agendamento</button>
+            `;
+            toggleApiToolsBtn.classList.add('scheduled');
+            fishScheduleTitle.textContent = "Agendamento Ativo";
+
+            document.getElementById('cancel-fish-schedule-btn').addEventListener('click', () => {
+                if (confirm('Tem certeza que deseja cancelar o agendamento?')) {
+                    window.electronAPI.cancelFishSchedule();
+                }
+            });
+        } else {
+            fishScheduleStatusDiv.style.display = 'none';
+            fishScheduleStatusDiv.innerHTML = '';
+            toggleApiToolsBtn.classList.remove('scheduled');
+            fishScheduleTitle.textContent = "Agendamento FISH";
+        }
+    });
 });

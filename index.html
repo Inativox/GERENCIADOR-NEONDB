@@ -488,6 +488,14 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
 	            box-shadow: 0 0 8px color-mix(in srgb, var(--accent-red) 50%, transparent); /* Brilho neon vermelho */
 	        }
         
+        /* Ajuste para a lista de arquivos do agendamento se expandir */
+        #selectedFishScheduleFiles {
+            height: auto;
+            max-height: 150px; /* Altura máxima antes de mostrar a barra de rolagem */
+            overflow-y: auto;
+            display: block;
+        }
+
         /* 4.4 Logs ------------------------------------------------------------- */
 .logs { 
 	            flex-grow: 1; 
@@ -1022,6 +1030,7 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                     <button id="pauseApiBtn" style="display: none; background: var(--warning-color);">Pausar Fila</button>
                     <button id="resumeApiBtn" style="display: none; background: var(--success-color);">Retomar Fila</button>
                     <button id="resetApiBtn" class="btn-danger"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>Limpar Fila</button>
+                    <div style="margin-top: 1rem;"><button id="toggle-api-tools-btn" style="width: auto; min-width: 200px;">Ferramentas Adicionais</button></div>
                     <p style="margin-top: 20px;"><strong>Status Geral:</strong> <span id="apiStatus">Aguardando</span></p>
                     <div class="progress-bar-container">
                         <div class="progress-bar-fill" id="apiProgressBarFill"></div>
@@ -1365,6 +1374,59 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                 <div class="action-group"><button id="selectMasterFilesBtn">1. Selecionar Planilhas Mestras</button><div id="selectedMasterFiles" class="files"></div><div class="input-group"><label for="master-file-year-input">Ano da Base de Dados (Obrigatório)</label><input type="number" id="master-file-year-input" placeholder="Ex: 2024" required></div><button id="startLoadToDbBtn">2. Iniciar Carga para o BD</button></div>
                 <div id="dbLoadProgressContainer" style="display: none; margin-top: 20px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;"><strong id="dbLoadProgressTitle">Alimentando Banco de Dados...</strong><span id="dbLoadProgressPercent" style="font-size: 14px; color: var(--text-secondary);">0%</span></div><div class="progress-bar-container" style="height: 16px;"><div class="progress-bar-fill" id="dbLoadProgressBarFill" style="background: var(--gradient-success);"></div></div><div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: var(--text-secondary);"><span id="dbLoadProgressText">Preparando...</span><span id="dbLoadProgressStats"></span></div></div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- PAINEL EXPANSÍVEL PARA FERRAMENTAS ADICIONAIS (API) -->
+<div id="api-tools-panel" class="expandable-panel-overlay">
+    <div class="expandable-panel-content custom-scrollbar">
+        <div class="expandable-panel-header">
+            <h3 class="expandable-panel-title">Ferramentas da API</h3>
+            <button class="modal-close-btn" data-close-panel="api-tools-panel">&times;</button>
+        </div>
+        <div class="tool-group">
+            <h3 id="fish-schedule-title">Agendamento FISH</h3>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 15px;">
+                Selecione as listas, configure as opções e agende um horário para a consulta via API ser executada automaticamente.
+            </p>
+            <div id="fish-schedule-status" style="margin-bottom: 15px; padding: 10px; border-radius: var(--radius); background-color: var(--bg-element); border: 1px solid var(--border-color); display: none;">
+                <!-- Status do agendamento será inserido aqui -->
+            </div>
+            <button id="selectFishScheduleFilesBtn">1. Selecionar Arquivos</button>
+            <div id="selectedFishScheduleFiles" class="files schedule-files-list"></div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem; margin-bottom: 1rem;">
+                <div style="flex-grow: 1;">
+                    <label for="fishScheduleDate">2. Data de Início</label>
+                    <input type="date" id="fishScheduleDate">
+                </div>
+                <div style="flex-grow: 1;">
+                    <label for="fishScheduleTime">3. Horário de Início</label>
+                    <input type="time" id="fishScheduleTime">
+                </div>
+            </div>
+            <div style="margin-bottom: 20px;">
+              <label for="fishScheduleApiKeySelection">4. Perfil de Chaves:</label>
+              <select id="fishScheduleApiKeySelection">
+                <option value="chave1" selected>Chave 1 (Padrão)</option><option value="chave2">Chave 2 (Alternativa)</option><option value="intercalar">Intercalar Chaves (Automático)</option><option value="dupla">Dupla (Ambas as Chaves)</option>
+              </select>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label>5. Configurações de Execução:</label>
+                <div class="toggle-switch" style="margin-bottom: 10px;">
+                    <label class="switch"><input type="checkbox" id="scheduleRemoveClientsCheckbox" checked><span class="slider"></span></label>
+                    <span class="toggle-label">Remover clientes automaticamente após consulta</span>
+                </div>
+                <div class="toggle-switch" style="margin-bottom: 10px;">
+                    <label class="switch"><input type="checkbox" id="scheduleExtractClientsCheckbox"><span class="slider"></span></label>
+                    <span class="toggle-label">Extrair clientes em arquivo separado</span>
+                </div>
+                <div class="toggle-switch" style="margin-bottom: 20px;">
+                    <label class="switch"><input type="checkbox" id="scheduleFishModeCheckbox"><span class="slider"></span></label>
+                    <span class="toggle-label">Modo FISH (Enviar para N8N)</span>
+                </div>
+            </div>
+            <button id="scheduleFishBtn" class="button primary-button">6. Agendar Execução</button>
         </div>
     </div>
 </div>
