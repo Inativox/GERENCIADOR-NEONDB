@@ -892,7 +892,8 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                     <li class="nav-item"><a href="#" class="tab-button" data-tab-name="enriquecimento"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 3a1 1 0 0 1 1 1v2h2a1 1 0 1 1 0 2h-2v2a1 1 0 1 1-2 0v-2H9a1 1 0 1 1 0-2h2V8a1 1 0 0 1 1-1Z"/></svg><span>Enriquecimento</span></a></li>
                     <li class="nav-item" id="nav-monitoramento" style="display: none;"><a href="#" class="tab-button" data-tab-name="monitoramento"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 12h2v9H3v-9Zm16-4h2v13h-2V8Zm-8-6h2v19h-2V2Z"/></svg><span>Monitoramento</span></a></li>
                     <li class="nav-item"><a href="#" class="tab-button" data-tab-name="blocklist"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm-4 7a1 1 0 0 1 0-2h8a1 1 0 1 1 0 2H8Z"/></svg><span>Blocklist</span></a></li>
-                </ul>
+                    <li class="nav-item"><a href="#" class="tab-button" data-tab-name="relacionamento"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16"><path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path fill-rule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg><span>Relacionamento</span></a></li>
+                    </ul>
             </nav>
             <footer class="sidebar-footer">
                 <p>Usuário: <strong id="currentUser"></strong></p>
@@ -931,7 +932,7 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                         <select id="rootCol" style="width: auto; max-width: 80px;"><option value="A" selected>A</option><option value="B">B</option><option value="C">C</option></select>
                     </div>
                     <hr>
-                    <button id="addCleanFileBtn" style="width: 100%; margin-bottom: 1rem;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 6.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7a.5.5 0 0 1 .5-.5z"/><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/></svg>2. Adicionar Arquivos</button>
+                    <button id="addCleanFileBtn" style="width: 100%; margin-bottom: 1rem;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 6.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7a.5.5 0 0 1 .5-.5z"/><path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2 2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z"/></svg>2. Adicionar Arquivos</button>
                     <div id="selectedCleanFiles" class="files"></div>
                     <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
                         <label for="destCol" style="margin: 0;">Coluna de Destino:</label>
@@ -1180,7 +1181,6 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
             </div>
 
             <div class="grid" id="blocklistGrid">
-                <!-- NOVO: Seção para verificar números -->
                 <div class="section" data-section-id="check-numbers">
                     <div class="section-header">
                         <h2>Verificar Números na Blocklist</h2>
@@ -1196,7 +1196,6 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                         <textarea id="check-numbers-input" class="large-textarea" placeholder="Ex: 21999998888, 11988887777..."></textarea>
                         <button id="check-numbers-btn" class="button primary-button">Verificar Números</button>
                         <div id="check-numbers-results" class="results-container custom-scrollbar">
-                            <!-- Os resultados da verificação aparecerão aqui -->
                             <p style="color: var(--text-muted); text-align: center; padding-top: 20px;">Aguardando verificação...</p>
                         </div>
                     </div>
@@ -1247,6 +1246,81 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
             </div>
         </div>
         
+        <div class="page-content" id="relacionamento">
+            <div class="grid" id="relacionamentoGrid">
+                
+                <div class="section" data-section-id="config-relacionamento">
+                    <div class="section-header">
+                        <h2>Pipeline de Relacionamento</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
+                        Selecione os 4 arquivos necessários e o modo de processamento para gerar a base de elegíveis.
+                    </p>
+
+                    <div class="tool-group">
+                        <label>1. Arquivo de Relatório Principal:</label>
+                        <button id="relacionamentoSelectRelatorioBtn">Selecionar Arquivo</button>
+                        <div id="relacionamentoRelatorioPath" class="files"></div>
+                    </div>
+
+                    <div class="tool-group">
+                        <label>2. Arquivo do Bitrix (Relacionamento):</label>
+                        <button id="relacionamentoSelectBitrixBtn">Selecionar Arquivo</button>
+                        <div id="relacionamentoBitrixPath" class="files"></div>
+                    </div>
+
+                    <div class="tool-group">
+                        <label>3. Arquivo de Time (Supervisores):</label>
+                        <button id="relacionamentoSelectTimeBtn">Selecionar Arquivo</button>
+                        <div id="relacionamentoTimePath" class="files"></div>
+                    </div>
+
+                    <div class="tool-group">
+                        <label>4. Arquivo Contatos Bitrix (Faturamento):</label>
+                        <button id="relacionamentoSelectContatosBtn">Selecionar Arquivo</button>
+                        <div id="relacionamentoContatosPath" class="files"></div>
+                    </div>
+
+                    <div class="tool-group">
+                        <label style="margin-bottom: 10px; font-weight: 600;">5. Modo de Processamento:</label>
+                        <div class="radio-group-container">
+                            <label>
+                                <input type="radio" name="relacionamentoModo" value="padrao" checked>
+                                <span class="radio-circle"></span>Padrão
+                            </label>
+                            <label>
+                                <input type="radio" name="relacionamentoModo" value="relacionamento">
+                                <span class="radio-circle"></span>Relacionamento
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="tool-group">
+                        <button id="relacionamentoStartBtn" style="width: 100%;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>
+                            Iniciar Processo
+                        </button>
+                    </div>
+                </div>
+
+                <div class="section full-width" data-section-id="logs-relacionamento">
+                    <div class="section-header">
+                        <h2>Logs do Processo</h2>
+                        <div class="section-controls">
+                            <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
+                            <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                        </div>
+                    </div>
+                    <div id="relacionamentoLog" class="logs custom-scrollbar">Aguardando o início do processo...</div>
+                </div>
+
+            </div>
+        </div>
         <footer class="app-footer">
             <div class="footer-controls">
                 <div class="theme-toggle">
@@ -1264,7 +1338,6 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
     </main>
 </div>
 
-<!-- PAINEL EXPANSÍVEL PARA FERRAMENTAS ADICIONAIS (LIMPEZA LOCAL) -->
 <div id="extra-tools-panel" class="expandable-panel-overlay">
     <div class="expandable-panel-content custom-scrollbar">
         <div class="expandable-panel-header">
@@ -1356,7 +1429,6 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
     </div>
 </div>
 
-<!-- PAINEL EXPANSÍVEL PARA OPÇÕES DE ENRIQUECIMENTO -->
 <div id="enrichment-options-panel" class="expandable-panel-overlay">
     <div class="expandable-panel-content custom-scrollbar">
         <div class="expandable-panel-header">
@@ -1378,7 +1450,6 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
     </div>
 </div>
 
-<!-- PAINEL EXPANSÍVEL PARA FERRAMENTAS ADICIONAIS (API) -->
 <div id="api-tools-panel" class="expandable-panel-overlay">
     <div class="expandable-panel-content custom-scrollbar">
         <div class="expandable-panel-header">
@@ -1391,8 +1462,7 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                 Selecione as listas, configure as opções e agende um horário para a consulta via API ser executada automaticamente.
             </p>
             <div id="fish-schedule-status" style="margin-bottom: 15px; padding: 10px; border-radius: var(--radius); background-color: var(--bg-element); border: 1px solid var(--border-color); display: none;">
-                <!-- Status do agendamento será inserido aqui -->
-            </div>
+                </div>
             <button id="selectFishScheduleFilesBtn">1. Selecionar Arquivos</button>
             <div id="selectedFishScheduleFiles" class="files schedule-files-list"></div>
             <div style="display: flex; gap: 1rem; margin-top: 1rem; margin-bottom: 1rem;">
@@ -1474,7 +1544,6 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
         </div>
     </div>
 
-    <!-- NOVO: Modal para exibir a lista de arquivos de limpeza -->
     <div id="clean-files-list-modal" class="modal-overlay hidden">
         <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
@@ -1483,8 +1552,7 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
             </div>
             <div class="modal-body custom-scrollbar">
                 <ul id="clean-files-list-items" class="detail-list" style="max-height: none;">
-                    <!-- Itens da lista serão inseridos aqui pelo JS -->
-                </ul>
+                    </ul>
             </div>
         </div>
     </div>

@@ -54,3 +54,7 @@ firebase-credentials.json
 # Arquivos locais e scripts de teste
 custo.html
 split-csv.js
+server.js
+index outro.html
+firebase.json
+consulta_script.js

@@ -14,6 +14,11 @@ const { parse } = require('csv-parse');
 const nodemailer = require('nodemailer'); // NOVO: Para envio de e-mail
 require('dotenv').config(); // Carrega as variáveis de ambiente do arquivo .env
 
+// --- INÍCIO: Adições para a nova aba Relacionamento ---
+const xlsx = require('xlsx'); // Verifique se já não está importado
+// --- FIM: Adições para a nova aba Relacionamento ---
+
+
 autoUpdater.logger = require("electron-log");
 autoUpdater.logger.transports.file.level = "info";
 
@@ -482,7 +487,6 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
     }
 });
 function formatEta(totalSeconds) { if (!isFinite(totalSeconds) || totalSeconds < 0) return "Calculando..."; const m = Math.floor(totalSeconds / 60); const s = Math.floor(totalSeconds % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; }
-
 async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, log, progress, onFinish) {
     if (!isAdmin() || !pool){
         log("❌ Acesso negado ou conexão com BD inativa.");
@@ -1340,8 +1344,7 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
 ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => { // MODIFICADO
     const log = (msg) => event.sender.send("log", msg);
 
-    /** 
-     * Limpa o nome do cliente, removendo números e caracteres especiais do início e do fim.
+    /** * Limpa o nome do cliente, removendo números e caracteres especiais do início e do fim.
      * Ex: "123.456 NOME CLIENTE 789" -> "NOME CLIENTE"
      */
     const cleanClientName = (name) => {
@@ -2508,8 +2511,8 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
 
     const BATCH_SIZE_SINGLE = 20000;
     const BATCH_SIZE_DUAL = 40000; // Mantido para referência, mas a lógica de envio é individual
-    const RETRY_MS = 2 * 60 * 1000;
-    const DELAY_SUCESSO_MS = 2 * 60 * 1000;
+    const RETRY_MS = 2 * 70 * 1000;
+    const DELAY_SUCESSO_MS = 2 * 70 * 1000;
     const MAX_RETRIES = 5;
 
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -2787,3 +2790,384 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
         return { success: false, clientData: { header: null, rows: [] } };
     }
 }
+
+
+// #################################################################
+// #           NOVA LÓGICA - PIPELINE DE RELACIONAMENTO            #
+// #################################################################
+
+// --- Constantes para a nova aba (copiadas do server.js) ---
+const NOME_PLANILHA_PRINCIPAL = 'Sheet1';
+const NOME_PLANILHA_RELACIONAMENTO = 'C6 - Relacionamento';
+const NOME_PLANILHA_SUPERVISORES = 'supervisores';
+
+// --- Funções utilitárias (copiadas do server.js) ---
+const norm = v => (v === null || v === undefined) ? '' : String(v).trim();
+const normKey = v => norm(v).toUpperCase();
+const normCnpjKey = v => norm(v).replace(/\D/g, ''); // mantém só números
+
+const excelDateToJSDate = (serial) => {
+    if (typeof serial !== 'number' || isNaN(serial)) return null;
+    const utc_days = Math.floor(serial - 25569);
+    const utc_value = utc_days * 86400;
+    return new Date(utc_value * 1000);
+};
+
+// --- Função principal do pipeline (adaptada do server.js) ---
+async function runFullPipeline(filePaths, modo, event) {
+    const log = (msg) => {
+        console.log(`[Relacionamento] ${msg}`);
+        if (event && event.sender) {
+            event.sender.send("relacionamento-log", msg);
+        }
+    };
+
+    try {
+        log('Iniciando pipeline completo...');
+
+        // --- Ler arquivos a partir dos caminhos recebidos ---
+        log(`Lendo arquivo de relatório: ${path.basename(filePaths.relatorio)}`);
+        const relWb = xlsx.read(await fsp.readFile(filePaths.relatorio));
+        const relFirstSheet = relWb.Sheets[relWb.SheetNames[0]];
+        const relDataAoA = xlsx.utils.sheet_to_json(relFirstSheet, { header: 1, defval: null });
+
+        if (relDataAoA.length === 0) {
+            log('Relatório vazio. Abortando.');
+            return { success: false };
+        }
+
+        // --- Inserir 4 colunas em branco a partir da coluna C (índice 2) ---
+        log('Inserindo 4 colunas em branco (C, D, E, F) e renomeando cabeçalhos...');
+        const dataComNovasColunas = relDataAoA.map((row) => {
+            const newRow = [...row];
+            while (newRow.length < 2) newRow.push(null);
+            newRow.splice(2, 0, null, null, null, null);
+            return newRow;
+        });
+
+        const headerRow = dataComNovasColunas[0];
+        headerRow[2] = 'fase';
+        headerRow[3] = 'responsavel';
+        headerRow[4] = 'Supervisor';
+        headerRow[5] = 'faturamento';
+
+        // --- Montar workbook inicial 'elegiveis_auto' em memória ---
+        const elegiveisWb = xlsx.utils.book_new();
+        const elegiveisWs = xlsx.utils.aoa_to_sheet(dataComNovasColunas, { cellDates: true });
+        xlsx.utils.book_append_sheet(elegiveisWb, elegiveisWs, NOME_PLANILHA_PRINCIPAL);
+        log('Planilha principal criada em memória.');
+
+        // --- Ler Bitrix ---
+        log(`Lendo arquivo Bitrix: ${path.basename(filePaths.bitrix)}`);
+        const bitrixWb = xlsx.read(await fsp.readFile(filePaths.bitrix));
+        const bitrixWs = bitrixWb.Sheets[bitrixWb.SheetNames[0]];
+        const bitrixDataAoA = xlsx.utils.sheet_to_json(bitrixWs, { header: 1, defval: null });
+
+        const idxB = xlsx.utils.decode_col('B');
+        const idxE = xlsx.utils.decode_col('E');
+        const idxH = xlsx.utils.decode_col('H');
+
+        const bitrixRows = [];
+        bitrixRows.push(['CNPJ', 'Fase', 'Responsavel']);
+        for (let i = 1; i < bitrixDataAoA.length; i++) {
+            const r = bitrixDataAoA[i];
+            const cnpjVal = r[idxH];
+            const faseVal = r[idxB];
+            const respVal = r[idxE];
+            if (cnpjVal === null || cnpjVal === undefined || String(cnpjVal).trim() === '') continue;
+            bitrixRows.push([cnpjVal, faseVal, respVal]);
+        }
+        const relacionamentoWs = xlsx.utils.aoa_to_sheet(bitrixRows);
+        xlsx.utils.book_append_sheet(elegiveisWb, relacionamentoWs, NOME_PLANILHA_RELACIONAMENTO);
+        log(`Planilha "${NOME_PLANILHA_RELACIONAMENTO}" adicionada.`);
+
+        // --- Ler Arquivo TIME ---
+        log(`Lendo arquivo de time: ${path.basename(filePaths.time)}`);
+        const timeWb = xlsx.read(await fsp.readFile(filePaths.time));
+        const timeWs = timeWb.Sheets[timeWb.SheetNames[0]];
+        const timeDataJson = xlsx.utils.sheet_to_json(timeWs, { defval: '' });
+
+        const timeHeaders = Object.keys(timeDataJson[0] || {});
+        const hConsultor = timeHeaders.find(h => h && h.toUpperCase().includes('CONSULTOR')) || timeHeaders[0];
+        const hEquipe = timeHeaders.find(h => h && h.toUpperCase().includes('EQUIPE')) || timeHeaders[1] || timeHeaders[0];
+
+        const supervisoresRows = [['Consultor', 'Equipe']];
+        for (const row of timeDataJson) {
+            supervisoresRows.push([row[hConsultor] || '', row[hEquipe] || '']);
+        }
+        const supervisoresWs = xlsx.utils.aoa_to_sheet(supervisoresRows);
+        xlsx.utils.book_append_sheet(elegiveisWb, supervisoresWs, NOME_PLANILHA_SUPERVISORES);
+        log(`Planilha "${NOME_PLANILHA_SUPERVISORES}" adicionada.`);
+
+        // --- Ler Arquivo CONTATOSBITRIX ---
+        log(`Lendo arquivo Contatos Bitrix: ${path.basename(filePaths.contatos)}`);
+        const contatosWb = xlsx.read(await fsp.readFile(filePaths.contatos));
+        const contatosWs = contatosWb.Sheets[contatosWb.SheetNames[0]];
+        const contatosDataJson = xlsx.utils.sheet_to_json(contatosWs, { defval: '' });
+
+        const mapFaturamento = {};
+        const contatosHeaders = Object.keys(contatosDataJson[0] || {});
+        const hCnpjContatos = contatosHeaders.find(h => h && h.toUpperCase().includes('CNPJ')) || contatosHeaders[0];
+        const hFaturamento = contatosHeaders[1]; // Coluna B
+
+        for (const row of contatosDataJson) {
+            const cnpjKey = normCnpjKey(row[hCnpjContatos]);
+            if (cnpjKey) mapFaturamento[cnpjKey] = row[hFaturamento];
+        }
+        log('Mapa de faturamento criado.');
+
+        // --- Filtrar dados ---
+        log('Convertendo planilha principal para JSON para aplicar filtros...');
+        const elegiveisWsJson = xlsx.utils.sheet_to_json(elegiveisWs, { defval: null });
+        if (elegiveisWsJson.length === 0) {
+            log('Aviso: a planilha principal gerada está vazia. Abortando.');
+            return { success: false };
+        }
+
+        const findHeader = (headers, primaryName, fallbackColumnLetter) => {
+            let header = headers.find(h => h && h.trim().toUpperCase() === primaryName.toUpperCase());
+            if (header) return header;
+            const colIndex = xlsx.utils.decode_col(fallbackColumnLetter);
+            if (headers[colIndex]) {
+                log(`AVISO: Coluna "${primaryName}" não encontrada pelo nome. Usando fallback '${fallbackColumnLetter}' (${headers[colIndex]}).`);
+                return headers[colIndex];
+            }
+            return null;
+        };
+
+        const headersRel = Object.keys(elegiveisWsJson[0]);
+        const colElegivel = findHeader(headersRel, 'FL_ELEGIVEL_VENDA_C6PAY', 'AK');
+        const colDataAprovacao = findHeader(headersRel, 'DT_APROVACAO_PAY', 'AM');
+
+        let dadosFiltrados = [];
+        log(`Modo de processamento selecionado: ${modo}`);
+        log(`Total de linhas antes do filtro: ${elegiveisWsJson.length}`);
+
+        if (modo === 'relacionamento') {
+            log('Aplicando filtros para o modo "Relacionamento"...');
+            const colNivelAnterior = findHeader(headersRel, 'NIVEL_ANTERIOR', 'CE');
+            const colAlvoAtivacao = findHeader(headersRel, 'ALVO_ATIVACAO', 'CD');
+            const colTipoPessoa = findHeader(headersRel, 'TIPO_PESSOA', 'H');
+            const colStatusCC = findHeader(headersRel, 'STATUS_CC', 'Y');
+
+            if (!colNivelAnterior || !colAlvoAtivacao || !colTipoPessoa || !colStatusCC) {
+                log('Erro: não foi possível localizar todas as colunas de filtro para o modo Relacionamento. Abortando.');
+                return { success: false };
+            }
+
+            const filtro1 = elegiveisWsJson.filter(row => String(row[colTipoPessoa]).toUpperCase() === 'PJ');
+            log(`Após filtro TIPO_PESSOA = "PJ": ${filtro1.length}`);
+            const filtro2 = filtro1.filter(row => String(row[colStatusCC]).toUpperCase() === 'LIBERADA');
+            log(`Após filtro STATUS_CC = "LIBERADA": ${filtro2.length}`);
+            const filtro3 = filtro2.filter(row => row[colNivelAnterior] === 0 || row[colNivelAnterior] === '0');
+            log(`Após filtro NIVEL_ANTERIOR = "0": ${filtro3.length}`);
+            dadosFiltrados = filtro3.filter(row => String(row[colAlvoAtivacao]).toUpperCase() === 'QUALQUER NÍVEL');
+            log(`Após filtro ALVO_ATIVACAO = "QUALQUER NÍVEL": ${dadosFiltrados.length}`);
+
+        } else { // Modo Padrão
+            log('Aplicando filtros para o modo "Padrão"...');
+            const colTipoPessoa = findHeader(headersRel, 'TIPO_PESSOA', 'H');
+            const colStatusCC = findHeader(headersRel, 'STATUS_CC', 'Y');
+
+            if (!colElegivel || !colTipoPessoa || !colDataAprovacao || !colStatusCC) {
+                log('Erro: não foi possível localizar todas as colunas de filtro para o modo Padrão. Abortando.');
+                return { success: false };
+            }
+            const filtro1 = elegiveisWsJson.filter(row => row[colElegivel] === 1 || row[colElegivel] === '1');
+            log(`Após filtro FL_ELEGIVEL_VENDA_C6PAY = "1": ${filtro1.length}`);
+            const filtro2 = filtro1.filter(row => String(row[colTipoPessoa]).toUpperCase() === 'PJ');
+            log(`Após filtro TIPO_PESSOA = "PJ": ${filtro2.length}`);
+            const filtro3 = filtro2.filter(row => row[colDataAprovacao] === null || row[colDataAprovacao] === '' || typeof row[colDataAprovacao] === 'undefined');
+            log(`Após filtro DT_APROVACAO_PAY vazia: ${filtro3.length}`);
+            dadosFiltrados = filtro3.filter(row => String(row[colStatusCC]).toUpperCase() === 'LIBERADA');
+            log(`Após filtro STATUS_CC = "LIBERADA": ${dadosFiltrados.length}`);
+        }
+
+        if (dadosFiltrados.length === 0) {
+            log('Nenhuma linha restou após os filtros. Gerando arquivo com cabeçalhos apenas.');
+            // Não precisa salvar o arquivo aqui, apenas retorna sucesso
+            return { success: true };
+        }
+
+        // --- Montar mapas para Lookup ---
+        log('Montando mapas de lookup...');
+        const mapBitrix = {};
+        for (let i = 1; i < bitrixRows.length; i++) {
+            const r = bitrixRows[i];
+            const rawCnpj = r[0];
+            if (!rawCnpj) continue;
+            const key = normCnpjKey(rawCnpj);
+            mapBitrix[key] = { fase: norm(r[1]), responsavel: norm(r[2]) };
+        }
+
+        const mapTime = {};
+        for (let i = 1; i < supervisoresRows.length; i++) {
+            const [consultorRaw, equipeRaw] = supervisoresRows[i];
+            const consultorKey = normKey(consultorRaw);
+            if (!consultorKey) continue;
+            if (!mapTime[consultorKey]) mapTime[consultorKey] = norm(equipeRaw);
+        }
+
+        // --- Preencher colunas ---
+        log('Executando lookups e preenchendo colunas nas linhas filtradas...');
+        let countCnpjNotFound = 0;
+        let countRespNotFound = 0;
+        let countFaturamentoNotFound = 0;
+        const dadosComLookups = dadosFiltrados.map((row) => {
+            const possibleCnpjKeys = Object.keys(row).filter(k => k && k.toUpperCase().includes('CNPJ'));
+            let rawCnpjValue = '';
+            if (possibleCnpjKeys.length > 0) {
+                rawCnpjValue = row[possibleCnpjKeys[0]];
+            } else {
+                rawCnpjValue = row['CNPJ'] || row['cnpj'] || '';
+            }
+            const cnpjKey = normCnpjKey(rawCnpjValue);
+
+            let fase = 'Não encontrado';
+            let responsavel = 'Não encontrado';
+            let supervisor = 'Não encontrado';
+            let faturamento = 'Não encontrado';
+
+            if (cnpjKey && mapBitrix[cnpjKey]) {
+                fase = mapBitrix[cnpjKey].fase || 'Não encontrado';
+                responsavel = mapBitrix[cnpjKey].responsavel || 'Não encontrado';
+            } else {
+                countCnpjNotFound++;
+            }
+
+            const respKey = normKey(responsavel);
+            if (respKey && mapTime[respKey]) {
+                supervisor = mapTime[respKey];
+            } else {
+                if (responsavel !== 'Não encontrado') countRespNotFound++;
+            }
+
+            if (cnpjKey && mapFaturamento[cnpjKey] !== undefined) {
+                faturamento = mapFaturamento[cnpjKey];
+            } else {
+                countFaturamentoNotFound++;
+            }
+
+            return {
+                ...row,
+                'fase': fase,
+                'responsavel': responsavel,
+                'Supervisor': supervisor,
+                'faturamento': faturamento
+            };
+        });
+
+        log(`Lookups concluídos. CNPJs não encontrados: ${countCnpjNotFound}. Responsáveis sem supervisor: ${countRespNotFound}. CNPJs sem faturamento: ${countFaturamentoNotFound}.`);
+
+        // --- Se modo for 'relacionamento', filtrar e renomear ---
+        let dadosFinaisParaSheet = dadosComLookups;
+        if (modo === 'relacionamento') {
+            log('Modo relacionamento: Filtrando e renomeando colunas para a saída final...');
+            dadosFinaisParaSheet = dadosComLookups.map(row => {
+                const findKey = (obj, name) => Object.keys(obj).find(k => k.toLowerCase() === name.toLowerCase());
+
+                const keyCpfCnpj = findKey(row, 'cd_cpf_cnpj_cliente');
+                const keyNomeCliente = findKey(row, 'nome_cliente');
+                const keyTelefone = findKey(row, 'telefone_master');
+                const keyEmail = findKey(row, 'email');
+                const keyCashIn = findKey(row, 'vl_cash_in_mtd');
+                const keyFaixaFaturamento = findKey(row, 'qual a faixa de faturamento mensal da sau empresa'); // Nome da coluna original
+                const keyDataBase = findKey(row, 'data_base');
+                const keyLimiteConta = findKey(row, 'limite_conta');
+                const keyDtContaCriada = findKey(row, 'dt_conta_criada');
+                const keyChavesPix = findKey(row, 'chaves_pix_forte');
+                const keyLimiteCartao = findKey(row, 'limite_cartao');
+
+                const cpfAsNumber = row[keyCpfCnpj] ? Number(String(row[keyCpfCnpj]).replace(/\D/g, '')) : null;
+                const foneAsNumber = row[keyTelefone] ? Number(String(row[keyTelefone]).replace(/\D/g, '')) : null;
+                const dataBaseAsDate = excelDateToJSDate(row[keyDataBase]);
+                const dtContaCriadaAsDate = excelDateToJSDate(row[keyDtContaCriada]);
+
+                return {
+                    'DATA_BASE': dataBaseAsDate,
+                    'SUPERVISOR': row['Supervisor'],
+                    'RESPONSÁVEL': row['responsavel'],
+                    'CPF': cpfAsNumber,
+                    'livre1': row['fase'], // Fase
+                    'nome': row[keyNomeCliente], // NOME_CLIENTE
+                    'fone1': foneAsNumber, // TELEFONE_MASTER
+                    'chave': row[keyEmail], // EMAIL
+                    'livre2': row[keyCashIn], // VL_CASH_IN_MTD
+                    'livre3': row[keyFaixaFaturamento] || row['faturamento'], // Fallback
+                    'LIMITE_CONTA': row[keyLimiteConta],
+                    'DT_CONTA_CRIADA': dtContaCriadaAsDate,
+                    'CHAVES_PIX_FORTE': row[keyChavesPix],
+                    'LIMITE_CARTAO': row[keyLimiteCartao]
+                };
+            });
+        }
+
+        // --- Salvar o arquivo final ---
+        const { canceled, filePath: savePath } = await dialog.showSaveDialog(mainWindow, {
+            title: "Salvar Relatório Final",
+            defaultPath: `elegiveis_auto_${modo}_${Date.now()}.xlsx`,
+            filters: [{ name: "Excel", extensions: ["xlsx"] }]
+        });
+
+        if (canceled || !savePath) {
+            log("Salvamento cancelado pelo usuário.");
+            return { success: true }; // O processo foi bem-sucedido, mas o usuário não salvou.
+        }
+
+        log(`Salvando arquivo final em: ${savePath}`);
+        const finalSheet = xlsx.utils.json_to_sheet(dadosFinaisParaSheet, { skipHeader: false, cellDates: true });
+        
+        // Se for modo relacionamento, aplica formatação de número e data
+        if (modo === 'relacionamento') {
+             // Formatar colunas (Exemplo: D=CPF, G=fone1 como Número; A=DATA_BASE, L=DT_CONTA_CRIADA como Data)
+            // A biblioteca 'xlsx' não suporta formatação complexa de célula como a 'exceljs'
+            // Vamos garantir que as datas sejam objetos Date (já feito) e números sejam números (já feito)
+            // O ExcelJS seria necessário para aplicar formatação de string (ex: "0" para números)
+            // Mas para o 'xlsx', converter para tipo Number e Date já é o melhor que podemos fazer.
+            log("Formatos de data e número aplicados para o modo relacionamento.");
+        }
+
+        const finalWb = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(finalWb, finalSheet, NOME_PLANILHA_PRINCIPAL);
+        xlsx.utils.book_append_sheet(finalWb, relacionamentoWs, NOME_PLANILHA_RELACIONAMENTO);
+        xlsx.utils.book_append_sheet(finalWb, supervisoresWs, NOME_PLANILHA_SUPERVISORES);
+        
+        // Escreve o arquivo final
+        xlsx.writeFile(finalWb, savePath);
+
+        log(`Arquivo salvo com sucesso. Pipeline completo finalizado.`);
+        shell.showItemInFolder(savePath);
+        return { success: true };
+
+    } catch (err) {
+        log(`Erro no pipeline: ${err.message}`);
+        log(err.stack);
+        return { success: false, error: err };
+    }
+}
+
+// --- Handler do IPCMain para a nova aba ---
+ipcMain.on('run-relacionamento-pipeline', async (event, filePaths, modo) => {
+    if (!isAdmin()) {
+        event.sender.send("relacionamento-log", "❌ Acesso negado.");
+        event.sender.send("relacionamento-finished", false);
+        return;
+    }
+
+    const log = (msg) => event.sender.send("relacionamento-log", msg);
+
+    // Validação dos caminhos
+    for (const key in filePaths) {
+        if (!filePaths[key] || !fs.existsSync(filePaths[key])) {
+            log(`❌ ERRO: Arquivo "${key}" não encontrado em: ${filePaths[key]}`);
+            event.sender.send("relacionamento-finished", false);
+            return;
+        }
+    }
+
+    // Executa a função
+    const result = await runFullPipeline(filePaths, modo, event);
+    
+    // Envia o resultado de volta
+    event.sender.send("relacionamento-finished", result.success);
+});

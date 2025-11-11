@@ -205,6 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // NOVO: Adiciona a grid da nova aba
         'api-tools-panel': 'api-tools-sections',
         'blocklistGrid': 'blocklist-sections',
+        'relacionamentoGrid': 'relacionamento-sections', // <-- Adicionado para a nova aba
     };
 
     let sortableInstances = {};
@@ -359,6 +360,10 @@ document.addEventListener('DOMContentLoaded', () => {
         'Monitoramento': {
             title: 'Monitoramento de Relatórios',
             description: 'Acompanhe os dados de chamadas em tempo real. Filtre e visualize informações para análise de performance e tomada de decisão.'
+        },
+        'Relacionamento': { // <-- Adicionado para a nova aba
+            title: 'Pipeline de Relacionamento',
+            description: 'Execute o pipeline de processamento de planilhas para gerar a base de elegíveis do modo padrão ou relacionamento.'
         }
     };
 
@@ -413,6 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
             themeClass = 'blocklist-theme';
             updateBlocklistStats(); // Atualiza as estatísticas ao abrir a aba
         }
+        // A nova aba 'relacionamento' não precisa de tema por enquanto
         if (themeClass) mainContent.classList.add(themeClass);
 
 
@@ -1933,4 +1939,101 @@ function renderComparisonList(fastwayData, bitrixData) {
             fishScheduleTitle.textContent = "Agendamento FISH";
         }
     });
+
+    // --- INÍCIO: LÓGICA DA ABA DE RELACIONAMENTO ---
+    const relacionamentoLog = document.getElementById('relacionamentoLog');
+    
+    // Variáveis para armazenar os caminhos dos arquivos
+    let relatorioFile = null;
+    let bitrixFile = null;
+    let timeFile = null;
+    let contatosFile = null;
+
+    // Botões
+    const relatorioBtn = document.getElementById('relacionamentoSelectRelatorioBtn');
+    const bitrixBtn = document.getElementById('relacionamentoSelectBitrixBtn');
+    const timeBtn = document.getElementById('relacionamentoSelectTimeBtn');
+    const contatosBtn = document.getElementById('relacionamentoSelectContatosBtn');
+    const startBtn = document.getElementById('relacionamentoStartBtn');
+
+    // Divs para exibir nomes dos arquivos
+    const relatorioPathDiv = document.getElementById('relacionamentoRelatorioPath');
+    const bitrixPathDiv = document.getElementById('relacionamentoBitrixPath');
+    const timePathDiv = document.getElementById('relacionamentoTimePath');
+    const contatosPathDiv = document.getElementById('relacionamentoContatosPath');
+
+    // Função de Log específica da aba
+    function appendRelacionamentoLog(msg) {
+        if (!relacionamentoLog) return;
+        if (relacionamentoLog.textContent.trim() === 'Aguardando o início do processo...') {
+            relacionamentoLog.innerHTML = '';
+        }
+        const p = document.createElement('p');
+        p.textContent = `> ${msg.trim()}`;
+        relacionamentoLog.appendChild(p);
+        relacionamentoLog.scrollTop = relacionamentoLog.scrollHeight;
+    }
+
+    // Função auxiliar para criar seletores de arquivo
+    async function createFileSelector(button, pathDiv, fileVariableSetter) {
+        button.addEventListener('click', async () => {
+            const files = await window.electronAPI.selectFile({ title: 'Selecione o arquivo', multi: false });
+            if (files && files.length > 0) {
+                const filePath = files[0];
+                fileVariableSetter(filePath); // Define a variável de path
+                addFileToUI(pathDiv, filePath, true); // Mostra o nome no UI
+                appendRelacionamentoLog(`Arquivo ${button.id.replace('relacionamentoSelect', '').replace('Btn', '')} selecionado: ${getBasename(filePath)}`);
+            }
+        });
+    }
+
+    // Configura os 4 botões de seleção de arquivo
+    createFileSelector(relatorioBtn, relatorioPathDiv, (path) => relatorioFile = path);
+    createFileSelector(bitrixBtn, bitrixPathDiv, (path) => bitrixFile = path);
+    createFileSelector(timeBtn, timePathDiv, (path) => timeFile = path);
+    createFileSelector(contatosBtn, contatosPathDiv, (path) => contatosFile = path);
+
+    // Lógica do Botão Iniciar
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            // Verifica se todos os arquivos foram selecionados
+            if (!relatorioFile || !bitrixFile || !timeFile || !contatosFile) {
+                appendRelacionamentoLog('❌ ERRO: Por favor, selecione todos os quatro arquivos antes de iniciar.');
+                return;
+            }
+
+            const modo = document.querySelector('input[name="relacionamentoModo"]:checked').value;
+
+            appendRelacionamentoLog('Iniciando processo... Enviando arquivos para o backend.');
+            startBtn.disabled = true;
+            startBtn.innerHTML = 'Processando...';
+
+            const filePaths = {
+                relatorio: relatorioFile,
+                bitrix: bitrixFile,
+                time: timeFile,
+                contatos: contatosFile
+            };
+
+            // Envia os caminhos e o modo para o main process
+            window.electronAPI.runRelacionamentoPipeline(filePaths, modo);
+        });
+    }
+
+    // Ouve por logs do pipeline de relacionamento
+    window.electronAPI.onRelacionamentoLog((logMsg) => {
+        appendRelacionamentoLog(logMsg);
+    });
+
+    // Ouve pelo evento de finalização
+    window.electronAPI.onRelacionamentoFinished((success) => {
+        if (success) {
+            appendRelacionamentoLog('✅ Processo concluído com sucesso!');
+        } else {
+            appendRelacionamentoLog('❌ Ocorreu um erro durante o processo. Verifique os logs.');
+        }
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg> Iniciar Processo';
+    });
+    // --- FIM: LÓGICA DA ABA DE RELACIONAMENTO ---
 });

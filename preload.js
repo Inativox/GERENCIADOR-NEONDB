@@ -64,6 +64,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     startDbLoad: (args) => ipcRenderer.send("start-db-load", args),
     startEnrichment: (args) => ipcRenderer.send("start-enrichment", args),
 
+    // --- INÍCIO DA MODIFICAÇÃO: Funções de Relacionamento ---
+    runRelacionamentoPipeline: (filePaths, modo) => ipcRenderer.send('run-relacionamento-pipeline', filePaths, modo),
+    // --- FIM DA MODIFICAÇÃO ---
+
     // --- Listeners de Eventos (Renderer "escuta" o Main) ---
     onLog: (callback) => ipcRenderer.on("log", (event, ...args) => callback(...args)),
     onProgress: (callback) => ipcRenderer.on("progress", (event, ...args) => callback(...args)),
@@ -80,6 +84,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onFishScheduleUpdate: (callback) => ipcRenderer.on('fish-schedule-update', (event, ...args) => callback(...args)),
     onUpdateMessage: (callback) => ipcRenderer.on("update-message", (event, ...args) => callback(...args)),
     onRootFeedFinished: (callback) => ipcRenderer.on('root-feed-finished', (event, ...args) => callback(...args)),
+
+    // --- INÍCIO DA MODIFICAÇÃO: Listeners de Relacionamento ---
+    onRelacionamentoLog: (callback) => ipcRenderer.on("relacionamento-log", (event, ...args) => callback(...args)),
+    onRelacionamentoFinished: (callback) => ipcRenderer.on("relacionamento-finished", (event, ...args) => callback(...args)),
+    // --- FIM DA MODIFICAÇÃO ---
 
     // Função para remover todos os listeners para evitar memory leaks ao recarregar
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
