@@ -2202,7 +2202,19 @@ let cancelCurrentApiTask = false;
 let isApiQueuePaused = false;
 let fishScheduleTimer = null; // NOVO: Timer para o agendamento
 let currentApiOptions = { keyMode: 'chave1', removeClients: true };
+// NOVO: Variáveis para armazenar os tempos de delay da API
+let apiTimingSettings = {
+    delayBetweenBatches: null, // em minutos
+    retryDelay: null // em minutos
+};
+
+// CORRIGIDO: Handler para receber as atualizações de tempo do renderer
+ipcMain.on('set-api-delays', (event, settings) => {
+    apiTimingSettings = settings;
+    event.sender.send("api-log", `⚙️ Configurações de tempo atualizadas: Delay entre Lotes: ${settings.delayBetweenBatches || 'Padrão'}, Delay de Retentativa: ${settings.retryDelay || 'Padrão'}`);
+});
 let fishModeFilePath = null; // NOVO: para armazenar o caminho do arquivo no modo FISH
+
 
 ipcMain.on("add-files-to-api-queue", (event, filePaths) => {
     if (!isAdmin()) return;
@@ -2511,8 +2523,14 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
 
     const BATCH_SIZE_SINGLE = 20000;
     const BATCH_SIZE_DUAL = 40000; // Mantido para referência, mas a lógica de envio é individual
-    const RETRY_MS = 2 * 70 * 1000;
-    const DELAY_SUCESSO_MS = 2 * 70 * 1000;
+
+    // MODIFICADO: Usa os valores configurados ou os padrões
+    const getRetryDelayMs = () => (parseFloat(apiTimingSettings.retryDelay) || 2) * 60 * 1000;
+    const getSuccessDelayMs = () => (parseFloat(apiTimingSettings.delayBetweenBatches) || 2) * 60 * 1000;
+
+    // Valores padrão antigos, mantidos aqui para referência caso queira reverter
+    // const RETRY_MS = 2 * 60 * 1000;
+    // const DELAY_SUCESSO_MS = 2 * 60 * 1000;
     const MAX_RETRIES = 5;
 
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -2716,20 +2734,22 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
 
                 } catch (err) {
                     retries++;
+                    const retryDelayMs = getRetryDelayMs();
                     log(`❌ Erro no processamento do lote (tentativa ${retries}/${MAX_RETRIES}): ${err.message}.`);
                     if (retries < MAX_RETRIES) {
-                        log(`Tentando novamente em ${RETRY_MS / 60000} minutos...`);
+                        log(`Tentando novamente em ${retryDelayMs / 60000} minutos...`);
                         if (cancelCurrentApiTask) break;
-                        await sleep(RETRY_MS);
+                        await sleep(retryDelayMs);
                     } else {
                         log(`Máximo de tentativas atingido para este lote. Pulando para o próximo.`);
                     }
                 }
             }
+            const successDelayMs = getSuccessDelayMs();
             if (sucesso && i < lotes.length - 1) {
                 if (cancelCurrentApiTask) break;
-                log(`Aguardando ${DELAY_SUCESSO_MS / 60000} minutos antes do próximo lote...`);
-                await sleep(DELAY_SUCESSO_MS);
+                log(`Aguardando ${successDelayMs / 60000} minutos antes do próximo lote...`);
+                await sleep(successDelayMs);
             }
         }
         if (!cancelCurrentApiTask) {
@@ -2944,7 +2964,7 @@ async function runFullPipeline(filePaths, modo, event) {
         log(`Total de linhas antes do filtro: ${elegiveisWsJson.length}`);
 
         if (modo === 'relacionamento') {
-            log('Aplicando filtros para o modo "Relacionamento"...');
+            log('Aplicando filtros para o modo "Relacionamento"...'); // MODO RELACIONAMENTO
             const colNivelAnterior = findHeader(headersRel, 'NIVEL_ANTERIOR', 'CE');
             const colAlvoAtivacao = findHeader(headersRel, 'ALVO_ATIVACAO', 'CD');
             const colTipoPessoa = findHeader(headersRel, 'TIPO_PESSOA', 'H');
@@ -2953,7 +2973,7 @@ async function runFullPipeline(filePaths, modo, event) {
             if (!colNivelAnterior || !colAlvoAtivacao || !colTipoPessoa || !colStatusCC) {
                 log('Erro: não foi possível localizar todas as colunas de filtro para o modo Relacionamento. Abortando.');
                 return { success: false };
-            }
+            } 
 
             const filtro1 = elegiveisWsJson.filter(row => String(row[colTipoPessoa]).toUpperCase() === 'PJ');
             log(`Após filtro TIPO_PESSOA = "PJ": ${filtro1.length}`);
@@ -2964,8 +2984,8 @@ async function runFullPipeline(filePaths, modo, event) {
             dadosFiltrados = filtro3.filter(row => String(row[colAlvoAtivacao]).toUpperCase() === 'QUALQUER NÍVEL');
             log(`Após filtro ALVO_ATIVACAO = "QUALQUER NÍVEL": ${dadosFiltrados.length}`);
 
-        } else { // Modo Padrão
-            log('Aplicando filtros para o modo "Padrão"...');
+        } else { // Modo Máquina (Padrão)
+            log('Aplicando filtros para o modo "Máquina"...'); // MODO MÁQUINA
             const colTipoPessoa = findHeader(headersRel, 'TIPO_PESSOA', 'H');
             const colStatusCC = findHeader(headersRel, 'STATUS_CC', 'Y');
 

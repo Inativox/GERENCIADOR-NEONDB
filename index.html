@@ -1014,6 +1014,16 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                         <option value="dupla">Dupla (Ambas as Chaves)</option>
                       </select>
                     </div>
+                    <div style="display: flex; gap: 1rem; margin-bottom: 20px;">
+                        <div>
+                            <label for="apiDelayBetweenBatches">Delay entre Lotes (min)</label>
+                            <input type="number" id="apiDelayBetweenBatches" placeholder="Padrão: 2" min="0">
+                        </div>
+                        <div>
+                            <label for="apiRetryDelay">Delay de Retentativa (min)</label>
+                            <input type="number" id="apiRetryDelay" placeholder="Padrão: 2" min="0">
+                        </div>
+                    </div>
                     <div class="toggle-switch" style="margin-bottom: 20px;">
                         <label class="switch"><input type="checkbox" id="apiRemoveClientsCheckbox" checked><span class="slider"></span></label>
                         <span class="toggle-label">Remover clientes automaticamente após consulta</span>
@@ -1247,7 +1257,7 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
         </div>
         
         <div class="page-content" id="relacionamento">
-            <div class="grid" id="relacionamentoGrid">
+            <div class="grid" id="relacionamentoGrid" style="gap: 1rem;">
                 
                 <div class="section" data-section-id="config-relacionamento">
                     <div class="section-header">
@@ -1258,7 +1268,7 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                         </div>
                     </div>
                     
-                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 1rem;">
                         Selecione os 4 arquivos necessários e o modo de processamento para gerar a base de elegíveis.
                     </p>
 
@@ -1290,8 +1300,8 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                         <label style="margin-bottom: 10px; font-weight: 600;">5. Modo de Processamento:</label>
                         <div class="radio-group-container">
                             <label>
-                                <input type="radio" name="relacionamentoModo" value="padrao" checked>
-                                <span class="radio-circle"></span>Padrão
+                                <input type="radio" name="relacionamentoModo" value="maquina" checked>
+                                <span class="radio-circle"></span>Máquina
                             </label>
                             <label>
                                 <input type="radio" name="relacionamentoModo" value="relacionamento">
@@ -1332,7 +1342,7 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                     </button>
                 </div>
             </div>
-            <p>Criador: Davi Abraão | Versão: 2.1.8</p>
+            <p>Criador: Davi Abraão | Versão: 1.3.0</p>
             <div id="update-message"></div>
         </footer>
     </main>

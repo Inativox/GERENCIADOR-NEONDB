@@ -826,6 +826,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiStatusSpan = document.getElementById('apiStatus');
     const apiProgressBarFill = document.getElementById('apiProgressBarFill');
     const apiLogDiv = document.getElementById('apiLog');
+    // NOVO: Seletores para os inputs de delay da API
+    const apiDelayBetweenBatchesInput = document.getElementById('apiDelayBetweenBatches');
+    const apiRetryDelayInput = document.getElementById('apiRetryDelay');
+
+    // NOVO: Função para enviar as configurações de tempo da API
+    const sendApiTimingSettings = () => {
+        const settings = {
+            delayBetweenBatches: parseFloat(apiDelayBetweenBatchesInput.value) || null,
+            retryDelay: parseFloat(apiRetryDelayInput.value) || null
+        };
+        window.electronAPI.updateApiTimingSettings(settings);
+    };
+
     if (pauseApiBtn) pauseApiBtn.addEventListener('click', () => window.electronAPI.pauseApiQueue());
     if (resumeApiBtn) resumeApiBtn.addEventListener('click', () => window.electronAPI.resumeApiQueue());
     if (apiDropzone) { apiDropzone.addEventListener('dragover', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--accent-color)'; apiDropzone.style.backgroundColor = 'var(--bg-lighter)'; }); apiDropzone.addEventListener('dragleave', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--border-color)'; apiDropzone.style.backgroundColor = 'transparent'; }); apiDropzone.addEventListener('drop', (event) => { event.preventDefault(); event.stopPropagation(); apiDropzone.style.borderColor = 'var(--border-color)'; apiDropzone.style.backgroundColor = 'transparent'; const files = Array.from(event.dataTransfer.files).filter(file => file.path.endsWith('.xlsx') || file.path.endsWith('.xls') || file.path.endsWith('.csv')).map(file => file.path); if (files.length > 0) { window.electronAPI.addFilesToApiQueue(files); } }); }
@@ -842,6 +855,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     if (resetApiBtn) resetApiBtn.addEventListener('click', () => { window.electronAPI.resetApiQueue(); });
+    // NOVO: Listeners para os inputs de delay
+    if (apiDelayBetweenBatchesInput) {
+        apiDelayBetweenBatchesInput.addEventListener('input', sendApiTimingSettings);
+    }
+    if (apiRetryDelayInput) {
+        apiRetryDelayInput.addEventListener('input', sendApiTimingSettings);
+    }
     const apiCancelledDiv = document.getElementById('apiCancelled');
     if (!apiCancelledDiv) {
         console.log("WARNING: The element with id 'apiCancelled' was not found. The cancelled files list will not be displayed.");

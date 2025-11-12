@@ -53,6 +53,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     removeFromApiQueue: (filePath) => ipcRenderer.send("remove-from-api-queue", filePath),
     prioritizeInApiQueue: (filePath) => ipcRenderer.send("prioritize-in-api-queue", filePath),
     cancelCurrentApiTask: () => ipcRenderer.send("cancel-current-api-task"),
+    updateApiTimingSettings: (settings) => ipcRenderer.send('set-api-delays', settings), // CORRIGIDO
+    showConfirmDialog: (options) => ipcRenderer.invoke('show-confirm-dialog', options),
     // Novas funções de agendamento
     scheduleFishCleanup: (options) => ipcRenderer.send('schedule-fish-cleanup', options),
     cancelFishSchedule: () => ipcRenderer.send('cancel-fish-schedule'),
