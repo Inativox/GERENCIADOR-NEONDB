@@ -192,6 +192,18 @@ ipcMain.on('save-ui-settings', (event, settings) => {
     store.set('ui_settings', settings);
 });
 
+// NOVO: Handler para o diálogo de confirmação
+ipcMain.handle('show-confirm-dialog', async (event, options) => {
+    const result = await dialog.showMessageBox(mainWindow, {
+        type: 'warning',
+        buttons: ['Cancelar', 'Confirmar'],
+        defaultId: 1,
+        title: options.title,
+        message: options.message,
+    });
+    return result.response === 1; // Retorna true se 'Confirmar' foi clicado
+});
+
 const isAdmin = () => {
     return currentUser && currentUser.role === 'admin';
 };
@@ -487,22 +499,34 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
     }
 });
 function formatEta(totalSeconds) { if (!isFinite(totalSeconds) || totalSeconds < 0) return "Calculando..."; const m = Math.floor(totalSeconds / 60); const s = Math.floor(totalSeconds % 60); return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`; }
-async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, log, progress, onFinish) {
+async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year, batchSize, usePadrao, useAllDb }, log, progress, onFinish) { // MODIFICADO
     if (!isAdmin() || !pool){
         log("❌ Acesso negado ou conexão com BD inativa.");
         if(onFinish) onFinish();
         return;
     }
 
-    if (!year) {
+    // MODIFICADO: A validação do ano só é necessária se não for usar o banco todo.
+    if (!useAllDb && !year) {
         log('❌ ERRO CRÍTICO: O ano não foi fornecido para o enriquecimento.');
         if (onFinish) onFinish();
         return;
     }
 
-    log(`--- Iniciando Processo de Enriquecimento por Lotes (Ano de Busca: ${year}) ---`);
+    const BATCH_SIZE = batchSize || 2000; // MODIFICADO: Usa o tamanho do lote recebido ou o padrão
+    let anosDeBusca = [];
+    if (useAllDb) {
+        anosDeBusca = []; // Fica vazio para indicar que não há filtro de ano
+    } else if (usePadrao) {
+        anosDeBusca = [year, 1];
+    } else {
+        anosDeBusca = [year];
+    }
+
+    log(`--- Iniciando Processo de Enriquecimento ---`);
+    log(`Tamanho do Lote: ${BATCH_SIZE.toLocaleString('pt-BR')} registros.`);
+    log(`Ano(s) de Busca: ${anosDeBusca.join(', ')} ${usePadrao ? '(213 PADRÃO ATIVADO)' : ''}`);
     let totalEnrichedRowsOverall = 0, totalProcessedRowsOverall = 0, totalNotFoundInDbOverall = 0;
-    const BATCH_SIZE = 2000;
     try {
         for (const fileObj of filesToEnrich) {
             const { path: filePath, id } = fileObj;
@@ -528,20 +552,32 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year }, l
                     log(`Lote ${currentBatchNum}/${totalBatches}: Processando ${cnpjsInBatch.size} CNPJs...`);
 
                   const enrichmentDataForBatch = new Map();
-                const cnpjKeys = Array.from(cnpjsInBatch.keys());
-                if (cnpjKeys.length > 0) {
-                    const query = `
-                        SELECT e.cnpj, array_agg(t.numero) as telefones
-                        FROM empresas e
-                        JOIN telefones t ON e.id = t.empresa_id
-                        WHERE e.cnpj = ANY($1::text[]) AND e.ano = $2
-                        GROUP BY e.id, e.cnpj;
-                    `;
-                    const result = await pool.query(query, [cnpjKeys, year]);
-                    result.rows.forEach(row => enrichmentDataForBatch.set(row.cnpj, row.telefones || []));
+                  const cnpjKeys = Array.from(cnpjsInBatch.keys());
+                  if (cnpjKeys.length > 0) {
+                      // MODIFICADO: A query é construída dinamicamente
+                      let queryText = `
+                          SELECT e.cnpj, array_agg(t.numero ORDER BY t.id) as telefones
+                          FROM empresas e
+                          JOIN telefones t ON e.id = t.empresa_id
+                          WHERE e.cnpj = ANY($1::text[])
+                      `;
+                      const queryParams = [cnpjKeys];
+
+                      if (!useAllDb) {
+                          queryText += ` AND e.ano = ANY($2::integer[])`;
+                          queryParams.push(anosDeBusca);
+                      }
+
+                      queryText += ` GROUP BY e.id, e.cnpj;`;
+
+                      const result = await pool.query(queryText, queryParams);
+
+                      result.rows.forEach(row => {
+                          enrichmentDataForBatch.set(row.cnpj, [...new Set(row.telefones || [])]);
+                      });
                 }
 
-                log(`Lote ${currentBatchNum}/${totalBatches}: ${enrichmentDataForBatch.size} CNPJs encontrados no BD para o ano ${year}. Atualizando planilha...`);
+                log(`Lote ${currentBatchNum}/${totalBatches}: ${enrichmentDataForBatch.size} CNPJs encontrados no BD. Atualizando planilha...`);
 
                     for (const [cnpj, { row }] of cnpjsInBatch.entries()) {
                         let rowWasEnriched = false;

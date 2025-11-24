@@ -1081,6 +1081,24 @@ border-left: 3px solid var(--active-accent, var(--accent-blue)); /* Destaque com
                             <label for="enrichment-year-input">Ano para Pesquisa no Banco (Obrigatório)</label>
                             <input type="number" id="enrichment-year-input" placeholder="Ex: 2024" required>
                         </div>
+                        <div class="input-group">
+                            <label for="enrichment-batch-size-input">Tamanho do Lote</label>
+                            <input type="number" id="enrichment-batch-size-input" value="2000" min="100" step="100" placeholder="Padrão: 2000">
+                        </div>
+                        <div class="toggle-switch">
+                            <label class="switch">
+                                <input type="checkbox" id="enrichment-padrao-checkbox">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="toggle-label">Usar "213 PADRÃO" (Busca ano selecionado + 0001)</span>
+                        </div>
+                        <div class="toggle-switch">
+                            <label class="switch">
+                                <input type="checkbox" id="enrichment-all-db-checkbox">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="toggle-label">Usar "Todo Banco" (Ignora o ano)</span>
+                        </div>
                         <div>
                             <label>Estratégia de Preenchimento:</label>
                             <div class="radio-group-container">
