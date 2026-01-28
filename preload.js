@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     // --- Funções da Aba de Monitoramento ---
     fetchMonitoringReport: (payload) => ipcRenderer.invoke('fetch-monitoring-report', payload),
-     fetchBitrixReport: (payload) => ipcRenderer.invoke('fetch-bitrix-report', payload), // ADICIONE ESTA LINHA
+    fetchBitrixReport: (payload) => ipcRenderer.invoke('fetch-bitrix-report', payload), // ADICIONE ESTA LINHA
     downloadRecording: (url, fileName) => ipcRenderer.invoke('download-recording', url, fileName),
 
     // --- Funções da Limpeza Local ---
@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     // --- INÍCIO DA MODIFICAÇÃO: Funções de Relacionamento ---
     runRelacionamentoPipeline: (filePaths, modo) => ipcRenderer.send('run-relacionamento-pipeline', filePaths, modo),
+    splitByResponsible: (filePath) => ipcRenderer.send('split-by-responsible', filePath), // NOVO
     // --- FIM DA MODIFICAÇÃO ---
 
     // --- Listeners de Eventos (Renderer "escuta" o Main) ---
@@ -90,6 +91,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // --- INÍCIO DA MODIFICAÇÃO: Listeners de Relacionamento ---
     onRelacionamentoLog: (callback) => ipcRenderer.on("relacionamento-log", (event, ...args) => callback(...args)),
     onRelacionamentoFinished: (callback) => ipcRenderer.on("relacionamento-finished", (event, ...args) => callback(...args)),
+    onSplitByResponsibleLog: (callback) => ipcRenderer.on('split-by-responsible-log', (event, ...args) => callback(...args)), // NOVO
+    onSplitByResponsibleFinished: (callback) => ipcRenderer.on('split-by-responsible-finished', (event, ...args) => callback(...args)), // NOVO
     // --- FIM DA MODIFICAÇÃO ---
 
     // Função para remover todos os listeners para evitar memory leaks ao recarregar

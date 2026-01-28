@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainContent = document.querySelector('.main-content');
     const logoutBtn = document.getElementById('logoutBtn');
     const monitoringTeamTitle = document.getElementById('monitoring-team-title');
-     const organizeDailySheetBtn = document.getElementById('organizeDailySheetBtn');
+    const organizeDailySheetBtn = document.getElementById('organizeDailySheetBtn');
 
     if (organizeDailySheetBtn) {
         organizeDailySheetBtn.addEventListener('click', async () => {
@@ -29,6 +29,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 appendLog('Nenhum arquivo selecionado. Operação cancelada.');
             }
         });
+    }
+
+    // --- INJEÇÃO DA OPÇÃO OLOS (Se não existir no HTML) ---
+    const firstOrganizeRadio = document.querySelector('input[name="organizeType"]');
+    if (firstOrganizeRadio) {
+        const container = firstOrganizeRadio.closest('.radio-group') || firstOrganizeRadio.parentElement;
+        if (container && !container.querySelector('input[value="olos"]')) {
+            const label = document.createElement('label');
+            const existingLabel = firstOrganizeRadio.closest('label');
+            if (existingLabel) label.className = existingLabel.className;
+            label.style.marginLeft = '15px';
+            label.innerHTML = `<input type="radio" name="organizeType" value="olos"> Olos`;
+            container.appendChild(label);
+        }
     }
 
     let currentUserRole = null;
@@ -61,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (username !== 'Davi') {
                 checkBlocklistCheckbox.checked = true;
                 checkBlocklistCheckbox.disabled = true;
-                
+
                 // Adiciona um feedback visual para o usuário.
                 const parentSwitch = checkBlocklistCheckbox.closest('.toggle-switch');
                 if (parentSwitch) {
@@ -392,11 +406,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             isTransitioning = false;
         };
-        
+
         if (activePage && activePage.id !== tabNameId) {
             activePage.classList.add('fade-out'); // Adiciona a classe de fade-out
             // A duração do setTimeout deve corresponder à duração da animação fadeOut no CSS
-            setTimeout(showNewPage, 300); 
+            setTimeout(showNewPage, 300);
         } else {
             showNewPage();
         }
@@ -465,6 +479,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let autoAdjustPhones = false;
     let checkDbEnabled = false;
     let saveToDbEnabled = false;
+    let removeLandlinesEnabled = false; // NOVO
     const selectRootBtn = document.getElementById('selectRootBtn');
     const autoRootBtn = document.getElementById('autoRootBtn');
     const feedRootBtn = document.getElementById('feedRootBtn');
@@ -474,6 +489,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resetLocalBtn = document.getElementById('resetLocalBtn');
     const adjustPhonesBtn = document.getElementById('adjustPhonesBtn');
     const backupCheckbox = document.getElementById('backupCheckbox').parentElement;
+    const removeLandlinesCheckbox = document.getElementById('removeLandlinesCheckbox'); // NOVO
     const autoAdjustPhonesCheckbox = document.getElementById('autoAdjustPhonesCheckbox');
     const rootFilePathSpan = document.getElementById('rootFilePath');
     const selectedCleanFilesDiv = document.getElementById('selectedCleanFiles');
@@ -503,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const linesPerSplitInput = document.getElementById('linesPerSplit');
     const splitListBtn = document.getElementById('splitListBtn');
     const shuffleResultCheckbox = document.getElementById('shuffleResultCheckbox');
-    
+
     // NOVO: Captura dos novos elementos da Blocklist
     const feedBlocklistBtn = document.getElementById('feedBlocklistBtn');
     const checkBlocklistCheckbox = document.getElementById('checkBlocklistCheckbox');
@@ -516,6 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Aba Limpeza Local
             backup: backupCheckbox.querySelector('input').checked,
             autoAdjust: autoAdjustPhonesCheckbox.checked,
+            removeLandlines: removeLandlinesCheckbox ? removeLandlinesCheckbox.checked : false, // NOVO: Adicionado verificação para evitar erro se o elemento não existir
             checkDb: checkDbCheckbox.checked,
             saveToDb: saveToDbCheckbox.checked,
             checkBlocklist: checkBlocklistCheckbox.checked,
@@ -577,6 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Aba Limpeza Local
         setChecked(backupCheckbox.querySelector('input'), settings.backup);
         setChecked(autoAdjustPhonesCheckbox, settings.autoAdjust);
+        setChecked(removeLandlinesCheckbox, settings.removeLandlines); // NOVO
         setChecked(checkDbCheckbox, settings.checkDb);
         setChecked(saveToDbCheckbox, settings.saveToDb);
         setChecked(checkBlocklistCheckbox, settings.checkBlocklist);
@@ -653,6 +671,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function addFileToUI(container, filePath, isSingle) { if (isSingle) { container.innerHTML = ''; } const fileDiv = document.createElement('div'); fileDiv.className = 'file-item new-item'; fileDiv.textContent = getBasename(filePath); container.appendChild(fileDiv); setTimeout(() => { fileDiv.classList.remove('new-item'); }, 500); }
     function resetUploadProgress() { if (uploadProgressContainer) uploadProgressContainer.style.display = 'none'; if (uploadProgressBarFill) uploadProgressBarFill.style.width = '0%'; if (uploadProgressText) uploadProgressText.textContent = ''; }
     if (backupCheckbox) backupCheckbox.addEventListener('change', (e) => { backupEnabled = e.target.querySelector('input').checked; });
+    if (removeLandlinesCheckbox) removeLandlinesCheckbox.addEventListener('change', () => { removeLandlinesEnabled = removeLandlinesCheckbox.checked; }); // NOVO
     if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.addEventListener('change', () => { autoAdjustPhones = autoAdjustPhonesCheckbox.checked; });
     if (checkDbCheckbox) checkDbCheckbox.addEventListener('change', () => { checkDbEnabled = checkDbCheckbox.checked; appendLog(`Consulta ao Banco de Dados: ${checkDbEnabled ? 'ATIVADA' : 'DESATIVADA'}`); });
     if (saveToDbCheckbox) saveToDbCheckbox.addEventListener('change', () => { saveToDbEnabled = saveToDbCheckbox.checked; appendLog(`Salvar no Banco de Dados: ${saveToDbEnabled ? 'ATIVADO' : 'DESATIVADO'}`); });
@@ -681,16 +700,20 @@ document.addEventListener('DOMContentLoaded', () => {
             addFileToUI(selectedCleanFilesDiv, summaryText, true);
         });
     }
-    
+
     if (startCleaningBtn) {
         startCleaningBtn.addEventListener('click', () => {
             const isAutoRoot = autoRootBtn.dataset.on === 'true';
-            if (!isAutoRoot && !rootFile) { return appendLog('ERRO: Selecione o arquivo raiz ou ative o Auto Raiz.'); }
+
+            // MODIFICADO: A verificação de raiz não é mais um erro bloqueante.
+            if (!isAutoRoot && !rootFile) {
+                appendLog('⚠️ AVISO: Nenhuma lista raiz (arquivo ou Auto Raiz) foi fornecida. A verificação PROCV será ignorada.');
+            }
             if (!cleanFiles.length) { return appendLog('ERRO: Adicione ao menos um arquivo para limpar.'); }
+
             resetUploadProgress();
             appendLog('Iniciando limpeza...');
-    
-            // MODIFICADO: Adiciona o 'checkBlocklist' ao objeto de argumentos
+
             window.electronAPI.startCleaning({
                 isAutoRoot,
                 rootFile: isAutoRoot ? null : rootFile,
@@ -698,18 +721,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 rootCol: rootColSelect.value,
                 destCol: destColSelect.value,
                 backup: backupEnabled,
+                removeLandlines: removeLandlinesEnabled, // NOVO
                 checkDb: checkDbEnabled,
                 saveToDb: saveToDbEnabled,
                 autoAdjust: autoAdjustPhones,
-                checkBlocklist: checkBlocklistCheckbox.checked // Adicionado aqui
+                checkBlocklist: checkBlocklistCheckbox.checked
             });
         });
     }
 
-    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; mergeFiles = []; backupEnabled = false; autoAdjustPhones = false; checkDbEnabled = false; saveToDbEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (selectedMergeFilesDiv) selectedMergeFilesDiv.innerHTML = ''; if (batchIdInput) batchIdInput.value = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.checked = false; if (checkDbCheckbox) checkDbCheckbox.checked = false; if (saveToDbCheckbox) saveToDbCheckbox.checked = false; if (checkBlocklistCheckbox) checkBlocklistCheckbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } resetUploadProgress(); appendLog('Módulo de Limpeza Local reiniciado.'); });
+    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; mergeFiles = []; backupEnabled = false; autoAdjustPhones = false; checkDbEnabled = false; saveToDbEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (selectedMergeFilesDiv) selectedMergeFilesDiv.innerHTML = ''; if (batchIdInput) batchIdInput.value = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.checked = false; if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkDbCheckbox) checkDbCheckbox.checked = false; if (saveToDbCheckbox) saveToDbCheckbox.checked = false; if (checkBlocklistCheckbox) checkBlocklistCheckbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } resetUploadProgress(); appendLog('Módulo de Limpeza Local reiniciado.'); });
     if (adjustPhonesBtn) adjustPhonesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivo para ajustar fones', multi: false }); if (!files?.length) return appendLog('Nenhum arquivo selecionado.'); window.electronAPI.startAdjustPhones({ filePath: files[0], backup: backupEnabled }); });
     if (selectMergeFilesBtn) selectMergeFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para mesclar', multi: true }); if (!files?.length) return; mergeFiles = files; selectedMergeFilesDiv.innerHTML = ''; files.forEach(f => { addFileToUI(selectedMergeFilesDiv, f, false); }); });
-    
+
     if (mergeStrategyRadios) {
         mergeStrategyRadios.forEach(radio => {
             radio.addEventListener('change', () => {
@@ -739,7 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 removeDuplicates: removeDuplicatesCheckbox.checked,
                 shuffle: shuffleResultCheckbox.checked
             };
-            
+
             appendLog('Iniciando mesclagem com as opções selecionadas...');
             window.electronAPI.startMerge(mergeOptions);
         });
@@ -764,7 +788,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // idealmente, você teria um evento 'feed-blocklist-finished' do main.js
             setTimeout(() => {
                 feedBlocklistBtn.disabled = false;
-            }, 5000); 
+            }, 5000);
         });
     }
 
@@ -937,9 +961,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             apiCompletedDiv.innerHTML = `<span style="color:var(--text-secondary)">Nenhum arquivo concluído</span>`;
         }
-        
+
         // Cancelled
-        if(apiCancelledDiv) {
+        if (apiCancelledDiv) {
             apiCancelledDiv.innerHTML = '';
             if (cancelled && cancelled.length > 0) {
                 cancelled.forEach(file => apiCancelledDiv.appendChild(createFileItem(file, 'cancelled')));
@@ -960,11 +984,11 @@ document.addEventListener('DOMContentLoaded', () => {
         resetApiBtn.disabled = !hasFiles;
     }
 
-    window.electronAPI.onApiQueueUpdate((queue) => { 
-        updateApiQueueUI(queue); 
+    window.electronAPI.onApiQueueUpdate((queue) => {
+        updateApiQueueUI(queue);
         if (queue.isPaused) {
             apiStatusSpan.textContent = 'Pausado';
-        } else if (!queue.processing && queue.pending.length === 0 && (queue.completed.length > 0 || (queue.cancelled && queue.cancelled.length > 0))) { 
+        } else if (!queue.processing && queue.pending.length === 0 && (queue.completed.length > 0 || (queue.cancelled && queue.cancelled.length > 0))) {
             apiStatusSpan.textContent = 'Fila concluída!';
         } else if (queue.processing) {
             apiStatusSpan.textContent = `Processando...`;
@@ -1096,7 +1120,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const isChecked = enrichmentAllDbCheckbox.checked;
             enrichmentYearInput.disabled = isChecked;
             enrichmentPadraoCheckbox.disabled = isChecked;
-            
+
             if (isChecked) {
                 enrichmentYearInput.value = ''; // Limpa o valor do ano
                 enrichmentPadraoCheckbox.checked = false; // Desmarca a outra opção
@@ -1215,7 +1239,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let resultHTML = '';
                 if (found.length > 0) {
                     // MODIFICADO: Agora itera sobre objetos e exibe a data de adição.
-                    const foundItems = found.map(item => 
+                    const foundItems = found.map(item =>
                         `<li>${item.telefone} <span style="color: var(--text-muted); font-size: 11px;">(Adicionado em: ${item.data_adicao})</span></li>`
                     ).join('');
                     resultHTML += `<h4>Encontrados na Blocklist (${found.length}):</h4><ul class="result-list found">${foundItems}</ul>`;
@@ -1280,22 +1304,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-// Adicione esta função em renderer.js
-function renderComparisonList(fastwayData, bitrixData) {
-    if (!fastwayData || !fastwayData.length) {
-        console.log('Dados do Fastway não disponíveis para comparação.');
-        return;
-    }
+    // Adicione esta função em renderer.js
+    function renderComparisonList(fastwayData, bitrixData) {
+        if (!fastwayData || !fastwayData.length) {
+            console.log('Dados do Fastway não disponíveis para comparação.');
+            return;
+        }
 
-    const bitrixMap = new Map(bitrixData.map(item => [item.nome, item.total]));
-    
-    let htmlContent = '<ul class="comparison-list">';
+        const bitrixMap = new Map(bitrixData.map(item => [item.nome, item.total]));
 
-    fastwayData.forEach(fastwayItem => {
-        const fastwayCount = fastwayItem.total;
-        const bitrixCount = bitrixMap.get(fastwayItem.nome) || 0;
-        
-        htmlContent += `
+        let htmlContent = '<ul class="comparison-list">';
+
+        fastwayData.forEach(fastwayItem => {
+            const fastwayCount = fastwayItem.total;
+            const bitrixCount = bitrixMap.get(fastwayItem.nome) || 0;
+
+            htmlContent += `
             <li>
                 <div class="operator-name">${fastwayItem.nome}</div>
                 <div class="call-counts">
@@ -1305,17 +1329,17 @@ function renderComparisonList(fastwayData, bitrixData) {
                 </div>
             </li>
         `;
-    });
+        });
 
-    htmlContent += '</ul>';
+        htmlContent += '</ul>';
 
-    const comparisonBox = document.getElementById('comparison-box');
-    if (comparisonBox) {
-        comparisonBox.innerHTML = htmlContent;
-    } else {
-        console.error('Elemento com ID "comparison-box" não encontrado para renderizar a lista.');
+        const comparisonBox = document.getElementById('comparison-box');
+        if (comparisonBox) {
+            comparisonBox.innerHTML = htmlContent;
+        } else {
+            console.error('Elemento com ID "comparison-box" não encontrado para renderizar a lista.');
+        }
     }
-}
 
 
 
@@ -1447,7 +1471,7 @@ function renderComparisonList(fastwayData, bitrixData) {
         if (monitoringSearchInput && monitoringSearchInput.value.trim() !== '') { return true; }
         const advancedFilterCheckboxes = document.querySelectorAll('#api-parameters input[type="checkbox"]');
         for (const checkbox of advancedFilterCheckboxes) { if (checkbox.checked) { return true; } }
-        return false; 
+        return false;
     }
 
     const apiParams = [
@@ -1458,12 +1482,12 @@ function renderComparisonList(fastwayData, bitrixData) {
         { name: 'operacao_id', label: 'ID Operação' }, { name: 'tipoServico', label: 'Tipo Serviço' }, { name: 'servico_id', label: 'Desempenho de campanha' },
         { name: 'grupo_operador_id', label: 'Desempenho de equipes' },
     ];
-    
+
     function renderApiFilters(role, teamId) {
         const isAdmin = role === 'admin';
         const isMaster = role === 'master';
         apiParametersContainer.innerHTML = '';
-        const filtersToHideForLimited = ['chave', 'fone_origem', 'sentido', 'tronco_id', 'resultado', 'operacao_id', 'tipoServico', 'servico_id','cpf','nome'];
+        const filtersToHideForLimited = ['chave', 'fone_origem', 'sentido', 'tronco_id', 'resultado', 'operacao_id', 'tipoServico', 'servico_id', 'cpf', 'nome'];
         const visibleParams = (isAdmin || isMaster) ? apiParams : apiParams.filter(p => !filtersToHideForLimited.includes(p.name));
         visibleParams.forEach(param => {
             const paramItem = document.createElement('div');
@@ -1562,7 +1586,7 @@ function renderComparisonList(fastwayData, bitrixData) {
         if (parts.length > 1) { return `${parts[0]} ${parts[parts.length - 1]}`; }
         return parts[0] || "";
     }
-    
+
     function renderSummaryCards(source) {
         const card1 = document.getElementById('summary-card-1'), title1 = document.getElementById('summary-title-1'), value1 = document.getElementById('summary-value-1');
         const card2 = document.getElementById('summary-card-2'), title2 = document.getElementById('summary-title-2'), value2 = document.getElementById('summary-value-2');
@@ -1585,7 +1609,7 @@ function renderComparisonList(fastwayData, bitrixData) {
     }
 
     // --- LÓGICA DE TROCA DE VIEWS ---
-    if(showFastwaySummaryBtn && showBitrixSummaryBtn) {
+    if (showFastwaySummaryBtn && showBitrixSummaryBtn) {
         showFastwaySummaryBtn.addEventListener('click', () => {
             monitoringTab.classList.remove('bitrix-view-active');
             renderSummaryCards('fastway');
@@ -1606,9 +1630,9 @@ function renderComparisonList(fastwayData, bitrixData) {
         if (!bitrixData || bitrixData.message) {
             bitrixSummaryData = null; bitrixDetailData = null; return;
         }
-    
+
         let finalOperatorStats = bitrixData.operatorStats;
-    
+
         if (currentUserRole === 'limited' && allowedOperatorNames && allowedOperatorNames.size > 0) {
             finalOperatorStats = bitrixData.operatorStats.filter(operator => {
                 const normalizedBitrixName = normalizeName(operator.name);
@@ -1617,11 +1641,11 @@ function renderComparisonList(fastwayData, bitrixData) {
                 });
             });
         }
-    
+
         const totalCalls = finalOperatorStats.reduce((sum, op) => sum + op.callCount, 0);
         const totalDuration = finalOperatorStats.reduce((sum, op) => sum + op.totalDuration, 0);
         const generalTma = totalCalls > 0 ? totalDuration / totalCalls : 0;
-    
+
         bitrixSummaryData = {
             totalCalls: totalCalls,
             generalTma: generalTma,
@@ -1633,12 +1657,12 @@ function renderComparisonList(fastwayData, bitrixData) {
     function renderBitrixDetails() {
         if (!bitrixDetailsContainer) return;
         bitrixDetailsContainer.innerHTML = '';
-    
+
         if (!bitrixDetailData) {
             bitrixDetailsContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center;">Nenhum dado do Bitrix para exibir.</p>';
             return;
         }
-        
+
         let content = '<h3>Desempenho por Operador (Bitrix)</h3>';
         if (bitrixDetailData.length === 0) {
             content += '<p style="color: var(--text-muted);">Nenhum operador da sua equipe foi encontrado nos registros do Bitrix para este período.</p>';
@@ -1693,8 +1717,8 @@ function renderComparisonList(fastwayData, bitrixData) {
             params.push('formato=json');
             const finalUrl = baseUrl + params.join('&');
 
-            let originalReportPayload = { 
-                reportUrl: finalUrl, 
+            let originalReportPayload = {
+                reportUrl: finalUrl,
                 operatorTimesParams: null,
             };
             if (document.getElementById('check-operador_id')?.checked || document.getElementById('check-grupo_operador_id')?.checked) {
@@ -1703,12 +1727,12 @@ function renderComparisonList(fastwayData, bitrixData) {
             const bitrixPayload = { startDate: dataInicioInput.value, endDate: dataFimInput.value };
 
             monitoringLog.innerHTML = '> 🌀 Buscando dados do sistema principal (Fastway)...<br>> 🌀 Buscando dados do Bitrix24...';
-            
+
             const [originalResult, bitrixResult] = await Promise.allSettled([
                 window.electronAPI.fetchMonitoringReport(originalReportPayload),
                 window.electronAPI.fetchBitrixReport(bitrixPayload)
             ]);
-            
+
             let logMessages = [];
             let allowedOperatorNames = null;
 
@@ -1716,7 +1740,7 @@ function renderComparisonList(fastwayData, bitrixData) {
                 const result = originalResult.value;
                 const { data, operatorTimesData } = result;
                 let monitoringData = data || [];
-                
+
                 if (currentUserRole === 'limited') {
                     if (operatorTimesData) {
                         const rows = operatorTimesData.trim().split('\n');
@@ -1725,7 +1749,7 @@ function renderComparisonList(fastwayData, bitrixData) {
                             const headers = rows[0].split(';').map(h => h.trim().toUpperCase());
                             const opIndex = headers.indexOf('OPERADOR');
                             if (opIndex !== -1) {
-                                for(let i = 1; i < rows.length; i++) {
+                                for (let i = 1; i < rows.length; i++) {
                                     const operatorName = rows[i].split(';')[opIndex];
                                     if (operatorName) {
                                         allowedOperatorNames.add(normalizeName(operatorName));
@@ -1745,14 +1769,14 @@ function renderComparisonList(fastwayData, bitrixData) {
                             logMessages.push(`⚠️ Usando lista de operadores do relatório principal como fallback.`);
                         }
                     }
-                     if (allowedOperatorNames) {
+                    if (allowedOperatorNames) {
                         logMessages.push(`✅ Filtro de equipe com ${allowedOperatorNames.size} operadores criado.`);
                     }
                 }
-                
+
                 processFastwayData(monitoringData);
                 logMessages.push(`✅ Relatório Fastway processado. ${monitoringData.length} registros válidos.`);
-                
+
                 if (operatorTimesData) {
                     renderOperatorTimesTable(operatorTimesData);
                     logMessages.push('✅ Dados de tempos dos operadores carregados.');
@@ -1762,7 +1786,7 @@ function renderComparisonList(fastwayData, bitrixData) {
                 logMessages.push(`❌ ERRO (Fastway): ${errorMessage}`);
                 processFastwayData([]);
             }
-            
+
             if (bitrixResult.status === 'fulfilled' && bitrixResult.value.success) {
                 processBitrixData(bitrixResult.value.data, allowedOperatorNames);
                 logMessages.push('✅ Relatório do Bitrix24 processado e cruzado com sucesso.');
@@ -1775,12 +1799,12 @@ function renderComparisonList(fastwayData, bitrixData) {
             // --- RENDERIZAÇÃO FINAL ---
             dashboardSummary.innerHTML = `<div class="summary-card" id="summary-card-1" style="display: none;"><div class="summary-card-title" id="summary-title-1"></div><div class="summary-card-value" id="summary-value-1"></div></div><div class="summary-card" id="summary-card-2" style="display: none;"><div class="summary-card-title" id="summary-title-2"></div><div class="summary-card-value" id="summary-value-2"></div></div><button class="summary-card summary-card-button" id="summary-card-3" style="display: none;"><div class="summary-card-title">Tabulações Suspeitas</div><div class="summary-card-value warning" id="summary-value-3">0</div></button><div class="summary-card" id="summary-card-4" style="display: none;"><div class="summary-card-title" id="summary-title-4"></div><div class="summary-card-value" id="summary-value-4"></div></div>`;
             document.getElementById('summary-card-3').addEventListener('click', showSuspiciousCallsModal);
-            
+
             // --- CORREÇÃO APLICADA AQUI ---
-            if(fastwaySummaryData || bitrixSummaryData) { 
+            if (fastwaySummaryData || bitrixSummaryData) {
                 summaryToggleBar.style.display = 'flex';
             }
-            
+
             showFastwaySummaryBtn.click();
 
             monitoringLog.innerHTML = logMessages.map(m => `> ${m}`).join('<br>');
@@ -1823,7 +1847,7 @@ function renderComparisonList(fastwayData, bitrixData) {
         const roundedAvgSeconds = Math.round(avgDurationSeconds);
         const avgMinutes = Math.floor(roundedAvgSeconds / 60);
         const avgSeconds = roundedAvgSeconds % 60;
-        
+
         fastwaySummaryData = { totalCalls: totalCalls, tma: `${String(avgMinutes).padStart(2, '0')}:${String(avgSeconds).padStart(2, '0')}`, suspiciousCount: lastSuspiciousCalls.length, operatorCount: Object.keys(aggregators.nome_operador).length };
         fastwayDetailData = { aggregators, detailedTabulations };
     }
@@ -2000,7 +2024,7 @@ function renderComparisonList(fastwayData, bitrixData) {
 
     // --- INÍCIO: LÓGICA DA ABA DE RELACIONAMENTO ---
     const relacionamentoLog = document.getElementById('relacionamentoLog');
-    
+
     // Variáveis para armazenar os caminhos dos arquivos
     let relatorioFile = null;
     let bitrixFile = null;
@@ -2054,9 +2078,9 @@ function renderComparisonList(fastwayData, bitrixData) {
     // Lógica do Botão Iniciar
     if (startBtn) {
         startBtn.addEventListener('click', () => {
-            // Verifica se todos os arquivos foram selecionados
-            if (!relatorioFile || !bitrixFile || !timeFile || !contatosFile) {
-                appendRelacionamentoLog('❌ ERRO: Por favor, selecione todos os quatro arquivos antes de iniciar.');
+            // Verifica se os arquivos obrigatórios foram selecionados (Contatos é opcional)
+            if (!relatorioFile || !bitrixFile || !timeFile) {
+                appendRelacionamentoLog('❌ ERRO: Por favor, selecione os arquivos "Relatório", "Bitrix" e "Time" antes de iniciar.');
                 return;
             }
 
@@ -2094,4 +2118,61 @@ function renderComparisonList(fastwayData, bitrixData) {
         startBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg> Iniciar Processo';
     });
     // --- FIM: LÓGICA DA ABA DE RELACIONAMENTO ---
+
+    // --- INÍCIO: LÓGICA DIVISÃO POR RESPONSÁVEL (INDEPENDENTE) ---
+    const splitByResponsibleLog = document.getElementById('splitByResponsibleLog');
+    let splitByResponsibleFile = null;
+    const selectSplitByResponsibleFileBtn = document.getElementById('selectSplitByResponsibleFileBtn');
+    const startSplitByResponsibleBtn = document.getElementById('startSplitByResponsibleBtn');
+    const splitByResponsibleFilePathDiv = document.getElementById('splitByResponsibleFilePath');
+
+    function appendSplitLog(msg) {
+        if (!splitByResponsibleLog) return;
+        if (splitByResponsibleLog.textContent.trim() === 'Aguardando arquivo...') {
+            splitByResponsibleLog.innerHTML = '';
+        }
+        const p = document.createElement('p');
+        p.textContent = `> ${msg.trim()}`;
+        splitByResponsibleLog.appendChild(p);
+        splitByResponsibleLog.scrollTop = splitByResponsibleLog.scrollHeight;
+    }
+
+    if (selectSplitByResponsibleFileBtn) {
+        selectSplitByResponsibleFileBtn.addEventListener('click', async () => {
+            const files = await window.electronAPI.selectFile({ title: 'Selecione a Lista para Dividir', multi: false });
+            if (files && files.length > 0) {
+                splitByResponsibleFile = files[0];
+                addFileToUI(splitByResponsibleFilePathDiv, splitByResponsibleFile, true);
+                appendSplitLog(`Arquivo selecionado: ${getBasename(splitByResponsibleFile)}`);
+            }
+        });
+    }
+
+    if (startSplitByResponsibleBtn) {
+        startSplitByResponsibleBtn.addEventListener('click', () => {
+            if (!splitByResponsibleFile) {
+                appendSplitLog('❌ ERRO: Selecione um arquivo para dividir.');
+                return;
+            }
+
+            startSplitByResponsibleBtn.disabled = true;
+            appendSplitLog('Iniciando processo de divisão...');
+
+            window.electronAPI.splitByResponsible(splitByResponsibleFile);
+        });
+    }
+
+    window.electronAPI.onSplitByResponsibleLog((msg) => {
+        appendSplitLog(msg);
+    });
+
+    window.electronAPI.onSplitByResponsibleFinished(({ success, message }) => {
+        if (success) {
+            appendSplitLog(`✅ ${message}`);
+        } else {
+            appendSplitLog(`❌ ${message}`);
+        }
+        startSplitByResponsibleBtn.disabled = false;
+    });
+    // --- FIM: LÓGICA DIVISÃO POR RESPONSÁVEL ---
 });

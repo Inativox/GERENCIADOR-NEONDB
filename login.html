@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -41,11 +42,44 @@
         }
 
         /* --- ANIMATIONS --- */
-        .bg-animation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: 0; pointer-events: none; }
-        .particle { position: absolute; width: 2px; height: 2px; background: var(--accent-blue); border-radius: 50%; animation: float 6s ease-in-out infinite; opacity: 0.6; }
-        .particle:nth-child(odd) { background: var(--accent-purple); animation-duration: 8s; }
-        @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-25px); } }
-        
+        .bg-animation {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+            opacity: 0.6;
+        }
+
+        .particle:nth-child(odd) {
+            background: var(--accent-purple);
+            animation-duration: 8s;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-25px);
+            }
+        }
+
         /* --- MAIN CONTAINER --- */
         .login-container {
             background-color: var(--bg-card);
@@ -61,8 +95,15 @@
         }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* --- HEADER --- */
@@ -70,6 +111,7 @@
             text-align: center;
             margin-bottom: 2.5rem;
         }
+
         .login-title {
             font-size: 2.25rem;
             font-weight: 700;
@@ -80,10 +122,17 @@
             margin-bottom: 0.5rem;
             animation: glow 2s ease-in-out infinite alternate;
         }
+
         @keyframes glow {
-            from { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-blue) 50%, transparent)); }
-            to { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent-purple) 50%, transparent)); }
+            from {
+                filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-blue) 50%, transparent));
+            }
+
+            to {
+                filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent-purple) 50%, transparent));
+            }
         }
+
         .login-subtitle {
             color: var(--text-secondary);
             font-size: 1rem;
@@ -94,6 +143,7 @@
             margin-bottom: 1.5rem;
             position: relative;
         }
+
         .form-label {
             display: block;
             margin-bottom: 0.5rem;
@@ -101,6 +151,7 @@
             font-size: 0.875rem;
             font-weight: 500;
         }
+
         .form-input {
             width: 100%;
             padding: 1rem;
@@ -111,12 +162,14 @@
             font-size: 1rem;
             transition: all 0.3s ease;
         }
+
         .form-input:focus {
             outline: none;
             border-color: var(--accent-blue);
             background-color: var(--bg-card);
             box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 25%, transparent);
         }
+
         .form-input::placeholder {
             color: var(--text-secondary);
             opacity: 0.6;
@@ -124,17 +177,20 @@
 
         /* --- DB CONNECTION GROUP --- */
         .db-connection-group {
-            display: flex; 
+            display: flex;
             gap: 0.75rem;
             align-items: flex-end;
         }
+
         .db-connection-group .form-group {
             flex-grow: 1;
             margin-bottom: 0;
         }
-        .test-connection-btn { 
+
+        .test-connection-btn {
             padding: 0.9rem 1rem;
-            height: 54px; /* Match input height */
+            height: 54px;
+            /* Match input height */
             background-color: var(--bg-element);
             border: 1px solid var(--border-color);
             color: var(--text-secondary);
@@ -145,17 +201,20 @@
             transition: all 0.3s ease;
             flex-shrink: 0;
         }
+
         .test-connection-btn:hover:not(:disabled) {
             border-color: var(--accent-purple);
             color: var(--accent-purple);
         }
+
         .test-connection-btn:disabled {
-             opacity: 0.5;
-             cursor: not-allowed;
+            opacity: 0.5;
+            cursor: not-allowed;
         }
+
         #db-status-message {
             font-size: 0.875rem;
-            text-align: center; 
+            text-align: center;
             min-height: 24px;
             padding-top: 0.5rem;
             animation: fadeIn 0.5s ease;
@@ -163,63 +222,78 @@
 
         /* --- FORM OPTIONS --- */
         .form-options {
-            display: flex; 
+            display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1.5rem;
             font-size: 0.875rem;
         }
-        .remember-me { 
+
+        .remember-me {
             display: flex;
             align-items: center;
             cursor: pointer;
             color: var(--text-secondary);
         }
+
         .remember-me input {
             margin-right: 0.5rem;
             accent-color: var(--accent-blue);
         }
-        #logout-link { 
+
+        #logout-link {
             color: var(--accent-primary);
             text-decoration: none;
             cursor: pointer;
             display: none;
         }
+
         #logout-link:hover {
             text-decoration: underline;
         }
 
         /* --- BUTTON & MESSAGES --- */
         .login-button {
-            --base-color: var(--accent-blue); /* Usando a cor de destaque do tema */
-            --grad-light: color-mix(in srgb, var(--base-color) 95%, #ffffff); /* Mais base, menos branco */
-            --grad-dark: color-mix(in srgb, var(--base-color) 60%, #000000);  /* Mais base, menos preto */
-            --border-btn: color-mix(in srgb, var(--base-color) 70%, #000000); /* Borda mais escura */
+            --base-color: var(--accent-blue);
+            /* Usando a cor de destaque do tema */
+            --grad-light: color-mix(in srgb, var(--base-color) 95%, #ffffff);
+            /* Mais base, menos branco */
+            --grad-dark: color-mix(in srgb, var(--base-color) 60%, #000000);
+            /* Mais base, menos preto */
+            --border-btn: color-mix(in srgb, var(--base-color) 70%, #000000);
+            /* Borda mais escura */
             width: 100%;
             padding: 1rem;
             background: linear-gradient(145deg, var(--grad-light), var(--grad-dark));
             border: 1px solid var(--border-btn);
             border-radius: var(--radius);
             color: var(--text-primary);
-            text-shadow: 0 1px 2px rgba(0,0,0,0.4); /* Sombra no texto para contraste */
-            text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            /* Sombra no texto para contraste */
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             transition: all var(--transition-speed) ease;
-            margin-bottom: 1.25rem; /* 20px */
-            box-shadow: inset 0 1px 1px color-mix(in srgb, var(--grad-light) 50%, transparent), 0 4px 8px rgba(0,0,0,0.3); /* Sombra padrão */
+            margin-bottom: 1.25rem;
+            /* 20px */
+            box-shadow: inset 0 1px 1px color-mix(in srgb, var(--grad-light) 50%, transparent), 0 4px 8px rgba(0, 0, 0, 0.3);
+            /* Sombra padrão */
         }
+
         .login-button:hover:not(:disabled) {
             transform: translateY(-2px);
             filter: brightness(1.2);
-            box-shadow: inset 0 1px 1px color-mix(in srgb, var(--grad-light) 50%, transparent), 0 6px 12px rgba(0,0,0,0.4), 0 0 15px var(--base-color); /* Efeito neon no hover */
+            box-shadow: inset 0 1px 1px color-mix(in srgb, var(--grad-light) 50%, transparent), 0 6px 12px rgba(0, 0, 0, 0.4), 0 0 15px var(--base-color);
+            /* Efeito neon no hover */
         }
+
         .login-button:disabled {
             opacity: 0.5;
-            cursor: not-allowed; 
+            cursor: not-allowed;
             background: var(--bg-secondary);
         }
+
         .spinner {
             display: none;
             width: 20px;
@@ -229,7 +303,12 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
 
         #message {
             font-size: 0.875rem;
@@ -237,12 +316,27 @@
             min-height: 20px;
             animation: fadeIn 0.5s ease;
         }
-        .error-message { color: var(--accent-red); }
-        .success-message { color: var(--accent-green); }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
+        .error-message {
+            color: var(--accent-red);
+        }
+
+        .success-message {
+            color: var(--accent-green);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
     </style>
 </head>
+
 <body>
     <div class="bg-animation"></div>
 
@@ -254,46 +348,29 @@
 
         <form id="login-form">
             <div class="form-group">
-                <label for="db-connection-string" class="form-label">Chave de Conexão do Banco de Dados (Opcional)</label>
+                <label for="db-connection-string" class="form-label">Chave de Conexão do Banco de Dados
+                    (Opcional)</label>
                 <div class="db-connection-group">
                     <div class="form-group">
-                        <input
-                            type="password"
-                            id="db-connection-string"
-                            class="form-input"
-                            placeholder="postgresql://user:pass@host..."
-                            data-testid="db-connection-input"
-                        >
+                        <input type="password" id="db-connection-string" class="form-input"
+                            placeholder="postgresql://user:pass@host..." data-testid="db-connection-input">
                     </div>
-                    <button type="button" id="test-db-btn" class="test-connection-btn" data-testid="test-db-btn">Testar</button>
+                    <button type="button" id="test-db-btn" class="test-connection-btn"
+                        data-testid="test-db-btn">Testar</button>
                 </div>
                 <div id="db-status-message" data-testid="db-status-message"></div>
             </div>
 
             <div class="form-group">
                 <label for="username" class="form-label">Usuário</label>
-                <input
-                    type="text"
-                    id="username"
-                    class="form-input"
-                    placeholder="Digite seu usuário"
-                    required
-                    autocomplete="username"
-                    data-testid="username-input"
-                >
+                <input type="text" id="username" class="form-input" placeholder="Digite seu usuário" required
+                    autocomplete="username" data-testid="username-input">
             </div>
 
             <div class="form-group">
                 <label for="password" class="form-label">Senha</label>
-                <input
-                    type="password"
-                    id="password"
-                    class="form-input"
-                    placeholder="Digite sua senha"
-                    required
-                    autocomplete="current-password"
-                    data-testid="password-input"
-                >
+                <input type="password" id="password" class="form-input" placeholder="Digite sua senha" required
+                    autocomplete="current-password" data-testid="password-input">
             </div>
 
             <div class="form-options">
@@ -386,10 +463,10 @@
             try {
                 const result = await window.electronAPI.saveAndTestDbConnection(connectionString);
                 if (result.success) {
-                    setDbStatus('Conexão bem-sucedida e chave salva!', 'success'); 
+                    setDbStatus('Conexão bem-sucedida e chave salva!', 'success');
                     dbConnectionStringInput.style.borderColor = 'var(--accent-green)';
                 } else {
-                    throw new Error(result.message); 
+                    throw new Error(result.message);
                 }
             } catch (error) {
                 setDbStatus(`Falha na conexão: ${error.message}`, 'error');
@@ -470,4 +547,5 @@
         });
     </script>
 </body>
+
 </html>
