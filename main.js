@@ -1423,7 +1423,7 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
 // =================================================================
 // =           *** INÍCIO DA MODIFICAÇÃO *** =
 // =================================================================
-ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => { // MODIFICADO
+ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType, options = {}) => { // MODIFICADO
     const log = (msg) => event.sender.send("log", msg);
 
     /** * Limpa o nome do cliente, removendo números e caracteres especiais do início e do fim.
@@ -1435,6 +1435,267 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType) => 
     };
 
     log(`--- Iniciando Organização (${organizationType}) da Planilha Diária ---`);
+
+    // --- LÓGICA PARA WHATSAPP ---
+    if (organizationType === 'whatsapp') {
+        const { removeBlocklist, tagMode, manualTag, filename, scheduleDate, scheduleTime, sector, useApi } = options;
+        const dir = path.dirname(filePath);
+        
+        // Define o nome do arquivo de saída
+        let outputName = filename ? filename : `${path.parse(filePath).name}_Whatsapp`;
+        if (!outputName.toLowerCase().endsWith('.xlsx')) outputName += '.xlsx';
+        
+        // Pergunta onde salvar (usando o nome sugerido como padrão)
+        const { canceled, filePath: savePath } = await dialog.showSaveDialog(mainWindow, {
+            title: "Salvar Lista Whatsapp",
+            defaultPath: path.join(dir, outputName),
+            filters: [{ name: "Excel", extensions: ["xlsx"] }]
+        });
+
+        if (canceled || !savePath) {
+            log("Salvamento cancelado pelo usuário.");
+            return;
+        }
+
+        try {
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.readFile(filePath);
+            const worksheet = workbook.worksheets[0];
+            
+            // Mapeamento de colunas flexível
+            const headerRow = worksheet.getRow(1);
+            const headerMap = {};
+            headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                if (cell.value) {
+                    const normalizedHeader = String(cell.value).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    headerMap[normalizedHeader] = colNumber;
+                }
+            });
+
+            const findColumn = (variations) => {
+                for (const v of variations) {
+                    const normalizedV = v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    for (const h in headerMap) {
+                        if (h.includes(normalizedV)) return headerMap[h];
+                    }
+                }
+                return null;
+            };
+
+            const findAllColumns = (variations) => {
+                const cols = [];
+                for (const h in headerMap) {
+                    for (const v of variations) {
+                        const normalizedV = v.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                        if (h.includes(normalizedV)) {
+                            cols.push(headerMap[h]);
+                            break;
+                        }
+                    }
+                }
+                return cols;
+            };
+
+            const colNome = findColumn(['nome do negocio', 'nome do negócio', 'nome', 'razao social', 'razão social', 'cliente']);
+            const colTel = findColumn(['telefone celular', 'telefone', 'celular', 'fone1', 'fone']);
+            const colEmail = findColumn(['e-mail', 'email', 'mail', 'chave']);
+            const cnpjCols = findAllColumns(['cnpj', 'cpf', 'documento']);
+
+            if (!colTel) {
+                log("❌ ERRO: Coluna de Telefone não encontrada.");
+                return;
+            }
+
+            // Prepara a Tag
+            let tagValue = '';
+            if (tagMode === 'manual') {
+                tagValue = manualTag;
+            } else if (tagMode === 'scheduled') {
+                tagValue = `${scheduleDate} ${sector} - ${scheduleTime}h`;
+            }
+
+            const outputRows = [];
+            const phonesToCheck = new Set();
+
+            // Processamento das linhas
+            worksheet.eachRow((row, rowNumber) => {
+                if (rowNumber === 1) return;
+
+                let rawPhone = row.getCell(colTel).value;
+                if (!rawPhone) return;
+
+                // Limpa e formata telefone
+                let phone = String(rawPhone).replace(/\D/g, '');
+                
+                // Adiciona 55 se necessário
+                if (phone.length >= 10 && phone.length <= 11) {
+                    // DDD + Numero (ex: 11999998888) -> Adiciona 55
+                    phone = '55' + phone;
+                } 
+                // Se já tiver 12 ou 13 digitos, assume que tem DDI ou é formato longo, 
+                // mas a regra diz "colocar o 55 na frente de todos os numeros que nao tem o 55".
+                // Vamos garantir que comece com 55 se tiver tamanho suficiente.
+                else if (phone.length > 11 && !phone.startsWith('55')) {
+                     phone = '55' + phone;
+                }
+
+                let cnpjVal = '';
+                if (cnpjCols.length > 0) {
+                    for (const col of cnpjCols) {
+                        const rawCnpj = row.getCell(col).value;
+                        const val = (rawCnpj && typeof rawCnpj === 'object') ? (rawCnpj.text || rawCnpj.result || '') : rawCnpj;
+                        if (val) {
+                            cnpjVal = val;
+                            break;
+                        }
+                    }
+                }
+
+                if (phone) {
+                    const rowData = {
+                        Nome: colNome ? cleanClientName(row.getCell(colNome).value) : '',
+                        Telefone: phone,
+                        CountryCode: '',
+                        Tags: tagValue,
+                        Email: colEmail ? row.getCell(colEmail).value : '',
+                        Cnpj: cnpjVal ? String(cnpjVal).replace(/\D/g, '') : ''
+                    };
+                    
+                    outputRows.push(rowData);
+                    if (removeBlocklist) phonesToCheck.add(phone);
+                }
+            });
+
+            // Verificação de Blocklist
+            const blockedPhones = new Set();
+            if (removeBlocklist && phonesToCheck.size > 0 && pool) {
+                log(`Verificando blocklist para ${phonesToCheck.size} números...`);
+                const query = 'SELECT telefone FROM blocklist WHERE telefone = ANY($1::text[])';
+                const { rows } = await pool.query(query, [Array.from(phonesToCheck)]);
+                rows.forEach(r => blockedPhones.add(r.telefone));
+                log(`Encontrados ${blockedPhones.size} números na blocklist.`);
+            }
+
+            // Filtragem Inicial (Blocklist)
+            let finalRows = outputRows.filter(r => !blockedPhones.has(r.Telefone));
+            
+            // --- LÓGICA DE LIMPEZA API (NOVA) ---
+            if (useApi) {
+                if (cnpjCols.length === 0) {
+                    log("⚠️ AVISO: Limpeza API solicitada, mas a coluna CNPJ não foi encontrada. Pulando etapa API.");
+                    dialog.showMessageBox(mainWindow, {
+                        type: 'warning',
+                        title: 'Aviso - Limpeza API',
+                        message: 'A opção de Limpeza API foi marcada, mas a planilha não possui uma coluna de CNPJ/CPF identificável.\n\nA etapa da API será pulada.'
+                    });
+                } else {
+                    log(`Iniciando Limpeza API para ${finalRows.length} registros...`);
+                    
+                    // Coleta CNPJs únicos para consulta
+                    const cnpjsToConsult = [...new Set(finalRows.map(r => r.Cnpj).filter(c => c && c.length >= 11))];
+                    
+                    if (cnpjsToConsult.length > 0) {
+                        const credentials = {
+                            CLIENT_ID: "EA8ZUFeZVSeqMGr49XJSsZKFuxSZub3i",
+                            CLIENT_SECRET: "EUomxjGf6BvBZ1HO"
+                        };
+                        const TOKEN_URL = "https://crm-leads-p.c6bank.info/querie-partner/token";
+                        const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
+                        
+                        let apiSuccess = false;
+                        let availableCnpjs = new Set();
+
+                        // Loop de Tentativa da API
+                        while (!apiSuccess) {
+                            try {
+                                log("Autenticando na API...");
+                                const tokenParams = new URLSearchParams({ grant_type: "client_credentials", client_id: credentials.CLIENT_ID, client_secret: credentials.CLIENT_SECRET });
+                                const tokenResp = await axios.post(TOKEN_URL, tokenParams.toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 30000 });
+                                const token = tokenResp.data.access_token;
+
+                                log(`Consultando ${cnpjsToConsult.length} CNPJs...`);
+                                // Processamento em lote único (assumindo que cabe no limite ou usando lógica simplificada para este contexto)
+                                // Se a lista for muito grande, idealmente deveria quebrar, mas vamos usar a lógica direta aqui.
+                                const BATCH_API = 20000;
+                                for (let i = 0; i < cnpjsToConsult.length; i += BATCH_API) {
+                                    const batch = cnpjsToConsult.slice(i, i + BATCH_API);
+                                    const consultaResp = await axios.post(CONSULTA_URL, { CNPJ: batch }, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 45000 });
+                                    
+                                    const key = Object.keys(consultaResp.data).find(k => k.toLowerCase().includes("cnpj") && Array.isArray(consultaResp.data[k]));
+                                    if (key && consultaResp.data[key]) {
+                                        consultaResp.data[key].forEach(c => availableCnpjs.add(String(c).replace(/\D/g, "").padStart(14, "0")));
+                                    }
+                                }
+                                apiSuccess = true;
+                                log("Consulta API realizada com sucesso.");
+
+                            } catch (err) {
+                                log(`❌ Erro na API: ${err.message}`);
+                                
+                                // Pop-up de Erro
+                                const response = await dialog.showMessageBox(mainWindow, {
+                                    type: 'error',
+                                    buttons: ['Pular Etapa API', 'Tentar Novamente (1min)'],
+                                    defaultId: 1,
+                                    title: 'Erro na Limpeza API',
+                                    message: `Ocorreu um erro ao consultar a API (possível cooldown ou falha de rede).\n\nErro: ${err.message}\n\nO que deseja fazer?`
+                                });
+
+                                if (response.response === 0) {
+                                    // Pular
+                                    log("Usuário optou por pular a etapa da API. Gerando arquivo com dados atuais.");
+                                    apiSuccess = true; // Sai do loop, mas availableCnpjs estará vazio ou parcial, precisamos tratar isso.
+                                    // Se pulou, não filtramos nada (mantemos todos como se a API não tivesse rodado)
+                                    availableCnpjs = null; 
+                                } else {
+                                    // Tentar Novamente
+                                    log("Aguardando 1 minuto para tentar novamente...");
+                                    await new Promise(resolve => setTimeout(resolve, 60000));
+                                }
+                            }
+                        }
+
+                        // Filtragem Pós-API (Se a API rodou com sucesso e não foi pulada)
+                        if (availableCnpjs !== null) {
+                            const beforeCount = finalRows.length;
+                            // Mantém apenas se o CNPJ estiver na lista de disponíveis retornada pela API
+                            // OU se o registro não tiver CNPJ (para não perder contatos sem documento, se houver)
+                            finalRows = finalRows.filter(r => !r.Cnpj || availableCnpjs.has(r.Cnpj.padStart(14, "0")));
+                            const removedCount = beforeCount - finalRows.length;
+                            log(`Limpeza API concluída. ${removedCount} clientes removidos (indisponíveis). Restaram ${finalRows.length}.`);
+                        }
+                    } else {
+                        log("Nenhum CNPJ válido para consulta API.");
+                    }
+                }
+            }
+            // --- FIM LÓGICA API ---
+            
+            const newWb = new ExcelJS.Workbook();
+            const newWs = newWb.addWorksheet('Whatsapp');
+            newWs.columns = [
+                { header: 'Nome', key: 'Nome', width: 30 },
+                { header: 'Telefone', key: 'Telefone', width: 20 },
+                { header: 'country code', key: 'CountryCode', width: 15 },
+                { header: 'Tags', key: 'Tags', width: 30 },
+                { header: 'E-mail', key: 'Email', width: 30 },
+                { header: 'Cnpj', key: 'Cnpj', width: 20 }
+            ];
+
+            newWs.addRows(finalRows);
+            await newWb.xlsx.writeFile(savePath);
+
+            log(`✅ Lista Whatsapp gerada com sucesso!`);
+            log(`Salvo em: ${savePath}`);
+            log(`Total processado: ${outputRows.length}. Removidos por blocklist: ${blockedPhones.size}. Final: ${finalRows.length}.`);
+            shell.showItemInFolder(savePath);
+
+        } catch (err) {
+            log(`❌ Erro ao gerar lista Whatsapp: ${err.message}`);
+            console.error(err);
+        }
+        return;
+    }
 
     // --- LÓGICA PARA NOVA FUNCIONALIDADE DE SEPARAR POR ABAS (CADÊNCIAS) ---
     if (organizationType === 'cadencia') {
@@ -2691,7 +2952,7 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
         // Constrói um objeto com os parâmetros
         const params = {};
         params.nome = rowData[headerMap['nome']] || '';
-        params.cpf = rowData[headerMap['cpf']] || '';
+        params.cpf = rowData[headerMap['cpf']] || rowData[headerMap['cnpj']] || '';
         params.chave = rowData[headerMap['chave']] || '';
 
         // Adiciona todos os campos 'fone'
@@ -2949,7 +3210,7 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
             } else {
                 log(`\n✅ Processamento da API concluído para ${path.basename(filePath)}. O arquivo foi salvo com todos os resultados (disponível/cliente).`); // This log is redundant if the above break is hit.
             }
-            return { status: 'completed', clientData: collectedClients };
+            return { success: true, status: 'completed', clientData: collectedClients };
         }
         return { status: 'cancelled', clientData: { header: null, rows: [] } }; // In case of cancellation
     } catch (error) {

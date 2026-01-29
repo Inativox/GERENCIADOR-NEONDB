@@ -19,11 +19,32 @@ document.addEventListener('DOMContentLoaded', () => {
             appendLog('Selecionando arquivo(s) para organizar...');
             const files = await window.electronAPI.selectFile({ title: 'Selecione as planilhas para organizar', multi: true });
             if (files && files.length > 0) {
-                const organizationType = document.querySelector('input[name="organizeType"]:checked').value;
+                const organizationType = document.getElementById('organizeTypeSelect') ? document.getElementById('organizeTypeSelect').value : document.querySelector('input[name="organizeType"]:checked').value;
+                let options = {};
+
+                if (organizationType === 'whatsapp') {
+                    options = {
+                        removeBlocklist: document.getElementById('whatsapp-remove-blocklist')?.checked || false,
+                        tagMode: document.querySelector('input[name="whatsappTagMode"]:checked')?.value || 'auto',
+                        manualTag: document.getElementById('whatsapp-manual-tag-input')?.value || '',
+                        scheduleDate: document.getElementById('whatsapp-schedule-date')?.value || '',
+                        scheduleTime: document.getElementById('whatsapp-schedule-time')?.value || '',
+                        sector: document.getElementById('whatsapp-schedule-sector')?.value || '',
+                        useApi: document.getElementById('whatsapp-use-api')?.checked || false,
+                        filename: document.getElementById('whatsapp-filename-input')?.value || ''
+                    };
+                    if (options.tagMode === 'manual' && !options.manualTag) {
+                        return appendLog('❌ ERRO: Por favor, preencha a tag manual.');
+                    }
+                    if (options.tagMode === 'scheduled' && (!options.scheduleDate || !options.scheduleTime || !options.sector)) {
+                        return appendLog('❌ ERRO: Por favor, preencha Data, Hora e Setor para o agendamento.');
+                    }
+                }
+
                 appendLog(`Iniciando organização para ${files.length} arquivo(s) usando o formato: ${organizationType}`);
                 for (const filePath of files) {
                     appendLog(`Organizando: ${getBasename(filePath)}`);
-                    window.electronAPI.organizeDailySheet(filePath, organizationType);
+                    window.electronAPI.organizeDailySheet(filePath, organizationType, options);
                 }
             } else {
                 appendLog('Nenhum arquivo selecionado. Operação cancelada.');
@@ -31,17 +52,201 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- INJEÇÃO DA OPÇÃO OLOS (Se não existir no HTML) ---
+    // --- INJEÇÃO DA OPÇÃO WHATSAPP E REMOÇÃO DE RELACIONAMENTO ---
     const firstOrganizeRadio = document.querySelector('input[name="organizeType"]');
     if (firstOrganizeRadio) {
-        const container = firstOrganizeRadio.closest('.radio-group') || firstOrganizeRadio.parentElement;
-        if (container && !container.querySelector('input[value="olos"]')) {
-            const label = document.createElement('label');
-            const existingLabel = firstOrganizeRadio.closest('label');
-            if (existingLabel) label.className = existingLabel.className;
-            label.style.marginLeft = '15px';
-            label.innerHTML = `<input type="radio" name="organizeType" value="olos"> Olos`;
-            container.appendChild(label);
+        // Tenta encontrar o container principal. Se estiver dentro de um label, o pai do label é o container.
+        let container = firstOrganizeRadio.closest('.radio-group');
+        if (!container && firstOrganizeRadio.parentElement.tagName === 'LABEL') {
+            container = firstOrganizeRadio.parentElement.parentElement;
+        } else if (!container) {
+            container = firstOrganizeRadio.parentElement;
+        }
+
+        // --- TRANSFORMAÇÃO PARA SELECT ---
+        const optionsData = [];
+        container.querySelectorAll('input[name="organizeType"]').forEach(inp => {
+            const lbl = inp.closest('label');
+            const text = lbl ? lbl.textContent.trim() : inp.value;
+            optionsData.push({ value: inp.value, text: text, checked: inp.checked });
+        });
+
+        // Adiciona Olos e Whatsapp se não existirem
+        if (!optionsData.find(o => o.value === 'olos')) optionsData.push({ value: 'olos', text: 'Olos', checked: false });
+        if (!optionsData.find(o => o.value === 'whatsapp')) optionsData.push({ value: 'whatsapp', text: 'Whatsapp', checked: false });
+        if (!optionsData.find(o => o.value === 'empresaAqui')) optionsData.push({ value: 'empresaAqui', text: 'Empresa Aqui', checked: false });
+        if (!optionsData.find(o => o.value === 'cadencia')) optionsData.push({ value: 'cadencia', text: 'Separar Cadência', checked: false });
+        if (!optionsData.find(o => o.value === 'relacionamento')) optionsData.push({ value: 'relacionamento', text: 'Relacionamento', checked: false });
+
+        // Limpa container
+        container.innerHTML = '';
+
+        // Estilos para o Select (incluindo correção de cor do dropdown nativo)
+        const style = document.createElement('style');
+        style.textContent = `
+            #organizeTypeSelect {
+                width: 100%; padding: 10px; border-radius: 10px;
+                border: 1px solid var(--border-color);
+                background-color: var(--bg-input); color: var(--text-primary);
+                margin-bottom: 15px; font-size: 14px; outline: none; cursor: pointer;
+            }
+            #organizeTypeSelect option {
+                background-color: var(--bg-input); color: var(--text-primary);
+            }
+            /* Força bruta para garantir que o fundo não fique branco no tema escuro */
+            body.dark-theme #organizeTypeSelect option {
+                background-color: #2d2d2d !important;
+                color: #ffffff !important;
+            }
+            /* Força o tema escuro/claro no dropdown nativo do navegador */
+            body.dark-theme #organizeTypeSelect { color-scheme: dark; }
+            body.light-theme #organizeTypeSelect { color-scheme: light; }
+        `;
+        container.appendChild(style);
+
+        // Cria Select
+        const select = document.createElement('select');
+        select.id = 'organizeTypeSelect';
+
+        optionsData.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.text;
+            option.style.backgroundColor = 'var(--bg-input)';
+            option.style.color = 'var(--text-primary)';
+            if (opt.checked) option.selected = true;
+            select.appendChild(option);
+        });
+
+        container.appendChild(select);
+
+        // Listener para Whatsapp
+        select.addEventListener('change', () => {
+            if (select.value === 'whatsapp') {
+                const modal = document.getElementById('whatsapp-config-modal');
+                if (modal) modal.classList.remove('hidden');
+            }
+        });
+
+            // --- CRIAÇÃO DO MODAL WHATSAPP ---
+        if (!document.getElementById('whatsapp-config-modal')) {
+            const whatsappModal = document.createElement('div');
+            whatsappModal.id = 'whatsapp-config-modal';
+            whatsappModal.className = 'modal-overlay hidden';
+            whatsappModal.innerHTML = `
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h3 style="margin:0; display:flex; align-items:center; gap:10px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="var(--accent-color)" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592z"/></svg>
+                            Configurações Whatsapp
+                        </h3>
+                        <button class="modal-close-btn" id="close-whatsapp-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <style>
+                            .wa-input-group { margin-bottom: 20px; }
+                            .wa-label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary); }
+                            .wa-text-input {
+                                width: 100%; padding: 10px; border-radius: 20px; border: 1px solid var(--border-color);
+                                background: var(--bg-input); color: var(--text-primary); transition: 0.2s;
+                            }
+                            .wa-text-input:focus { border-color: var(--accent-color); outline: none; }
+                            .wa-radio-group { display: flex; gap: 15px; flex-wrap: wrap; }
+                            .wa-radio-label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+                            .wa-row { display: flex; gap: 10px; }
+                        </style>
+
+                        <div class="wa-input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="whatsapp-remove-blocklist">
+                                <span class="checkmark"></span>
+                                Remover números da Blocklist
+                            </label>
+                        </div>
+
+                        <div class="wa-input-group">
+                            <label class="checkbox-container">
+                                <input type="checkbox" id="whatsapp-use-api">
+                                <span class="checkmark"></span>
+                                Passar na Limpeza API (Remove Clientes)
+                            </label>
+                        </div>
+
+                        <div class="wa-input-group">
+                            <label class="wa-label">Nome do Arquivo de Saída:</label>
+                            <input type="text" id="whatsapp-filename-input" class="wa-text-input" placeholder="Ex: Lista_Whatsapp_28_01">
+                        </div>
+
+                        <div class="wa-input-group">
+                            <label class="wa-label">Tipo de Tag:</label>
+                            <div class="wa-radio-group">
+                                <label class="wa-radio-label"><input type="radio" name="whatsappTagMode" value="manual" checked> Manual</label>
+                                <label class="wa-radio-label"><input type="radio" name="whatsappTagMode" value="scheduled"> Agendamento (Setor)</label>
+                            </div>
+                            <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);" id="whatsapp-tag-preview">
+                                Digite a tag manualmente.
+                            </div>
+                        </div>
+
+                        <div id="whatsapp-manual-tag-container" class="wa-input-group" style="display: block;">
+                            <input type="text" id="whatsapp-manual-tag-input" class="wa-text-input" placeholder="Digite a tag personalizada...">
+                        </div>
+
+                        <div id="whatsapp-schedule-container" class="wa-input-group" style="display: none;">
+                            <label class="wa-label">Configurar Agendamento:</label>
+                            <div class="wa-row">
+                                <div style="flex: 2;">
+                                    <label style="font-size: 12px; color: var(--text-muted);">Data (Dia/Mês)</label>
+                                    <input type="text" id="whatsapp-schedule-date" class="wa-text-input" placeholder="Ex: 29/01">
+                                </div>
+                                <div style="flex: 1;">
+                                    <label style="font-size: 12px; color: var(--text-muted);">Hora (HH)</label>
+                                    <input type="number" id="whatsapp-schedule-time" class="wa-text-input" placeholder="Ex: 14">
+                                </div>
+                                <div style="flex: 2;">
+                                    <label style="font-size: 12px; color: var(--text-muted);">Setor</label>
+                                    <input type="text" id="whatsapp-schedule-sector" class="wa-text-input" placeholder="Ex: Resgate">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-primary" id="confirm-whatsapp-config" style="width: 100%;">Confirmar Configurações</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(whatsappModal);
+
+            // Lógica do Modal
+            const closeWaModal = () => whatsappModal.classList.add('hidden');
+            document.getElementById('close-whatsapp-modal').addEventListener('click', closeWaModal);
+            document.getElementById('confirm-whatsapp-config').addEventListener('click', closeWaModal);
+            whatsappModal.addEventListener('click', (e) => { if (e.target === whatsappModal) closeWaModal(); });
+
+            // Lógica de Tag Manual/Auto/Agendamento
+            const tagRadios = whatsappModal.querySelectorAll('input[name="whatsappTagMode"]');
+            const manualContainer = document.getElementById('whatsapp-manual-tag-container');
+            const scheduleContainer = document.getElementById('whatsapp-schedule-container');
+            const previewText = document.getElementById('whatsapp-tag-preview');
+
+            tagRadios.forEach(r => {
+                r.addEventListener('change', () => {
+                    manualContainer.style.display = 'none';
+                    scheduleContainer.style.display = 'none';
+                    previewText.style.display = 'block';
+
+                    if (r.value === 'manual') {
+                        manualContainer.style.display = 'block';
+                        previewText.style.display = 'none';
+                    } else if (r.value === 'scheduled') {
+                        scheduleContainer.style.display = 'block';
+                        previewText.textContent = "Estrutura: [Data] [Setor] - [Hora]h";
+                    } else {
+                        previewText.textContent = "";
+                    }
+                });
+            });
+
         }
     }
 
@@ -539,7 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
             autoRoot: autoRootBtn.dataset.on === 'true',
             rootCol: rootColSelect.value,
             destCol: destColSelect.value,
-            organizeType: document.querySelector('input[name="organizeType"]:checked')?.value || 'bernardo',
+            organizeType: document.getElementById('organizeTypeSelect') ? document.getElementById('organizeTypeSelect').value : (document.querySelector('input[name="organizeType"]:checked')?.value || 'bernardo'),
             mergeStrategy: document.querySelector('input[name="mergeStrategy"]:checked')?.value || 'all',
             customMergeCount: customMergeCountInput.value,
             removeDuplicates: removeDuplicatesCheckbox.checked,
@@ -600,7 +805,15 @@ document.addEventListener('DOMContentLoaded', () => {
         setChecked(checkBlocklistCheckbox, settings.checkBlocklist);
         setValue(rootColSelect, settings.rootCol);
         setValue(destColSelect, settings.destCol);
-        setRadio('organizeType', settings.organizeType);
+        
+        const organizeSelect = document.getElementById('organizeTypeSelect');
+        if (organizeSelect && settings.organizeType) {
+            organizeSelect.value = settings.organizeType;
+            organizeSelect.dispatchEvent(new Event('change'));
+        } else {
+            setRadio('organizeType', settings.organizeType);
+        }
+        
         setRadio('mergeStrategy', settings.mergeStrategy);
         setValue(customMergeCountInput, settings.customMergeCount);
         setChecked(removeDuplicatesCheckbox, settings.removeDuplicates);

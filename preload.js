@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     splitLargeCsv: (args) => ipcRenderer.send("split-large-csv", args), // NOVO
     saveStoredCnpjsToExcel: () => ipcRenderer.invoke("save-stored-cnpjs-to-excel"),
     deleteBatch: (batchId) => ipcRenderer.invoke("delete-batch", batchId),
-    organizeDailySheet: (filePath, organizationType) => ipcRenderer.send('organize-daily-sheet', filePath, organizationType),
+    organizeDailySheet: (filePath, organizationType, options) => ipcRenderer.send('organize-daily-sheet', filePath, organizationType, options),
 
     // --- Funções da API de Consulta (C6) ---
     addFilesToApiQueue: (files) => ipcRenderer.send("add-files-to-api-queue", files),
