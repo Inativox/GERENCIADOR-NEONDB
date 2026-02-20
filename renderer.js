@@ -273,6 +273,47 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         setupUIForRole(role, teamId);
 
+        // NOVO: Restrição do Modo Fish (Apenas Davi, Pablo e Matheus)
+        const apiFishModeCheckbox = document.getElementById('apiFishModeCheckbox');
+        if (apiFishModeCheckbox) {
+            const allowedFishUsers = ['Davi', 'Pablo', 'Matheus'];
+            if (!allowedFishUsers.includes(username)) {
+                apiFishModeCheckbox.checked = false;
+                apiFishModeCheckbox.disabled = true;
+                const parent = apiFishModeCheckbox.closest('.toggle-switch') || apiFishModeCheckbox.parentElement;
+                if (parent) {
+                    parent.style.opacity = '0.5';
+                    parent.title = 'Recurso restrito a administradores específicos.';
+                }
+            } else {
+                apiFishModeCheckbox.disabled = false;
+            }
+        }
+
+        // NOVO: Restrição do Agendamento Fish (Apenas Davi, Pablo e Matheus)
+        const scheduleFishBtn = document.getElementById('scheduleFishBtn');
+        const scheduleFishModeCheckbox = document.getElementById('scheduleFishModeCheckbox');
+        if (scheduleFishBtn) {
+            const allowedFishUsers = ['Davi', 'Pablo', 'Matheus'];
+            if (!allowedFishUsers.includes(username)) {
+                scheduleFishBtn.disabled = true;
+                scheduleFishBtn.title = 'Recurso restrito a administradores específicos.';
+                
+                if (scheduleFishModeCheckbox) {
+                    scheduleFishModeCheckbox.checked = false;
+                    scheduleFishModeCheckbox.disabled = true;
+                    const parent = scheduleFishModeCheckbox.closest('.toggle-switch') || scheduleFishModeCheckbox.parentElement;
+                    if (parent) {
+                        parent.style.opacity = '0.5';
+                        parent.title = 'Recurso restrito a administradores específicos.';
+                    }
+                }
+            } else {
+                scheduleFishBtn.disabled = false;
+                if (scheduleFishModeCheckbox) scheduleFishModeCheckbox.disabled = false;
+            }
+        }
+
         // NOVO: Lógica para forçar a verificação de blocklist para usuários específicos.
         const checkBlocklistCheckbox = document.getElementById('checkBlocklistCheckbox');
         if (checkBlocklistCheckbox) {
