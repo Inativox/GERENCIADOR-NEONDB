@@ -67,6 +67,35 @@ async function initializePool(connectionString, windowToLog) {
     try {
         await pool.query('SELECT NOW()');
         console.log("✅ Conexão com o banco de dados estabelecida com sucesso.");
+        
+        // NOVO: Cria tabela de controle de uso da API (Locks) se não existir
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS api_locks (
+                key_name TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                status TEXT DEFAULT 'Livre',
+                last_heartbeat TIMESTAMP DEFAULT NOW(),
+                key_label TEXT,
+                lock_mode TEXT
+            );
+        `);
+
+        // Garante que as colunas existam (caso a tabela já tenha sido criada antes sem elas)
+        await pool.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Livre';`);
+        await pool.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS key_label TEXT;`);
+        await pool.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS lock_mode TEXT;`);
+        
+        // NOVO: Tabela de Logs do Sistema
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS system_logs (
+                id SERIAL PRIMARY KEY,
+                username TEXT,
+                action TEXT,
+                details TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+
         if (windowToLog) windowToLog.webContents.send("log", "✅ Conexão com o Banco de Dados estabelecida com sucesso.");
     } catch (error) {
         console.error("❌ Falha ao estabelecer conexão com o banco de dados:", error.message);
@@ -77,15 +106,31 @@ async function initializePool(connectionString, windowToLog) {
 }
 
 
+// --- FUNÇÃO DE LOG DO SISTEMA (AUDIT) ---
+async function logSystemAction(username, action, details) {
+    if (!pool) return;
+    try {
+        const user = username || (currentUser ? currentUser.username : 'Desconhecido');
+        // MODIFICADO: Envia o horário local da máquina para corrigir o fuso horário no banco
+        const now = new Date();
+        // Executa sem await para não bloquear o fluxo principal (fire and forget)
+        pool.query('INSERT INTO system_logs (username, action, details, created_at) VALUES ($1, $2, $3, $4)', [user, action, details, now])
+            .catch(err => console.error("Erro ao inserir log no BD:", err.message));
+    } catch (err) {
+        console.error("Erro ao tentar registrar log:", err.message);
+    }
+}
+
 // #################################################################
 // #           SISTEMA DE LOGIN E PERMISSÕES (Com alterações)      #
 // #################################################################
 
 const users = {
-    'Pablo': { password: 'Vasco@2025', role: 'admin' },
+    'Pablo': { password: 'Pickliss@1dois3', role: 'admin' },
     'Thalles': { password: 'Flamengo@2025', role: 'admin' },
     'Matheus Kauss': { password: 'Flamengo@2025', role: 'admin' },
-    'Matheus': { password: 'Botafogo@2025', role: 'admin' },
+    'Matheus': { password: 'N7*FAlBmukm^ND', role: 'admin' },
+    'Gabriel': { password: 'Vasco@2025', role: 'admin' },
     'Felipe': { password: 'Flamengo@2025', role: 'admin' },
     'Davi': { password: '080472Fr*', role: 'admin' },
     'Tatiane': { password: '123456', role: 'master' },
@@ -238,6 +283,30 @@ async function loadStoredCnpjs() {
     }
 }
 
+// Cache da blocklist em memória — evita consultas ao BD a cada limpeza
+async function loadBlocklistPhones() {
+    if (!pool) return;
+    try {
+        const result = await pool.query('SELECT telefone FROM blocklist');
+        blocklistPhones = new Set(result.rows.map(row => row.telefone));
+        console.log(`${blocklistPhones.size} telefones carregados da blocklist em memória.`);
+        if (mainWindow) {
+            mainWindow.webContents.send("log", `✅ Cache blocklist: ${blocklistPhones.size.toLocaleString('pt-BR')} números em memória.`);
+        }
+    } catch (err) {
+        console.error("Falha ao carregar blocklist em memória:", err.message);
+        if (mainWindow) {
+            mainWindow.webContents.send("log", `⚠️ Cache blocklist não carregado: ${err.message}. Verificação por BD como fallback.`);
+        }
+    }
+}
+
+ipcMain.handle('refresh-blocklist-cache', async () => {
+    if (!pool) return { success: false, size: 0 };
+    await loadBlocklistPhones();
+    return { success: true, size: blocklistPhones.size };
+});
+
 
 function createMainWindow() {
     mainWindow = new BrowserWindow({
@@ -250,6 +319,18 @@ function createMainWindow() {
             preload: path.join(__dirname, "preload.js")
         }
     });
+
+    // NOVO: Garante que as chaves sejam liberadas ao fechar o aplicativo
+    mainWindow.on('close', async (e) => {
+        if (currentLockedKeys.length > 0) {
+            e.preventDefault(); // Impede o fechamento imediato
+            console.log("Liberando chaves de API antes de fechar...");
+            await releaseApiLock(currentLockedKeys); // Libera no banco
+            currentLockedKeys = [];
+            mainWindow.destroy(); // Força o fechamento após liberar
+        }
+    });
+
     // Adiciona handlers para os novos botões da janela
     ipcMain.on('minimize-window', () => mainWindow.minimize());
     ipcMain.on('maximize-window', () => { if (mainWindow.isMaximized()) { mainWindow.unmaximize(); } else { mainWindow.maximize(); } });
@@ -266,6 +347,7 @@ function createMainWindow() {
                     await initializePool(dbConnectionString, mainWindow);
                     if (pool) {
                         await loadStoredCnpjs();
+                        // Blocklist não é carregada em memória — verificação feita em lotes de 30k durante a limpeza
                     }
                 } catch (error) {
                     // O erro já é logado dentro de initializePool
@@ -316,18 +398,30 @@ app.on("window-all-closed", () => {
 // #           LÓGICA DE NEGÓCIOS (Refatorada para PostgreSQL)     #
 // #################################################################
 
-function sendUpdateStatusToWindow(text) {
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on("update-available", (info) => {
     if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send("update-message", text);
+        mainWindow.webContents.send("update-downloading", { version: info.version });
     }
-}
-autoUpdater.on("checking-for-update", () => sendUpdateStatusToWindow("Verificando por atualizações..."));
-autoUpdater.on("update-available", (info) => sendUpdateStatusToWindow(`Atualização disponível (v${info.version}). Baixando...`));
-autoUpdater.on("update-not-available", () => sendUpdateStatusToWindow(""));
-autoUpdater.on("error", (err) => sendUpdateStatusToWindow(`Erro na atualização: ${err.toString()}`));
-autoUpdater.on("download-progress", (p) => sendUpdateStatusToWindow(`Baixando atualização: ${Math.round(p.percent)}%`));
-autoUpdater.on("update-downloaded", (info) => { sendUpdateStatusToWindow(`Atualização v${info.version} baixada. Reinicie para instalar.`); if (mainWindow && mainWindow.webContents) { mainWindow.webContents.executeJavaScript(`const um = document.getElementById("update-message"); if(um){ um.style.cursor="pointer"; um.style.textDecoration="underline"; um.onclick = () => require("electron").ipcRenderer.send("restart-app-for-update"); }`); } });
-ipcMain.on("restart-app-for-update", () => autoUpdater.quitAndInstall());
+});
+autoUpdater.on("download-progress", (p) => {
+    if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send("update-progress", { percent: Math.round(p.percent) });
+    }
+});
+autoUpdater.on("update-downloaded", (info) => {
+    if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send("update-ready", { version: info.version });
+    }
+    setTimeout(() => {
+        autoUpdater.quitAndInstall(true, true);
+    }, 3000);
+});
+autoUpdater.on("error", (err) => {
+    console.error("Erro no auto-updater:", err);
+});
 ipcMain.on('open-path', (event, filePath) => { shell.openPath(filePath).catch(err => { const msg = `ERRO: Não foi possível abrir o arquivo em ${filePath}`; console.error("Falha ao abrir o caminho:", err); event.sender.send("log", msg); event.sender.send("automation-log", msg); }); });
 ipcMain.handle("select-file", async (event, { title, multi }) => { const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, { title: title, properties: [multi ? "multiSelections" : "openFile", "openFile"], filters: [{ name: "Planilhas", extensions: ["xlsx", "xls", "csv"] }] }); return canceled ? null : filePaths; });
 function letterToIndex(letter) { return letter.toUpperCase().charCodeAt(0) - 65; }
@@ -364,6 +458,7 @@ ipcMain.handle("download-enriched-data", async () => {
         const { rows } = await pool.query(query);
 
         if (rows.length === 0) return { success: false, message: "Nenhum dado encontrado." };
+        logSystemAction(currentUser.username, 'Download Enriquecidos', 'Baixou dados enriquecidos.');
 
         const maxPhones = rows.reduce((max, row) => Math.max(max, row.telefones ? row.telefones.length : 0), 0);
         const headers = ["cpf", ...Array.from({ length: maxPhones }, (_, i) => `fone${i + 1}`)];
@@ -414,6 +509,7 @@ ipcMain.on("start-db-load", async (event, { masterFiles, year }) => {
     }
 
     log(`--- Iniciando Carga para o Banco de Dados (Ano: ${year}) ---`);
+    logSystemAction(currentUser.username, 'Carga BD', `Iniciou carga de dados. Ano: ${year}. Arquivos: ${masterFiles.length}`);
     let totalCnpjsProcessed = 0;
 
     const saveChunkToDb = async (dataMap, filePath) => {
@@ -526,6 +622,7 @@ async function runEnrichmentProcess({ filesToEnrich, strategy, backup, year, bat
     log(`--- Iniciando Processo de Enriquecimento ---`);
     log(`Tamanho do Lote: ${BATCH_SIZE.toLocaleString('pt-BR')} registros.`);
     log(`Ano(s) de Busca: ${anosDeBusca.join(', ')} ${usePadrao ? '(213 PADRÃO ATIVADO)' : ''}`);
+    logSystemAction(currentUser.username, 'Enriquecimento', `Iniciou enriquecimento. Estratégia: ${strategy}. Arquivos: ${filesToEnrich.length}`);
     let totalEnrichedRowsOverall = 0, totalProcessedRowsOverall = 0, totalNotFoundInDbOverall = 0;
     try {
         for (const fileObj of filesToEnrich) {
@@ -706,6 +803,7 @@ async function runPhoneAdjustment(filePath, event, backup) {
         }
         log(`Ajustando ${phoneColumns.length} colunas de telefone...`);
         let processedRows = 0;
+        logSystemAction(currentUser.username, 'Ajuste Fones', `Ajustou fones em: ${path.basename(filePath)}`);
         worksheet.eachRow((row, rowNumber) => {
             if (rowNumber === 1) return;
             const phoneValuesInRow = phoneColumns
@@ -748,6 +846,7 @@ ipcMain.on("split-large-csv", async (event, { filePath, linesPerSplit }) => {
 
     log(`--- Iniciando divisão do arquivo: ${path.basename(filePath)} ---`);
     log(`⚙️  Configuração: ${linesPerSplit.toLocaleString('pt-BR')} linhas por arquivo.`);
+    logSystemAction(currentUser.username, 'Divisão CSV', `Dividiu CSV ${path.basename(filePath)} em partes de ${linesPerSplit}`);
 
     const inputStream = fs.createReadStream(filePath);
     const parser = parse({
@@ -792,6 +891,25 @@ ipcMain.on("split-large-csv", async (event, { filePath, linesPerSplit }) => {
     if (rowsForCurrentFile.length > 0) { await saveChunkToCsv(rowsForCurrentFile, fileCounter); }
     log(`\n\n🎉 Processo concluído! Total de ${lineCounter.toLocaleString('pt-BR')} linhas divididas em ${fileCounter} arquivo(s).`);
     shell.showItemInFolder(outputDir);
+});
+
+// Handler para adicionar números manualmente à blocklist
+ipcMain.handle("add-numbers-to-blocklist", async (_event, numbers) => {
+    if (!isAdmin() || !pool) return { success: false, message: "Acesso negado ou conexão com BD inativa." };
+    if (!Array.isArray(numbers) || numbers.length === 0) return { success: false, message: "Nenhum número fornecido." };
+    try {
+        const query = `
+            INSERT INTO blocklist (telefone)
+            SELECT unnest($1::text[])
+            ON CONFLICT (telefone) DO NOTHING;
+        `;
+        const result = await pool.query(query, [numbers]);
+        const added = result.rowCount;
+        logSystemAction(currentUser.username, 'Adicionar Manualmente à Blocklist', `${added} de ${numbers.length} números adicionados.`);
+        return { success: true, added, total: numbers.length };
+    } catch (e) {
+        return { success: false, message: e.message };
+    }
 });
 
 // --- INÍCIO: NOVA LÓGICA DE ENVIO DE E-MAIL ---
@@ -842,6 +960,7 @@ ipcMain.on("feed-blocklist", async (event, { filePaths, sendEmail }) => { // MOD
     if (!isAdmin() || !pool) { event.sender.send("blocklist-log", "❌ Acesso negado ou conexão com BD inativa."); return; }
     const log = (msg) => event.sender.send("blocklist-log", msg); // CORRIGIDO: Envia para o log da aba correta
     log(`--- Iniciando Alimentação da Blocklist na nova aba ---`);
+    logSystemAction(currentUser.username, 'Alimentar Blocklist', `Iniciou alimentação com ${filePaths.length} arquivos.`);
 
     const DB_BATCH_SIZE = 50000; // Tamanho do lote para enviar ao banco de dados
     let totalNewPhonesAdded = 0;
@@ -1020,6 +1139,7 @@ ipcMain.on("feed-root-database", async (event, filePaths) => {
     if (!isAdmin() || !pool) { log("❌ Acesso negado ou conexão com BD inativa."); event.sender.send("root-feed-finished"); return; }
     const log = (msg) => event.sender.send("log", msg);
     log(`--- Iniciando Alimentação da Base Raiz ---`);
+    logSystemAction(currentUser.username, 'Alimentar Raiz', `Iniciou alimentação com ${filePaths.length} arquivos.`);
 
     const BATCH_SIZE = 5000;
     let totalNewCnpjsAdded = 0;
@@ -1096,6 +1216,7 @@ ipcMain.handle("delete-batch", async (event, batchId) => {
     if (!batchId) { return { success: false, message: "ID do lote inválido." }; }
     log(`Buscando e excluindo documentos do lote "${batchId}" no Neon DB...`);
     try {
+        logSystemAction(currentUser.username, 'Excluir Lote', `Excluiu lote ${batchId}`);
         const result = await pool.query('DELETE FROM limpeza_cnpjs WHERE batch_id = $1 RETURNING cnpj', [batchId]);
         const deletedCount = result.rowCount;
         if (deletedCount === 0) {
@@ -1110,7 +1231,7 @@ ipcMain.handle("delete-batch", async (event, batchId) => {
     }
 });
 
-ipcMain.handle("update-blocklist", async (event, backup) => { if (!isAdmin()) { return { success: false, message: "Acesso negado." }; } const log = (msg) => event.sender.send("log", msg); try { const blocklistPath = "G:\\Meu Drive\\Marketing\\!Campanhas\\URA - Automatica\\Limpeza de base\\bases para a raiz\\Blocklist.xlsx"; const rootPath = "G:\\Meu Drive\\Marketing\\!Campanhas\\URA - Automatica\\Limpeza de base\\raiz_att.xlsx"; if (backup) { const timestamp = Date.now(); const bkp = path.join(path.dirname(rootPath), `${path.basename(rootPath, path.extname(rootPath))}.backup_${timestamp}${path.extname(rootPath)}`); fs.copyFileSync(rootPath, bkp); log(`Backup da raiz criado em: ${bkp}`); } const wbBlock = await readSpreadsheet(blocklistPath); const dataBlock = XLSX.utils.sheet_to_json(wbBlock.Sheets[wbBlock.SheetNames[0]], { header: 1 }).flat().filter(v => v); const wbRoot = await readSpreadsheet(rootPath); const dataRoot = XLSX.utils.sheet_to_json(wbRoot.Sheets[wbRoot.SheetNames[0]], { header: 1 }).flat().filter(v => v); const merged = Array.from(new Set([...dataRoot, ...dataBlock])).map(v => [v]); const newWB = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(merged), wbRoot.SheetNames[0]); writeSpreadsheet(newWB, rootPath); return { success: true, message: "Raiz atualizada com blocklist com sucesso." }; } catch (err) { return { success: false, message: err.message }; } });
+ipcMain.handle("update-blocklist", async (event, backup) => { if (!isAdmin()) { return { success: false, message: "Acesso negado." }; } const log = (msg) => event.sender.send("log", msg); try { logSystemAction(currentUser.username, 'Update Blocklist', 'Atualizou blocklist local.'); const blocklistPath = "G:\\Meu Drive\\Marketing\\!Campanhas\\URA - Automatica\\Limpeza de base\\bases para a raiz\\Blocklist.xlsx"; const rootPath = "G:\\Meu Drive\\Marketing\\!Campanhas\\URA - Automatica\\Limpeza de base\\raiz_att.xlsx"; if (backup) { const timestamp = Date.now(); const bkp = path.join(path.dirname(rootPath), `${path.basename(rootPath, path.extname(rootPath))}.backup_${timestamp}${path.extname(rootPath)}`); fs.copyFileSync(rootPath, bkp); log(`Backup da raiz criado em: ${bkp}`); } const wbBlock = await readSpreadsheet(blocklistPath); const dataBlock = XLSX.utils.sheet_to_json(wbBlock.Sheets[wbBlock.SheetNames[0]], { header: 1 }).flat().filter(v => v); const wbRoot = await readSpreadsheet(rootPath); const dataRoot = XLSX.utils.sheet_to_json(wbRoot.Sheets[wbRoot.SheetNames[0]], { header: 1 }).flat().filter(v => v); const merged = Array.from(new Set([...dataRoot, ...dataBlock])).map(v => [v]); const newWB = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(merged), wbRoot.SheetNames[0]); writeSpreadsheet(newWB, rootPath); return { success: true, message: "Raiz atualizada com blocklist com sucesso." }; } catch (err) { return { success: false, message: err.message }; } });
 
 ipcMain.on("start-cleaning", async (event, args) => {
     if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado."); return; }
@@ -1123,6 +1244,7 @@ ipcMain.on("start-cleaning", async (event, args) => {
 
     try {
         const batchId = `batch-${Date.now()}`;
+        logSystemAction(currentUser.username, 'Limpeza Local', `Iniciou limpeza de ${args.cleanFiles.length} arquivos.`);
         if (args.saveToDb) log(`Este lote de salvamento terá o ID: ${batchId}`);
         const rootSet = new Set();
         if (args.isAutoRoot) {
@@ -1167,13 +1289,27 @@ ipcMain.on("start-cleaning", async (event, args) => {
         log(`FILTRO DE CNAE PROIBIDO: ATIVADO (Padrão).`);
 
         const allNewCnpjs = new Set();
-        for (const fileObj of args.cleanFiles) {
-            const newlyFoundInFile = await processFile(fileObj, rootSet, args, event, storedCnpjs);
-            if (args.saveToDb && newlyFoundInFile.size > 0) {
-                newlyFoundInFile.forEach(cnpj => allNewCnpjs.add(cnpj));
-            }
-            if (args.autoAdjust) {
-                await runPhoneAdjustment(fileObj.path, event, false);
+        // Processa 2 arquivos em paralelo; logs exibidos somente após conclusão do par
+        const CONCURRENCY = 2;
+        for (let i = 0; i < args.cleanFiles.length; i += CONCURRENCY) {
+            const chunk = args.cleanFiles.slice(i, i + CONCURRENCY);
+            const names = chunk.map(f => path.basename(f.path)).join(' e ');
+            log(`\n⏳ PROCESSANDO ${names}... aguarde.`);
+
+            const chunkResults = await Promise.all(
+                chunk.map(fileObj => processFile(fileObj, rootSet, args, event, storedCnpjs))
+            );
+
+            // Despeja os logs de cada arquivo em sequência, sem entrelaçamento
+            for (let j = 0; j < chunkResults.length; j++) {
+                const { newCnpjs, logs: fileLogs } = chunkResults[j];
+                fileLogs.forEach(msg => log(msg));
+                if (args.saveToDb && newCnpjs.size > 0) {
+                    newCnpjs.forEach(cnpj => allNewCnpjs.add(cnpj));
+                }
+                if (args.autoAdjust) {
+                    await runPhoneAdjustment(chunk[j].path, event, false);
+                }
             }
         }
         if (args.saveToDb && allNewCnpjs.size > 0) {
@@ -1205,21 +1341,18 @@ ipcMain.on("start-cleaning", async (event, args) => {
 async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     const file = fileObj.path;
     const id = fileObj.id;
-    const log = (msg) => event.sender.send("log", msg);
+    // Logs são bufferizados — serão despejados pelo caller de forma organizada
+    const logBuffer = [];
+    const log = (msg) => logBuffer.push(msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
     const { destCol, backup, checkDb, saveToDb, checkBlocklist, removeLandlines } = options;
 
-    /**
-     * Limpa o nome do cliente, removendo números e caracteres especiais do início e do fim.
-     * Ex: "123.456 NOME CLIENTE 789" -> "NOME CLIENTE"
-     */
     const cleanClientName = (name) => {
         if (!name || typeof name !== 'string') return name;
         return name.replace(/^[\d.\- ]+|[\d.\- ]+$/g, '').trim();
     };
 
-    log(`\nProcessando arquivo de limpeza: ${path.basename(file)}...`);
-    if (!fs.existsSync(file)) return new Set();
+    if (!fs.existsSync(file)) return { newCnpjs: new Set(), logs: [`❌ Arquivo não encontrado: ${path.basename(file)}`] };
 
     if (backup) {
         const p = path.parse(file);
@@ -1233,8 +1366,8 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
     if (data.length <= 1) {
-        log(`⚠️ Arquivo vazio ou sem dados: ${file}`);
-        return new Set();
+        log(`⚠️ Arquivo vazio ou sem dados: ${path.basename(file)}`);
+        return { newCnpjs: new Set(), logs: logBuffer };
     }
 
     const header = data[0];
@@ -1253,8 +1386,8 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     }, []);
 
     if (cpfColIdx === -1) {
-        log(`❌ ERRO: A coluna "cpf" ou "cnpj" não foi encontrada no arquivo ${path.basename(file)}. Pulando este arquivo.`);
-        return new Set();
+        log(`❌ ERRO: A coluna "cpf" ou "cnpj" não foi encontrada em ${path.basename(file)}. Pulando este arquivo.`);
+        return { newCnpjs: new Set(), logs: logBuffer };
     }
     if (nomeColIdx === -1) { // NOVO: Avisa se a coluna 'nome' não for encontrada
         log(`⚠️ AVISO: Nenhuma coluna "nome" encontrada em ${path.basename(file)}. A limpeza de nomes será ignorada para este arquivo.`);
@@ -1271,11 +1404,9 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     let removedByRoot = 0;
     let removedDuplicates = 0;
     let removedByCnae = 0;
-    let removedByBlocklist = 0; // NOVO: Contador para blocklist
-    let removedDdiCount = 0; // NOVO: Contador para DDIs '55' removidos
+    let removedByBlocklist = 0;
+    let removedDdiCount = 0;
     let cleanedPhones = 0;
-    const BATCH_SIZE = 1000; // Lote para verificação de blocklist
-    const totalRows = data.length - 1;
     const newCnpjsInThisFile = new Set();
 
     for (let i = 1; i < data.length; i++) {
@@ -1341,49 +1472,43 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
         XLSX.utils.book_append_sheet(finalWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]);
         writeSpreadsheet(finalWB, file);
         progress(100);
-        log(`Arquivo: ${path.basename(file)}\n • Clientes repetidos (BD): ${removedDuplicates}\n • Removidos pela Raiz: ${removedByRoot}\n • Removidos por Blocklist (Fone): ${removedByBlocklist}\n • Removidos por CNAE Proibido: ${removedByCnae}\n • DDIs '55' removidos: ${removedDdiCount}\n • Fones fixos removidos: ${cleanedPhones}\n • Total final: ${cleaned.length - 1}`);
-        return newCnpjsInThisFile;
+        log(`✅ ${path.basename(file)}\n   • Repetidos (BD): ${removedDuplicates} | Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae}\n   • DDIs removidos: ${removedDdiCount} | Fones fixos: ${cleanedPhones}\n   • Total final: ${cleaned.length - 1}`);
+        return { newCnpjs: newCnpjsInThisFile, logs: logBuffer };
     }
 
-    // Verificação de Blocklist em Lotes
-    log(`Iniciando verificação de blocklist para ${cleaned.length - 1} linhas...`);
+    // Verificação de Blocklist via BD em lotes de 30.000 (sem carregamento em memória)
+    log(`Verificando blocklist para ${cleaned.length - 1} linhas (lotes de 30k)...`);
+
     const finalCleaned = [header];
     const dataToVerify = cleaned.slice(1);
+    const BATCH_SIZE = 30000;
 
     for (let i = 0; i < dataToVerify.length; i += BATCH_SIZE) {
         const batch = dataToVerify.slice(i, i + BATCH_SIZE);
         const phonesInBatch = new Set();
         batch.forEach(row => {
             foneIdxs.forEach(foneIdx => {
-                const phoneValue = row[foneIdx] ? String(row[foneIdx]).replace(/\D/g, "").trim() : "";
-                if (phoneValue) phonesInBatch.add(phoneValue);
+                const v = row[foneIdx] ? String(row[foneIdx]).replace(/\D/g, "").trim() : "";
+                if (v) phonesInBatch.add(v);
             });
         });
-
-        const blockedPhonesInBatch = new Set();
+        const blocked = new Set();
         if (phonesInBatch.size > 0) {
-            const query = 'SELECT telefone FROM blocklist WHERE telefone = ANY($1::text[])';
-            const { rows } = await pool.query(query, [Array.from(phonesInBatch)]);
-            rows.forEach(row => blockedPhonesInBatch.add(row.telefone));
+            const { rows } = await pool.query(
+                'SELECT telefone FROM blocklist WHERE telefone = ANY($1::text[])',
+                [Array.from(phonesInBatch)]
+            );
+            rows.forEach(r => blocked.add(r.telefone));
         }
-
         for (const row of batch) {
             const isBlocked = foneIdxs.some(foneIdx => {
-                const phoneValue = row[foneIdx] ? String(row[foneIdx]).replace(/\D/g, "").trim() : "";
-                return phoneValue && blockedPhonesInBatch.has(phoneValue);
+                const v = row[foneIdx] ? String(row[foneIdx]).replace(/\D/g, "").trim() : "";
+                return v && blocked.has(v);
             });
-
-            if (isBlocked) {
-                removedByBlocklist++;
-            } else {
-                finalCleaned.push(row);
-            }
+            if (isBlocked) { removedByBlocklist++; } else { finalCleaned.push(row); }
         }
-
-        if (i % 2000 === 0) {
-            progress(Math.floor((i / totalRows) * 100));
-            await new Promise(resolve => setImmediate(resolve));
-        }
+        progress(Math.floor(((i + batch.length) / dataToVerify.length) * 100));
+        await new Promise(resolve => setImmediate(resolve));
     }
 
     const newWB = XLSX.utils.book_new();
@@ -1391,9 +1516,9 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     writeSpreadsheet(newWB, file);
     progress(100);
 
-    log(`Arquivo: ${path.basename(file)}\n • Clientes repetidos (BD): ${removedDuplicates}\n • Removidos pela Raiz: ${removedByRoot}\n • Removidos por Blocklist (Fone): ${removedByBlocklist}\n • Removidos por CNAE Proibido: ${removedByCnae}\n • DDIs '55' removidos: ${removedDdiCount}\n • Fones fixos removidos: ${cleanedPhones}\n • Total final: ${finalCleaned.length - 1}`);
+    log(`✅ ${path.basename(file)}\n   • Repetidos (BD): ${removedDuplicates} | Pela Raiz: ${removedByRoot} | Blocklist: ${removedByBlocklist} | CNAE: ${removedByCnae}\n   • DDIs removidos: ${removedDdiCount} | Fones fixos: ${cleanedPhones}\n   • Total final: ${finalCleaned.length - 1}`);
 
-    return newCnpjsInThisFile;
+    return { newCnpjs: newCnpjsInThisFile, logs: logBuffer };
 }
 
 
@@ -1401,6 +1526,7 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
     if (!isAdmin() || !pool) { event.sender.send("log", "❌ Acesso negado ou conexão com BD inativa."); return; }
     const log = (msg) => event.sender.send("log", msg);
     const batchId = `batch-${Date.now()}`;
+    logSystemAction(currentUser.username, 'Limpeza BD Only', `Iniciou limpeza de ${filesToClean.length} arquivos.`);
     log(`--- Iniciando Limpeza Apenas pelo Banco de Dados para ${filesToClean.length} arquivo(s) ---`);
     if (saveToDb) log(`Opção \"Salvar no Banco de Dados\" ATIVADA. ID do Lote: ${batchId}`);
     log(`Usando ${storedCnpjs.size} CNPJs do histórico em memória.`);
@@ -1423,8 +1549,10 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
 // =================================================================
 // =           *** INÍCIO DA MODIFICAÇÃO *** =
 // =================================================================
-ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType, options = {}) => { // MODIFICADO
+ipcMain.on('organize-daily-sheet', async (event, filePaths, organizationType, options = {}) => { // MODIFICADO PARA RECEBER ARRAY
     const log = (msg) => event.sender.send("log", msg);
+    // Garante que filePaths seja um array
+    const files = Array.isArray(filePaths) ? filePaths : [filePaths];
 
     /** * Limpa o nome do cliente, removendo números e caracteres especiais do início e do fim.
      * Ex: "123.456 NOME CLIENTE 789" -> "NOME CLIENTE"
@@ -1435,28 +1563,19 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType, opt
     };
 
     log(`--- Iniciando Organização (${organizationType}) da Planilha Diária ---`);
+    logSystemAction(currentUser.username, 'Organizador', `Organizou ${files.length} arquivos. Tipo: ${organizationType}`);
 
     // --- LÓGICA PARA WHATSAPP ---
     if (organizationType === 'whatsapp') {
-        const { removeBlocklist, tagMode, manualTag, filename, scheduleDate, scheduleTime, sector, useApi } = options;
-        const dir = path.dirname(filePath);
+        const { removeBlocklist, tagMode, manualTag, scheduleDate, scheduleTime, sector, useApi, filename } = options;
         
-        // Define o nome do arquivo de saída
-        let outputName = filename ? filename : `${path.parse(filePath).name}_Whatsapp`;
-        if (!outputName.toLowerCase().endsWith('.xlsx')) outputName += '.xlsx';
+        // 1. PREPARAÇÃO EM MEMÓRIA (Lê todos os arquivos primeiro)
+        const processedFiles = [];
+        const allCnpjsToConsult = new Set();
         
-        // Pergunta onde salvar (usando o nome sugerido como padrão)
-        const { canceled, filePath: savePath } = await dialog.showSaveDialog(mainWindow, {
-            title: "Salvar Lista Whatsapp",
-            defaultPath: path.join(dir, outputName),
-            filters: [{ name: "Excel", extensions: ["xlsx"] }]
-        });
+        log(`Lendo ${files.length} arquivo(s) para processamento...`);
 
-        if (canceled || !savePath) {
-            log("Salvamento cancelado pelo usuário.");
-            return;
-        }
-
+        for (const filePath of files) {
         try {
             const workbook = new ExcelJS.Workbook();
             await workbook.xlsx.readFile(filePath);
@@ -1508,7 +1627,9 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType, opt
 
             // Prepara a Tag
             let tagValue = '';
-            if (tagMode === 'manual') {
+            if (tagMode === 'filename') {
+                tagValue = path.basename(filePath).replace(/\.[^/.]+$/, '');
+            } else if (tagMode === 'manual') {
                 tagValue = manualTag;
             } else if (tagMode === 'scheduled') {
                 tagValue = `${scheduleDate} ${sector} - ${scheduleTime}h`;
@@ -1563,113 +1684,120 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType, opt
                     
                     outputRows.push(rowData);
                     if (removeBlocklist) phonesToCheck.add(phone);
+                    if (useApi && rowData.Cnpj && rowData.Cnpj.length >= 11) {
+                        allCnpjsToConsult.add(rowData.Cnpj);
+                    }
                 }
             });
 
-            // Verificação de Blocklist
+            processedFiles.push({ filePath, outputRows, phonesToCheck });
+        } catch (err) { log(`❌ Erro ao ler arquivo ${path.basename(filePath)}: ${err.message}`); }
+        }
+
+        // 2. LÓGICA DE API CENTRALIZADA (Executa uma vez para todos os arquivos)
+        let availableCnpjs = null; // Null significa que não rodou ou falhou/pulou
+
+        if (useApi && allCnpjsToConsult.size > 0) {
+            log(`\n--- OTIMIZAÇÃO API ---`);
+            log(`Consolidando CNPJs de ${files.length} arquivos... Total único: ${allCnpjsToConsult.size}`);
+            
+            const cnpjsArray = Array.from(allCnpjsToConsult);
+            availableCnpjs = new Set();
+            
+            const credentials = {
+                CLIENT_ID: "imWzrW41HcnoJgvZqHCaLvziUGlhAJAH", // Chave 2 (IM)
+                CLIENT_SECRET: "A0lAqZO73uW3wryU"
+            };
+            const TOKEN_URL = "https://crm-leads-p.c6bank.info/querie-partner/token";
+            const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
+            
+            let apiSuccess = false;
+            
+            while (!apiSuccess) {
+                try {
+                    log("Autenticando na API (Chave 2)...");
+                    const tokenParams = new URLSearchParams({ grant_type: "client_credentials", client_id: credentials.CLIENT_ID, client_secret: credentials.CLIENT_SECRET });
+                    const tokenResp = await axios.post(TOKEN_URL, tokenParams.toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 30000 });
+                    const token = tokenResp.data.access_token;
+
+                    log(`Consultando API em lotes...`);
+                    const BATCH_API = 20000; // Lote grande para API
+                    for (let i = 0; i < cnpjsArray.length; i += BATCH_API) {
+                        const batch = cnpjsArray.slice(i, i + BATCH_API);
+                        log(`Enviando lote ${Math.ceil(i/BATCH_API)+1}/${Math.ceil(cnpjsArray.length/BATCH_API)}...`);
+                        
+                        const consultaResp = await axios.post(CONSULTA_URL, { CNPJ: batch }, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 60000 });
+                        
+                        const key = Object.keys(consultaResp.data).find(k => k.toLowerCase().includes("cnpj") && Array.isArray(consultaResp.data[k]));
+                        if (key && consultaResp.data[key]) {
+                            consultaResp.data[key].forEach(c => availableCnpjs.add(String(c).replace(/\D/g, "").padStart(14, "0")));
+                        }
+                    }
+                    apiSuccess = true;
+                    log(`Consulta API concluída. ${availableCnpjs.size} CNPJs disponíveis encontrados.`);
+
+                } catch (err) {
+                    log(`❌ Erro na API: ${err.message}`);
+                    const response = await dialog.showMessageBox(mainWindow, {
+                        type: 'error',
+                        buttons: ['Pular Etapa API', 'Tentar Novamente (1min)'],
+                        defaultId: 1,
+                        title: 'Erro na Limpeza API',
+                        message: `Erro ao consultar API: ${err.message}\n\nDeseja tentar novamente ou pular a limpeza API (mantendo todos)?`
+                    });
+
+                    if (response.response === 0) {
+                        log("Usuário pulou a etapa API.");
+                        availableCnpjs = null; // Anula para não filtrar nada
+                        apiSuccess = true;
+                    } else {
+                        log("Aguardando 1 minuto...");
+                        await new Promise(resolve => setTimeout(resolve, 60000));
+                    }
+                }
+            }
+        } else if (useApi) {
+            log("Nenhum CNPJ encontrado nos arquivos para consulta API.");
+        }
+
+        // 3. PROCESSAMENTO FINAL E SALVAMENTO
+        for (const pFile of processedFiles) {
+            const { filePath, outputRows, phonesToCheck } = pFile;
+            const dir = path.dirname(filePath);
+            const name = path.parse(filePath).name;
+            
+            let finalName = name;
+            if (filename && typeof filename === 'string' && filename.trim().length > 0) {
+                if (processedFiles.length > 1) {
+                    finalName = `${filename.trim()}_${name}`;
+                } else {
+                    finalName = filename.trim();
+                }
+            }
+            // Garante a extensão .xlsx
+            if (!finalName.toLowerCase().endsWith('.xlsx')) finalName += '.xlsx';
+            const savePath = path.join(dir, finalName);
+
+            log(`\nFinalizando: ${name}...`);
+
+            // Verificação de Blocklist (Local/DB)
             const blockedPhones = new Set();
             if (removeBlocklist && phonesToCheck.size > 0 && pool) {
-                log(`Verificando blocklist para ${phonesToCheck.size} números...`);
+                // log(`Verificando blocklist...`);
                 const query = 'SELECT telefone FROM blocklist WHERE telefone = ANY($1::text[])';
                 const { rows } = await pool.query(query, [Array.from(phonesToCheck)]);
                 rows.forEach(r => blockedPhones.add(r.telefone));
-                log(`Encontrados ${blockedPhones.size} números na blocklist.`);
             }
 
             // Filtragem Inicial (Blocklist)
             let finalRows = outputRows.filter(r => !blockedPhones.has(r.Telefone));
             
-            // --- LÓGICA DE LIMPEZA API (NOVA) ---
-            if (useApi) {
-                if (cnpjCols.length === 0) {
-                    log("⚠️ AVISO: Limpeza API solicitada, mas a coluna CNPJ não foi encontrada. Pulando etapa API.");
-                    dialog.showMessageBox(mainWindow, {
-                        type: 'warning',
-                        title: 'Aviso - Limpeza API',
-                        message: 'A opção de Limpeza API foi marcada, mas a planilha não possui uma coluna de CNPJ/CPF identificável.\n\nA etapa da API será pulada.'
-                    });
-                } else {
-                    log(`Iniciando Limpeza API para ${finalRows.length} registros...`);
-                    
-                    // Coleta CNPJs únicos para consulta
-                    const cnpjsToConsult = [...new Set(finalRows.map(r => r.Cnpj).filter(c => c && c.length >= 11))];
-                    
-                    if (cnpjsToConsult.length > 0) {
-                        const credentials = {
-                            CLIENT_ID: "imWzrW41HcnoJgvZqHCaLvziUGlhAJAH",
-                            CLIENT_SECRET: "A0lAqZO73uW3wryU"
-                        };
-                        const TOKEN_URL = "https://crm-leads-p.c6bank.info/querie-partner/token";
-                        const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
-                        
-                        let apiSuccess = false;
-                        let availableCnpjs = new Set();
-
-                        // Loop de Tentativa da API
-                        while (!apiSuccess) {
-                            try {
-                                log("Autenticando na API...");
-                                const tokenParams = new URLSearchParams({ grant_type: "client_credentials", client_id: credentials.CLIENT_ID, client_secret: credentials.CLIENT_SECRET });
-                                const tokenResp = await axios.post(TOKEN_URL, tokenParams.toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 30000 });
-                                const token = tokenResp.data.access_token;
-
-                                log(`Consultando ${cnpjsToConsult.length} CNPJs...`);
-                                // Processamento em lote único (assumindo que cabe no limite ou usando lógica simplificada para este contexto)
-                                // Se a lista for muito grande, idealmente deveria quebrar, mas vamos usar a lógica direta aqui.
-                                const BATCH_API = 20000;
-                                for (let i = 0; i < cnpjsToConsult.length; i += BATCH_API) {
-                                    const batch = cnpjsToConsult.slice(i, i + BATCH_API);
-                                    const consultaResp = await axios.post(CONSULTA_URL, { CNPJ: batch }, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 45000 });
-                                    
-                                    const key = Object.keys(consultaResp.data).find(k => k.toLowerCase().includes("cnpj") && Array.isArray(consultaResp.data[k]));
-                                    if (key && consultaResp.data[key]) {
-                                        consultaResp.data[key].forEach(c => availableCnpjs.add(String(c).replace(/\D/g, "").padStart(14, "0")));
-                                    }
-                                }
-                                apiSuccess = true;
-                                log("Consulta API realizada com sucesso.");
-
-                            } catch (err) {
-                                log(`❌ Erro na API: ${err.message}`);
-                                
-                                // Pop-up de Erro
-                                const response = await dialog.showMessageBox(mainWindow, {
-                                    type: 'error',
-                                    buttons: ['Pular Etapa API', 'Tentar Novamente (1min)'],
-                                    defaultId: 1,
-                                    title: 'Erro na Limpeza API',
-                                    message: `Ocorreu um erro ao consultar a API (possível cooldown ou falha de rede).\n\nErro: ${err.message}\n\nO que deseja fazer?`
-                                });
-
-                                if (response.response === 0) {
-                                    // Pular
-                                    log("Usuário optou por pular a etapa da API. Gerando arquivo com dados atuais.");
-                                    apiSuccess = true; // Sai do loop, mas availableCnpjs estará vazio ou parcial, precisamos tratar isso.
-                                    // Se pulou, não filtramos nada (mantemos todos como se a API não tivesse rodado)
-                                    availableCnpjs = null; 
-                                } else {
-                                    // Tentar Novamente
-                                    log("Aguardando 1 minuto para tentar novamente...");
-                                    await new Promise(resolve => setTimeout(resolve, 60000));
-                                }
-                            }
-                        }
-
-                        // Filtragem Pós-API (Se a API rodou com sucesso e não foi pulada)
-                        if (availableCnpjs !== null) {
-                            const beforeCount = finalRows.length;
-                            // Mantém apenas se o CNPJ estiver na lista de disponíveis retornada pela API
-                            // OU se o registro não tiver CNPJ (para não perder contatos sem documento, se houver)
-                            finalRows = finalRows.filter(r => !r.Cnpj || availableCnpjs.has(r.Cnpj.padStart(14, "0")));
-                            const removedCount = beforeCount - finalRows.length;
-                            log(`Limpeza API concluída. ${removedCount} clientes removidos (indisponíveis). Restaram ${finalRows.length}.`);
-                        }
-                    } else {
-                        log("Nenhum CNPJ válido para consulta API.");
-                    }
-                }
+            // Filtragem API (Usando o Set global calculado anteriormente)
+            if (availableCnpjs !== null) {
+                const beforeCount = finalRows.length;
+                finalRows = finalRows.filter(r => !r.Cnpj || availableCnpjs.has(r.Cnpj.padStart(14, "0")));
+                log(`API: ${beforeCount - finalRows.length} removidos. Blocklist: ${blockedPhones.size} removidos.`);
             }
-            // --- FIM LÓGICA API ---
             
             const newWb = new ExcelJS.Workbook();
             const newWs = newWb.addWorksheet('Whatsapp');
@@ -1685,20 +1813,18 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType, opt
             newWs.addRows(finalRows);
             await newWb.xlsx.writeFile(savePath);
 
-            log(`✅ Lista Whatsapp gerada com sucesso!`);
-            log(`Salvo em: ${savePath}`);
-            log(`Total processado: ${outputRows.length}. Removidos por blocklist: ${blockedPhones.size}. Final: ${finalRows.length}.`);
-            shell.showItemInFolder(savePath);
-
-        } catch (err) {
-            log(`❌ Erro ao gerar lista Whatsapp: ${err.message}`);
-            console.error(err);
+            log(`✅ Salvo: ${path.basename(savePath)} (${finalRows.length} linhas)`);
         }
+        
+        log(`\n🎉 Processo em lote finalizado!`);
+        if (processedFiles.length > 0) shell.showItemInFolder(path.dirname(processedFiles[0].filePath));
+        
         return;
     }
 
     // --- LÓGICA PARA NOVA FUNCIONALIDADE DE SEPARAR POR ABAS (CADÊNCIAS) ---
     if (organizationType === 'cadencia') {
+        const filePath = files[0]; // Mantém lógica original para single file
         const fileNameLower = path.basename(filePath).toLowerCase();
         const dir = path.dirname(filePath);
         const originalName = path.parse(filePath).name;
@@ -1833,6 +1959,7 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType, opt
     }
 
     // --- LÓGICA ANTIGA PARA OS FORMATOS 'bernardo' E 'empresaAqui' ---
+    const filePath = files[0]; // Mantém lógica original para single file
     const dir = path.dirname(filePath);
     const originalName = path.parse(filePath).name;
     let newFilePath = path.join(dir, `${originalName}_organizado.xlsx`);
@@ -2146,6 +2273,7 @@ ipcMain.on('organize-daily-sheet', async (event, filePath, organizationType, opt
 
 
 
+
 // --- LÓGICA DE MESCLAGEM ATUALIZADA ---
 
 async function shuffleFilesInPlace(filePaths, log) {
@@ -2355,6 +2483,7 @@ ipcMain.on("start-merge", async (event, options) => {
     }
 
     log(`\n--- Iniciando Processo de Mesclagem ---`);
+    logSystemAction(currentUser.username, 'Mesclagem', `Mesclou ${files.length} arquivos. Estratégia: ${options.strategy}`);
     log(`Estratégia: ${options.strategy}. Remover Duplicados: ${options.removeDuplicates}. Embaralhar: ${options.shuffle}.`);
     if (options.strategy === 'custom') {
         log(`Linhas por arquivo (personalizado): ${options.customCount}`);
@@ -2396,6 +2525,7 @@ ipcMain.on("split-list", async (event, { filePath, linesPerSplit }) => {
     const log = (msg) => event.sender.send("log", msg);
     log(`\n--- Iniciando Divisão de Lista para ${path.basename(filePath)} ---
 `);
+    logSystemAction(currentUser.username, 'Divisão Lista', `Dividiu arquivo ${path.basename(filePath)}`);
 
     try {
         const workbook = new ExcelJS.Workbook();
@@ -2452,6 +2582,8 @@ ipcMain.on("split-list", async (event, { filePath, linesPerSplit }) => {
 let apiQueue = { pending: [], processing: null, completed: [], cancelled: [], clientHeader: null, clientRows: [] };
 let isApiQueueRunning = false;
 let cancelCurrentApiTask = false;
+let apiHeartbeatInterval = null; // NOVO: Intervalo para manter o lock
+let currentLockedKeys = []; // Armazena quais chaves este processo bloqueou
 let isApiQueuePaused = false;
 let fishScheduleTimer = null; // NOVO: Timer para o agendamento
 let currentApiOptions = { keyMode: 'chave1', removeClients: true };
@@ -2467,6 +2599,77 @@ ipcMain.on('set-api-delays', (event, settings) => {
     event.sender.send("api-log", `⚙️ Configurações de tempo atualizadas: Delay entre Lotes: ${settings.delayBetweenBatches || 'Padrão'}, Delay de Retentativa: ${settings.retryDelay || 'Padrão'}`);
 });
 let fishModeFilePath = null; // NOVO: para armazenar o caminho do arquivo no modo FISH
+
+// --- FUNÇÕES DE CONTROLE DE CONCORRÊNCIA (LOCKS) ---
+
+async function acquireApiLock(keysNeeded, username, mode) {
+    if (!pool) return { success: true }; // Se não tem BD, permite (modo offline/fallback)
+
+    try {
+        // 1. Verifica se alguma das chaves necessárias está ocupada ('Em uso') por OUTRO usuário
+        // Consideramos 'Em uso' apenas se o heartbeat for recente (< 2 min). Se for velho, assumimos crash e liberamos.
+        const checkQuery = `
+            SELECT key_name, username, status 
+            FROM api_locks 
+            WHERE key_name = ANY($1::text[]) 
+            AND status = 'Em uso' 
+            AND last_heartbeat > NOW() - INTERVAL '2 minutes'
+        `;
+        const checkResult = await pool.query(checkQuery, [keysNeeded]);
+
+        if (checkResult.rows.length > 0) {
+            const lock = checkResult.rows[0];
+            if (lock.username !== username) {
+                return { success: false, lockedBy: lock.username, key: lock.key_name };
+            }
+        }
+
+        // 2. Adquire/Atualiza os locks definindo status como 'Em uso' e salvando o modo
+        const upsertQuery = `
+            INSERT INTO api_locks (key_name, username, status, last_heartbeat, key_label, lock_mode)
+            VALUES ($1, $2, 'Em uso', NOW(), $3, $4)
+            ON CONFLICT (key_name) 
+            DO UPDATE SET 
+                username = EXCLUDED.username, 
+                status = 'Em uso', 
+                last_heartbeat = NOW(),
+                key_label = EXCLUDED.key_label,
+                lock_mode = EXCLUDED.lock_mode;
+        `;
+
+        for (const key of keysNeeded) {
+            const label = key === 'c6' ? 'Chave 1 (C6)' : 'Chave 2 (IM)';
+            await pool.query(upsertQuery, [key, username, label, mode]);
+        }
+
+        return { success: true };
+    } catch (err) {
+        console.error("Erro ao adquirir lock de API:", err);
+        // Em caso de erro de banco, optamos por bloquear por segurança ou permitir? 
+        // Vamos permitir com aviso no log para não parar a operação se o BD oscilar.
+        return { success: true, warning: err.message };
+    }
+}
+
+async function releaseApiLock(keysToRelease) {
+    if (!pool || !keysToRelease || keysToRelease.length === 0) return;
+    try {
+        // Define o status como 'Livre' em vez de deletar a linha
+        await pool.query("UPDATE api_locks SET status = 'Livre' WHERE key_name = ANY($1::text[])", [keysToRelease]);
+    } catch (err) {
+        console.error("Erro ao liberar lock de API:", err);
+    }
+}
+
+async function heartbeatApiLock(keysToMaintain) {
+    if (!pool || !keysToMaintain || keysToMaintain.length === 0) return;
+    try {
+        // Mantém o status 'Em uso' e atualiza o horário
+        await pool.query("UPDATE api_locks SET last_heartbeat = NOW(), status = 'Em uso' WHERE key_name = ANY($1::text[])", [keysToMaintain]);
+    } catch (err) {
+        console.error("Erro no heartbeat do lock:", err);
+    }
+}
 
 
 ipcMain.on("add-files-to-api-queue", (event, filePaths) => {
@@ -2501,9 +2704,31 @@ ipcMain.on("start-api-queue", async (event, options) => { // MODIFICADO para asy
     currentApiOptions = options;
     isApiQueueRunning = true;
     isApiQueuePaused = false;
+    logSystemAction(currentUser.username, 'Limpeza API', `Iniciou fila API. Modo: ${options.keyMode}. Fish: ${options.isFishMode}`);
     apiQueue.clientHeader = null;
     apiQueue.clientRows = [];
     fishModeFilePath = null; // Reseta o caminho do arquivo FISH
+
+    // --- LÓGICA DE LOCK ---
+    // Determina quais chaves serão usadas
+    let keysNeeded = [];
+    if (options.keyMode === 'chave1') keysNeeded = ['c6'];
+    else if (options.keyMode === 'chave2') keysNeeded = ['im'];
+    else if (options.keyMode === 'dupla' || options.keyMode === 'intercalar') keysNeeded = ['c6', 'im'];
+
+    const lockResult = await acquireApiLock(keysNeeded, currentUser.username, options.keyMode);
+
+    if (!lockResult.success) {
+        isApiQueueRunning = false;
+        event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
+        const msg = `⚠️ A chave '${lockResult.key}' está com status "Em uso" pelo usuário: ${lockResult.lockedBy}.`;
+        event.sender.send("api-log", msg);
+        event.sender.send("api-lock-error", msg); // Envia para o renderer exibir alert
+        return;
+    }
+
+    currentLockedKeys = keysNeeded;
+    // ----------------------
 
     // NOVO: Lógica para o modo FISH
     if (options.isFishMode) {
@@ -2512,6 +2737,13 @@ ipcMain.on("start-api-queue", async (event, options) => { // MODIFICADO para asy
 
     cancelCurrentApiTask = false;
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
+    
+    // Inicia Heartbeat do Lock (a cada 2 min)
+    if (apiHeartbeatInterval) clearInterval(apiHeartbeatInterval);
+    apiHeartbeatInterval = setInterval(() => {
+        heartbeatApiLock(currentLockedKeys);
+    }, 120000);
+
     processNextInApiQueue(event);
 });
 
@@ -2561,7 +2793,11 @@ ipcMain.on('schedule-fish-cleanup', (event, scheduleOptions) => {
     if (fishScheduleTimer) clearTimeout(fishScheduleTimer);
 
     store.set('fish-schedule', scheduleOptions);
-    event.sender.send('api-log', `✅ Agendamento FISH confirmado para ${new Date(scheduleOptions.startTime).toLocaleString('pt-BR')}.`);
+    
+    const formattedDate = new Date(scheduleOptions.startTime).toLocaleString('pt-BR');
+    logSystemAction(currentUser.username, 'Agendamento API', `Agendou limpeza para ${formattedDate}. Arquivos: ${scheduleOptions.files.length}`);
+    
+    event.sender.send('api-log', `✅ Agendamento FISH confirmado para ${formattedDate}.`);
     mainWindow.webContents.send('fish-schedule-update', scheduleOptions);
 
     const delay = new Date(scheduleOptions.startTime).getTime() - Date.now(); // Calculate delay in milliseconds
@@ -2574,6 +2810,9 @@ ipcMain.on('schedule-fish-cleanup', (event, scheduleOptions) => {
 ipcMain.on('cancel-fish-schedule', (event) => {
     if (fishScheduleTimer) clearTimeout(fishScheduleTimer);
     store.delete('fish-schedule');
+    
+    logSystemAction(currentUser.username, 'Agendamento API', 'Cancelou agendamento.');
+    
     event.sender.send('api-log', `❌ Agendamento cancelado pelo usuário.`);
     mainWindow.webContents.send('fish-schedule-update', null);
 });
@@ -2585,6 +2824,11 @@ ipcMain.on("reset-api-queue", (event) => {
     apiQueue = { pending: [], processing: null, completed: [], cancelled: [], clientHeader: null, clientRows: [] };
     isApiQueuePaused = false;
     fishModeFilePath = null; // Limpa o caminho do arquivo
+    
+    if (apiHeartbeatInterval) clearInterval(apiHeartbeatInterval);
+    releaseApiLock(currentLockedKeys);
+    currentLockedKeys = [];
+
     event.sender.send("api-log", "Fila e status reiniciados.");
     event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
 });
@@ -2711,6 +2955,11 @@ async function processNextInApiQueue(event) {
         event.sender.send("api-log", "\n✅ Fila de processamento concluída.");
         apiQueue.processing = null;
         isApiQueueRunning = false;
+        
+        // Libera o Lock
+        if (apiHeartbeatInterval) clearInterval(apiHeartbeatInterval);
+        releaseApiLock(currentLockedKeys);
+        currentLockedKeys = [];
 
         if (currentApiOptions.extractClients && !currentApiOptions.isFishMode) {
             await saveCollectedClients(event);
@@ -2863,12 +3112,23 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
 
         if (cnpjColNumber === -1) throw new Error(`A coluna "cpf" ou "cnpj" não foi encontrada.`);
 
-        const COLUNA_RESPOSTA_LETTER = "C";
+        // MODIFICADO: Define uma coluna temporária para controle, em vez de usar a C fixa
+        let statusColNumber = -1;
+        worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            if (cell.value && String(cell.value).trim().toUpperCase() === "STATUS_API_TEMP") {
+                statusColNumber = colNumber;
+            }
+        });
+        if (statusColNumber === -1) {
+            statusColNumber = worksheet.columnCount + 1;
+            worksheet.getCell(1, statusColNumber).value = "STATUS_API_TEMP";
+        }
+
         const registros = [];
         worksheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
             if (rowNum > 1) {
                 const cnpjCell = row.getCell(cnpjColNumber);
-                const respostaCell = row.getCell(COLUNA_RESPOSTA_LETTER);
+                const respostaCell = row.getCell(statusColNumber);
                 if (!respostaCell.value && cnpjCell.value) {
                     registros.push({ cnpj: normalizeCnpj(cnpjCell.value), rowNum });
                 }
@@ -2963,10 +3223,10 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
                     for (const { cnpj, rowNum } of lote) {
                         const row = worksheet.getRow(rowNum);
                         if (encontrados.has(cnpj)) {
-                            row.getCell(COLUNA_RESPOSTA_LETTER).value = "disponível";
+                            row.getCell(statusColNumber).value = "disponível";
                             countDisponivel++;
                         } else {
-                            row.getCell(COLUNA_RESPOSTA_LETTER).value = "cliente";
+                            row.getCell(statusColNumber).value = "cliente";
                             if (isFishMode) { // Se o modo Fish estiver ativo, envia para o webhook
                                 await sendToN8NWebhook(fileHeader, row.values);
                             }
@@ -3019,7 +3279,7 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
                 collectedClients.header = worksheet.getRow(1).values;
                 worksheet.eachRow((row, rowNum) => {
                     if (rowNum > 1) {
-                        const status = row.getCell(COLUNA_RESPOSTA_LETTER).value;
+                        const status = row.getCell(statusColNumber).value;
                         if (status === 'cliente') {
                             collectedClients.rows.push(row.values);
                         }
@@ -3041,7 +3301,7 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
                 let keptRows = 0;
                 finalWorksheet.eachRow((row, rowNum) => {
                     if (rowNum > 1) { // Pula o cabeçalho
-                        const status = row.getCell(COLUNA_RESPOSTA_LETTER).value;
+                        const status = row.getCell(statusColNumber).value;
                         if (status === 'disponível') {
                             newWorksheet.addRow(row.values);
                             keptRows++;
@@ -3049,11 +3309,10 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
                     }
                 });
 
-                // NOVO: Limpa a coluna de resposta (C) no arquivo final.
-                log('Limpando a coluna de resposta (C) no arquivo final...');
-                newWorksheet.eachRow((row) => {
-                    row.getCell(COLUNA_RESPOSTA_LETTER).value = null;
-                });
+                // MODIFICADO: Remove a coluna de status temporária do arquivo final
+                // e NÃO apaga mais a coluna C (preserva dados originais)
+                log('Removendo coluna de controle temporária...');
+                newWorksheet.spliceColumns(statusColNumber, 1);
 
                 await newWorkbook.xlsx.writeFile(filePath);
                 log(`✅ Limpeza final concluída. ${keptRows} registros 'disponível' foram mantidos no arquivo.`);
@@ -3103,6 +3362,7 @@ async function runFullPipeline(filePaths, modo, event) {
 
     try {
         log('Iniciando pipeline completo...');
+        logSystemAction(currentUser.username, 'Relacionamento', `Iniciou pipeline relacionamento. Modo: ${modo}`);
 
         // --- Ler arquivos a partir dos caminhos recebidos ---
         log(`Lendo arquivo de relatório: ${path.basename(filePaths.relatorio)}`);
@@ -3462,6 +3722,7 @@ ipcMain.on('split-by-responsible', async (event, filePath) => {
 
     log(`Iniciando leitura do arquivo: ${path.basename(filePath)}`);
     log('Isso pode demorar um pouco dependendo do tamanho da lista...');
+    logSystemAction(currentUser.username, 'Divisão Responsável', `Dividiu arquivo ${path.basename(filePath)}`);
 
     try {
         const workbook = new ExcelJS.Workbook();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 
 <head>
     <meta charset="UTF-8">
@@ -16,9 +16,6 @@
            ========================================================================== */
         :root {
             --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            --font-display: 'Inter', sans-serif;
-            /* Usando Inter para consistência */
-            --font-mono: 'Fira Code', monospace;
             --font-display: 'Orbitron', sans-serif;
             --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
             --radius: 0.75rem;
@@ -26,63 +23,69 @@
         }
 
         .dark-theme {
-            --bg-app: #0d1117;
-            /* Fundo principal, não mais preto absoluto */
-            --bg-sidebar: #010409;
-            /* Sidebar, bem escura para contraste */
-            --bg-main: #0d1117;
-            /* Fundo da área de conteúdo */
-            --bg-card: #161b22;
-            /* Fundo dos cards, mais claro */
-            --bg-element: #21262d;
-            /* Fundo de inputs, mais claro */
-            --bg-element-hover: #30363d;
-            /* Hover de elementos */
-            --text-primary: #f1f5f9;
-            --text-secondary: #8b949e;
-            /* Texto secundário, um pouco mais suave */
-            --text-muted: #6e7681;
-            /* Texto "muted", um pouco mais claro */
-            --border-color: #30363d;
-            /* Cor da borda padrão */
-            --border-hover: #8b949e;
-            /* Cor da borda em hover */
-            --shadow-color: rgba(0, 0, 0, 0.2);
-            --accent-blue: #00aaff;
-            /* Azul Neon (um pouco mais escuro) */
-            --accent-purple: #ff00ff;
-            /* Magenta Neon */
-            --accent-green: #00ff88;
-            /* Verde Neon */
-            --accent-red: #ff3366;
-            /* Vermelho Neon */
-            --accent-yellow: #ffff00;
-            /* Amarelo Neon */
-            --accent-amber: #ffaa00;
-            /* Laranja Neon */
-            --accent-text: #ffffff;
+            /* Superfícies */
+            --bg-app:          #0c0c0f;
+            --bg-sidebar:      #0f0f13;
+            --bg-main:         #0c0c0f;
+            --bg-card:         #141418;
+            --bg-element:      #1d1d22;
+            --bg-element-hover:#28282e;
+            --bg-input:        #1d1d22;
+            /* Texto — mais legível */
+            --text-primary:    #f2f2f6;
+            --text-secondary:  #b0b0c2;
+            --text-muted:      #80808f;
+            /* Bordas */
+            --border-color:    #26262c;
+            --border-hover:    #3c3c45;
+            /* Sombras */
+            --shadow-color:    rgba(0, 0, 0, 0.5);
+            /* Accent: índigo como cor primária da marca */
+            --accent-blue:     #6366f1;
+            --accent-purple:   #a855f7;
+            --accent-green:    #22c55e;
+            --accent-red:      #f43f5e;
+            --accent-yellow:   #eab308;
+            --accent-amber:    #f97316;
+            --accent-text:     #ffffff;
+            /* Aliases para compatibilidade com inline styles */
+            --accent-color:    var(--accent-blue);
+            --success-color:   var(--accent-green);
+            --warning-color:   var(--accent-yellow);
+            --danger:          var(--accent-red);
         }
 
         .light-theme {
-            --bg-app: #f6f8fa;
-            --bg-sidebar: #ffffff;
-            --bg-main: #f6f8fa;
-            --bg-card: #ffffff;
-            --bg-element: #f0f2f5;
-            --bg-element-hover: #e6ebf0;
-            --text-primary: #0f172a;
-            --text-secondary: #475569;
-            --text-muted: #64748b;
-            --border-color: #d0d7de;
-            --border-hover: #8b949e;
-            --shadow-color: rgba(0, 0, 0, 0.05);
-            --accent-blue: #2563eb;
-            --accent-purple: #7c3aed;
-            --accent-green: #16a34a;
-            --accent-red: #dc2626;
-            --accent-yellow: #d97706;
-            --accent-amber: #f59e0b;
-            --accent-text: #ffffff;
+            /* Superfícies — slate frio com toque índigo, sem branco puro */
+            --bg-app:          #e8e8f0;
+            --bg-sidebar:      #dddde8;
+            --bg-main:         #e8e8f0;
+            --bg-card:         #f0f0f7;
+            --bg-element:      #d8d8e4;
+            --bg-element-hover:#ceceda;
+            --bg-input:        #d8d8e4;
+            /* Texto */
+            --text-primary:    #0d0c1e;
+            --text-secondary:  #42405a;
+            --text-muted:      #706e88;
+            /* Bordas */
+            --border-color:    #c8c8d8;
+            --border-hover:    #adadc0;
+            /* Sombras */
+            --shadow-color:    rgba(10, 8, 30, 0.1);
+            /* Accents — índigo mais saturado no light */
+            --accent-blue:     #4f46e5;
+            --accent-purple:   #7c3aed;
+            --accent-green:    #16a34a;
+            --accent-red:      #e11d48;
+            --accent-yellow:   #d97706;
+            --accent-amber:    #ea580c;
+            --accent-text:     #ffffff;
+            /* Aliases */
+            --accent-color:    var(--accent-blue);
+            --success-color:   var(--accent-green);
+            --warning-color:   var(--accent-yellow);
+            --danger:          var(--accent-red);
         }
 
         .c6-theme {
@@ -132,13 +135,12 @@
 
         body {
             font-family: var(--font-sans);
-            text-shadow: 0 0 1px rgba(255, 255, 255, 0.1);
-            /* Suaviza o texto no fundo preto */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
             background-color: var(--bg-app);
             color: var(--text-primary);
-            margin: 0;
-            line-height: 1.6;
-            font-size: 14px;
+            line-height: 1.55;
+            font-size: 13px;
             transition: background-color var(--transition-speed), color var(--transition-speed);
         }
 
@@ -146,122 +148,143 @@
         .title-bar {
             border-bottom: 1px solid var(--border-color);
             -webkit-app-region: drag;
-            /* Permite arrastar a janela */
             height: 32px;
             background-color: var(--bg-sidebar);
             display: flex;
             justify-content: flex-end;
             align-items: center;
-            padding: 0 8px;
+            padding: 0 4px;
+            position: relative;
+            z-index: 100;
         }
 
         .title-bar-button {
-            border-radius: 0;
-            /* Remove o radius para um visual mais quadrado */
             -webkit-app-region: no-drag;
-            /* Botões não são arrastáveis */
-            width: 36px;
+            width: 40px;
             height: 32px;
             background: none;
             border: none;
-            color: var(--text-secondary);
-            font-size: 16px;
+            border-radius: 0;
+            color: var(--text-muted);
+            font-size: 13px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background-color 0.2s;
+            margin: 0;
+            padding: 0;
+            transition: background var(--transition-speed), color var(--transition-speed);
         }
 
-        .title-bar-button:hover {
+        .title-bar-button:hover:not(:disabled) {
             background-color: var(--bg-element-hover);
-            color: var(--active-accent, var(--accent-blue));
-            /* Brilho no hover */
+            color: var(--text-primary);
+            border-color: transparent;
+            box-shadow: none;
+            filter: none;
         }
 
         #close-btn:hover {
-            background-color: var(--accent-red);
-            color: #fff;
-            box-shadow: 0 0 10px var(--accent-red);
-            /* Efeito neon no fechar */
+            background-color: var(--accent-red) !important;
+            color: #fff !important;
         }
 
         h2 {
-            font-family: var(--font-display);
-            font-size: 1.4rem;
-            font-weight: 600;
+            font-family: var(--font-sans);
+            font-size: 0.85rem;
+            font-weight: 700;
             color: var(--text-primary);
             margin-bottom: 1rem;
             padding-bottom: 0.75rem;
             border-bottom: 1px solid var(--border-color);
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.08em;
+        }
+
+        h3 {
+            font-family: var(--font-sans);
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.75rem;
         }
 
         hr {
             border: none;
             height: 1px;
-            background: linear-gradient(90deg, transparent, var(--border-color), transparent);
-            margin: 28px 0;
+            background: var(--border-color);
+            margin: 18px 0;
         }
 
-        /* MODIFICADO: Estilo de botão com cores naturais e hover simples */
+        /* --- BUTTONS --- */
         button {
-            --base-color: var(--active-accent, var(--accent-blue));
-            background-color: transparent;
-            /* Remove background colorido */
-            font-family: var(--font-sans);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            padding: 10px 16px;
-            border-radius: var(--radius);
-            cursor: pointer;
-            margin: 4px 4px 4px 0;
-            font-size: 13px;
-            font-weight: 600;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 6px;
+            height: 32px;
+            padding: 0 12px;
+            font-family: var(--font-sans);
+            font-size: 12.5px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            cursor: pointer;
             white-space: nowrap;
-            transition: all var(--transition-speed) ease;
+            margin: 2px 2px 2px 0;
+            transition: background var(--transition-speed), color var(--transition-speed), border-color var(--transition-speed);
+            flex-shrink: 0;
         }
 
         button:hover:not(:disabled) {
             background-color: var(--bg-element-hover);
-            /* Hover simples */
+            color: var(--text-primary);
             border-color: var(--border-hover);
             transform: none;
-            /* Remove o efeito de levantar */
             box-shadow: none;
-            /* Remove o brilho/neon */
             filter: none;
-            /* Remove o brilho */
         }
 
         button:active:not(:disabled) {
-            background-color: var(--bg-element);
+            background-color: var(--bg-element-hover);
             transform: none;
-            box-shadow: none;
-            filter: none;
         }
 
         button:disabled {
-            background-color: var(--bg-element);
-            color: var(--text-muted);
+            opacity: 0.45;
             cursor: not-allowed;
         }
 
-        button:disabled svg {
-            fill: var(--text-muted);
+        button svg { flex-shrink: 0; }
+
+        .btn-primary {
+            background-color: var(--active-accent, var(--accent-blue));
+            color: #fff;
+            border-color: var(--active-accent, var(--accent-blue));
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background-color: var(--active-accent, var(--accent-blue));
+            filter: brightness(1.15);
+            border-color: transparent;
         }
 
         .btn-danger {
             --base-color: var(--accent-red);
+            color: var(--accent-red);
+            border-color: color-mix(in srgb, var(--accent-red) 40%, transparent);
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background-color: color-mix(in srgb, var(--accent-red) 12%, transparent);
+            border-color: var(--accent-red);
+            color: var(--accent-red);
         }
 
         .btn-danger svg {
-            fill: #fff;
+            fill: currentColor;
         }
 
         label {
@@ -272,21 +295,32 @@
             font-size: 13px;
         }
 
+        .dark-theme select,
+        .dark-theme input { color-scheme: dark; }
+        .light-theme select,
+        .light-theme input { color-scheme: light; }
+
         select,
         input[type="text"],
         input[type="date"],
         input[type="number"],
         textarea {
+            display: block;
+            width: 100%;
             background-color: var(--bg-element);
             color: var(--text-primary);
             border: 1px solid var(--border-color);
             border-radius: var(--radius);
-            padding: 10px 14px;
+            padding: 8px 12px;
             font-family: var(--font-sans);
-            /* Fonte padrão para inputs */
             font-size: 13px;
-            transition: all var(--transition-speed) ease;
-            width: 100%;
+            line-height: 1.4;
+            transition: border-color var(--transition-speed), box-shadow var(--transition-speed), background-color var(--transition-speed);
+        }
+
+        select option {
+            background-color: var(--bg-element);
+            color: var(--text-primary);
         }
 
         select:focus,
@@ -297,8 +331,7 @@
             outline: none;
             border-color: var(--active-accent, var(--accent-blue));
             background-color: var(--bg-card);
-            box-shadow: 0 0 10px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 50%, transparent);
-            /* Brilho neon no foco */
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 20%, transparent);
         }
 
         input::-webkit-outer-spin-button,
@@ -309,6 +342,7 @@
 
         input[type=number] {
             -moz-appearance: textfield;
+            appearance: textfield;
         }
 
         /* ==========================================================================
@@ -316,23 +350,18 @@
            ========================================================================== */
         .app-container {
             display: flex;
-            height: 100vh;
+            height: calc(100vh - 32px);
             width: 100vw;
-            animation: fadeIn 0.5s ease-out;
+            animation: fadeIn 0.3s ease-out;
         }
 
         .sidebar {
-            width: 240px;
+            width: 270px;
             background-color: var(--bg-sidebar);
-            padding: 1.5rem 1rem;
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
-            /* Sombra para destacar a sidebar */
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.3);
-            /* Sombra para destacar a sidebar */
+            padding: 1.25rem 0.875rem;
+            border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
-            /* border-right: 1px solid var(--border-color); */
-            /* Removido, a sombra já faz o trabalho */
             transition: background-color var(--transition-speed);
             flex-shrink: 0;
         }
@@ -340,40 +369,46 @@
         .main-content {
             flex-grow: 1;
             background-color: var(--bg-main);
-            padding: 2rem;
-            /* Aumenta o espaçamento geral */
-            overflow-y: auto;
+            padding: 24px 28px;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
         }
 
         .page-content {
             flex-grow: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
         }
 
-        /* MODIFICADO: De Grid para Flexbox para melhor redimensionamento */
         .grid {
             display: flex;
             flex-wrap: wrap;
-            gap: 2rem;
-            /* Aumenta o espaçamento entre os cards */
-            align-items: flex-start;
-            /* Alinha os cards no topo */
+            gap: 16px;
+            align-items: stretch;
+            align-content: stretch;
+            flex: 1;
+            min-height: 0;
+            overflow: clip; /* impede que sections redimensionadas extrapolem o rodapé */
         }
 
-        .grid>.section {
-            flex: 1 1 450px;
+        .grid > .section {
+            flex: 1 1 0;
+            min-width: 220px;
+            min-height: 0; /* permite shrink quando a janela for pequena */
+            max-height: 100%; /* seção nunca ultrapassa a altura do grid */
         }
 
-        /* Define a base de largura dos cards */
         .full-width {
             grid-column: 1 / -1;
+            flex-basis: 100%;
         }
 
         .two-column-tools {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
+            gap: 14px;
         }
 
         /* ==========================================================================
@@ -382,58 +417,76 @@
 
         /* 4.1 Sidebar / Navigation --------------------------------------------- */
         .sidebar-header {
-            text-align: center;
-            margin-bottom: 2.5rem;
+            padding: 14px 10px 12px;
+            margin-bottom: 0;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        @keyframes titleShine {
+            0%   { background-position: -200% center; }
+            100% { background-position: 200% center; }
         }
 
         .sidebar-title {
             font-family: var(--font-display);
-            font-size: 1.6rem;
+            font-size: 0.95rem;
             font-weight: 700;
-            color: var(--text-primary);
-            text-shadow: 0 0 5px var(--accent-blue);
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            background: linear-gradient(
+                90deg,
+                var(--text-secondary) 0%,
+                var(--text-secondary) 30%,
+                #ffffff 48%,
+                #ffffff 52%,
+                var(--text-secondary) 70%,
+                var(--text-secondary) 100%
+            );
+            background-size: 250% auto;
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: titleShine 5s linear infinite;
         }
 
         .sidebar-nav {
             list-style: none;
-            padding: 0;
+            padding: 8px 6px 0;
             margin: 0;
         }
 
         .nav-item a {
             display: flex;
             align-items: center;
-            gap: 1rem;
-            /* Aumenta o espaçamento */
-            padding: 1rem;
-            /* Aumenta o padding */
-            margin-bottom: 0.75rem;
-            /* Aumenta o espaçamento entre itens */
-            border-radius: 4px;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.3rem;
+            border-radius: var(--radius);
             color: var(--text-secondary);
             text-decoration: none;
+            font-size: 0.95rem;
             font-weight: 500;
             transition: all var(--transition-speed) ease;
         }
 
         .nav-item a:hover {
             background-color: var(--bg-element-hover);
-            color: var(--active-accent, var(--accent-blue));
-            box-shadow: inset 3px 0 0 var(--active-accent, var(--accent-blue));
-            /* Linha neon no hover */
+            color: var(--text-primary);
         }
 
         .nav-item a.active {
-            background-color: color-mix(in srgb, var(--active-accent, var(--accent-blue)) 20%, transparent);
+            background-color: color-mix(in srgb, var(--active-accent, var(--accent-blue)) 15%, transparent);
             color: var(--active-accent, var(--accent-blue));
-            border-left: 3px solid var(--active-accent, var(--accent-blue));
-            box-shadow: 0 0 10px color-mix(in srgb, var(--active-accent, var(--accent-blue)) 50%, transparent);
-            /* Brilho neon na ativa */
+            border-left: 2px solid var(--active-accent, var(--accent-blue));
+            padding-left: calc(1rem - 2px);
         }
 
         .nav-item svg {
-            width: 20px;
-            height: 20px;
+            width: 22px;
+            height: 22px;
             flex-shrink: 0;
         }
 
@@ -442,36 +495,222 @@
             text-align: center;
             font-size: 0.8rem;
             color: var(--text-muted);
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* ── Changelog Bell ─────────────────────────────── */
+        .changelog-btn {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 7px 10px;
+            margin-bottom: 10px;
+            background: var(--bg-element);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .changelog-btn:hover {
+            background: var(--bg-element-hover);
+            border-color: var(--border-hover);
+            color: var(--text-primary);
+        }
+        .changelog-btn svg { flex-shrink: 0; }
+        .changelog-badge {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 99px;
+            background: #ef4444;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            margin-left: auto;
+            animation: badgePop 0.3s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        @keyframes badgePop {
+            0%   { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        /* ── Changelog Modal ────────────────────────────── */
+        .changelog-entry {
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .changelog-entry:last-child { border-bottom: none; }
+        .changelog-entry-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .changelog-version {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-primary);
+            background: color-mix(in srgb, var(--accent-color) 15%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent-color) 30%, transparent);
+            padding: 2px 8px;
+            border-radius: 99px;
+        }
+        .changelog-highlights {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            flex: 1;
+        }
+        .changelog-date {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .changelog-notes {
+            margin: 0;
+            padding-left: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .changelog-notes li {
+            font-size: 12.5px;
+            color: var(--text-secondary);
+            line-height: 1.5;
         }
 
         .page-content {
             display: none;
-            animation: fadeIn 0.3s ease forwards;
-            /* Ajusta a duração e garante que o estado final seja mantido */
         }
+
+        /* ================================================================
+           TAB TRANSITION — HOLOGRAPHIC RECONSTRUCTION
+           ================================================================ */
 
         .page-content.active {
-            display: block;
+            display: flex;
+            flex-direction: column;
+            animation: pageIn 0.28s ease forwards;
         }
 
+        @keyframes pageIn {
+            0%   { opacity: 0; transform: translateY(6px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Exit: static discharge — brief white overexposure then collapse */
         .page-content.fade-out {
-            /* Renomeado e ajustado para fade out */
-            animation: fadeOut 0.3s ease forwards;
+            animation: fadeOut 0.22s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+        }
+
+        @keyframes fadeOut {
+            0%   { opacity: 1; transform: translateY(0) scale(1); filter: none; }
+            14%  { filter: brightness(4) saturate(0.05); }
+            100% { opacity: 0; transform: translateY(-6px) scale(0.989); filter: brightness(0.1) blur(3px); }
+        }
+
+        /* ── SECTION MATERIALIZE ──
+           Each panel builds itself up from a thin bright line at center,
+           like a holographic projection resolving into solid form          */
+        @keyframes sectionMaterialize {
+            0% {
+                opacity: 0.3;
+                transform: scaleY(0.04);
+                transform-origin: center;
+                filter: brightness(9) saturate(0);
+            }
+            30% {
+                opacity: 1;
+                transform: scaleY(1.032);
+                filter: brightness(1.6) saturate(1.3);
+            }
+            56% {
+                transform: scaleY(0.998);
+                filter: brightness(1.05);
+            }
+            100% {
+                opacity: 1;
+                transform: scaleY(1);
+                filter: brightness(1);
+            }
+        }
+
+        .page-content.active .section,
+        .page-content.active .top-info-panel,
+        .page-content.active .monitoring-filter-bar {
+            opacity: 0;
+            animation: sectionMaterialize 0.48s cubic-bezier(0.34, 1.45, 0.64, 1) forwards;
+        }
+
+        /* Staggered — panels materialize one after the other */
+        .page-content.active .top-info-panel          { animation-delay: 0.04s; }
+        .page-content.active .monitoring-filter-bar   { animation-delay: 0.04s; }
+        .page-content.active .section:nth-child(1)    { animation-delay: 0.05s; }
+        .page-content.active .section:nth-child(2)    { animation-delay: 0.13s; }
+        .page-content.active .section:nth-child(3)    { animation-delay: 0.20s; }
+        .page-content.active .section:nth-child(4)    { animation-delay: 0.26s; }
+        .page-content.active .section:nth-child(5)    { animation-delay: 0.31s; }
+        .page-content.active .section:nth-child(6)    { animation-delay: 0.35s; }
+        .page-content.active .section:nth-child(7)    { animation-delay: 0.38s; }
+        .page-content.active .section:nth-child(8)    { animation-delay: 0.40s; }
+
+        /* ── HUD RAILS — ambient vertical light bars ──
+           Two thin lines on left/right edges with a flowing light orb     */
+        .hud-rail {
+            position: fixed;
+            top: 0; bottom: 0;
+            width: 1px;
+            pointer-events: none;
+            z-index: 100;
+            overflow: hidden;
+            background: color-mix(in srgb, var(--hud-accent, var(--accent-blue)) 8%, transparent);
+            transition: background 0.6s ease;
+        }
+        .hud-rail--right { right: 0; }
+
+        /* flowing orb */
+        .hud-rail::after {
+            content: '';
+            position: absolute;
+            left: 0; width: 1px;
+            height: 220px;
+            background: linear-gradient(
+                to bottom,
+                transparent 0%,
+                color-mix(in srgb, var(--hud-accent, var(--accent-blue)) 40%, transparent) 25%,
+                var(--hud-accent, var(--accent-blue)) 50%,
+                color-mix(in srgb, var(--hud-accent, var(--accent-blue)) 40%, transparent) 75%,
+                transparent 100%
+            );
+            animation: hudFlow var(--rail-dur, 8s) linear infinite var(--rail-delay, 0s);
+        }
+
+        @keyframes hudFlow {
+            0%   { top: -220px; }
+            100% { top: 100vh;  }
+        }
+
+        /* Sidebar tab ping on activation */
+        @keyframes tabPing {
+            0%   { box-shadow: 0 0 0 0   color-mix(in srgb, var(--active-accent, var(--accent-blue)) 70%, transparent); }
+            65%  { box-shadow: 0 0 0 8px color-mix(in srgb, var(--active-accent, var(--accent-blue))  0%, transparent); }
+            100% { box-shadow: none; }
+        }
+        .tab-button.active {
+            animation: tabPing 0.5s ease forwards;
         }
 
         .file-item.new-item {
             animation: fileItemSlide 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* MODIFICADO: Animação de Fade Out */
-        @keyframes fadeOut {
-            from {
-                opacity: 1;
-            }
-
-            to {
-                opacity: 0;
-            }
         }
 
         @keyframes fadeIn {
@@ -490,25 +729,105 @@
         .section {
             background-color: var(--bg-card);
             border: 1px solid var(--border-color);
-            /* Borda neutra */
+            border-radius: var(--radius);
             padding: 1.5rem;
-            box-shadow: 0 4px 6px var(--shadow-color);
-            /* Sombra sutil */
+            box-shadow: 0 1px 3px var(--shadow-color);
             position: relative;
-            transition: all var(--transition-speed) ease;
-            resize: both;
+            transition: border-color var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
             overflow: auto;
-            min-width: 350px;
+            min-width: 220px;
             display: flex;
             flex-direction: column;
-            min-height: 200px;
+            min-height: 160px;
+        }
+
+        /* Impede que filhos diretos encolham no flex column —
+           sem isso o conteúdo nunca vai transbordar e o scroll nunca dispara */
+        .section > * {
+            flex-shrink: 0;
+        }
+
+        /* Handle de resize customizado — área grande para fácil arrasto */
+        .section-resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 36px;
+            height: 36px;
+            cursor: se-resize;
+            z-index: 10;
+            display: flex;
+            align-items: flex-end;
+            justify-content: flex-end;
+            padding: 6px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .section:hover .section-resize-handle,
+        .section-resize-handle.dragging {
+            opacity: 1;
+        }
+        .section-resize-handle::after {
+            content: '';
+            display: block;
+            width: 10px;
+            height: 10px;
+            border-right: 2px solid var(--border-hover);
+            border-bottom: 2px solid var(--border-hover);
+            border-radius: 0 0 3px 0;
+        }
+        .section-resize-handle:hover::after,
+        .section-resize-handle.dragging::after {
+            border-color: var(--accent-blue);
+        }
+
+        /* Layout compacto: seção entre 220-380px de largura */
+        .section--compact {
+            padding: 1rem;
+        }
+        .section--compact h2 {
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+        }
+        .section--compact h3 {
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+        .section--compact .section-header {
+            margin-bottom: 0.75rem;
+        }
+        .section--compact label {
+            font-size: 11.5px;
+        }
+        .section--compact .button,
+        .section--compact button {
+            font-size: 11.5px;
+            padding: 0 8px;
+            height: 28px;
+        }
+
+        /* Layout mínimo: seção abaixo de 260px */
+        .section--tiny {
+            padding: 0.75rem;
+            min-height: 120px;
+        }
+        .section--tiny h2 {
+            font-size: 0.7rem;
+            letter-spacing: 0.03em;
+        }
+        .section--tiny .section-controls {
+            gap: 4px;
+        }
+        .section--tiny .section-control-btn {
+            width: 22px;
+            height: 22px;
         }
 
         .section:hover {
             border-color: var(--border-hover);
-            /* Borda neutra no hover */
-            box-shadow: 0 6px 8px var(--shadow-color);
-            /* Sombra um pouco mais forte no hover */
+            box-shadow: 0 4px 12px var(--shadow-color);
         }
 
         .section.sortable-ghost {
@@ -545,27 +864,26 @@
         }
 
         .section-control-btn {
-            width: 24px;
-            height: 24px;
-            border: 1px solid var(--border-color);
-            border-radius: 2px;
+            width: 22px;
+            height: 22px;
+            border: 1px solid transparent;
+            border-radius: 6px;
             background-color: transparent;
-            color: var(--text-secondary);
+            color: var(--text-muted);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s ease;
-            font-size: 12px;
+            font-size: 11px;
             padding: 0;
+            margin: 0;
         }
 
         .section-control-btn:hover {
-            background-color: transparent;
-            /* CORREÇÃO: Remove o fundo no hover */
+            background-color: var(--bg-element-hover);
+            border-color: var(--border-color);
             color: var(--text-primary);
-            /* CORREÇÃO: Texto primário no hover */
-            transform: scale(1.05);
         }
 
         .drag-handle {
@@ -606,65 +924,49 @@
         .section-content {
             flex-grow: 1;
             overflow-y: auto;
+            min-height: 0;
+            flex-shrink: 1;
         }
 
         /* 4.3 File Lists ------------------------------------------------------- */
         .files {
-            height: 52px;
-            /* Altura fixa para alinhar com botões */
-            padding: 14px;
-            border-radius: 4px;
-            /* Bordas mais quadradas */
-            margin-top: 10px;
-            margin-bottom: 16px;
-            border: 1px solid var(--border-color);
-            /* Borda neutra */
+            min-height: 46px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            margin-top: 8px;
+            margin-bottom: 14px;
+            border: 1px dashed var(--border-color);
+            background-color: color-mix(in srgb, var(--bg-element) 50%, transparent);
             position: relative;
             overflow: hidden;
-            /* Remove o scroll */
-            box-shadow: none;
-            /* Remove o brilho/neon */
             display: flex;
-            /* Alinha o conteúdo verticalmente */
             align-items: center;
-            /* Alinha o conteúdo verticalmente */
+            transition: border-color var(--transition-speed);
         }
 
         .files:empty::after {
             content: 'Nenhum arquivo selecionado';
             color: var(--text-muted);
             font-style: italic;
-            font-size: 13px;
+            font-size: 12px;
         }
 
         .file-item {
-            background-color: var(--bg-card);
+            background-color: var(--bg-element);
             color: var(--text-primary);
-            border-radius: 2px;
-            /* Bordas mais quadradas */
-            margin-top: 6px;
+            border-radius: 6px;
             margin: 0;
-            /* Reset de margem */
-            padding: 8px 12px;
+            padding: 7px 12px;
             width: 100%;
             font-size: 12px;
             border: 1px solid var(--border-color);
-            /* Borda sutil */
             border-left: 3px solid var(--active-accent, var(--accent-blue));
-            /* Destaque com a cor da aba */
-            box-shadow: none;
-            /* Remove o brilho/neon */
-            transition: all var(--transition-speed) ease;
+            transition: border-color var(--transition-speed) ease, background-color var(--transition-speed) ease;
         }
 
         .file-item:hover {
-            transform: none;
-            /* Remove o efeito de deslizar */
             border-color: var(--border-hover);
-            box-shadow: none;
-            /* Remove o brilho/neon */
             background-color: var(--bg-element-hover);
-            /* Hover simples */
         }
 
         .files {
@@ -780,27 +1082,17 @@
         .logs {
             flex-grow: 1;
             min-height: 150px;
-            background-color: #050505;
-            /* Fundo mais escuro para logs */
-            color: var(--accent-green);
-            /* Texto verde neon */
-            border-radius: 4px;
             background-color: var(--bg-element);
-            /* Fundo do log mais claro */
             border: 1px solid var(--border-color);
-            /* Borda padrão */
-            color: #a6acb3;
-            /* Cor do texto do log clareada */
-            border-radius: 4px;
+            color: #8b949e;
+            border-radius: var(--radius);
             padding: 16px;
             overflow-y: auto;
             font-family: var(--font-mono);
             font-size: 12px;
             white-space: pre-wrap;
             margin-top: 10px;
-            line-height: 1.5;
-            box-shadow: inset 0 0 10px color-mix(in srgb, var(--accent-green) 30%, transparent);
-            /* Sombra interna neon */
+            line-height: 1.6;
             box-shadow: inset 0 2px 6px var(--shadow-color);
         }
 
@@ -808,11 +1100,10 @@
         .progress-bar-container {
             width: 100%;
             background-color: var(--bg-element);
-            border-radius: 6px;
-            height: 12px;
-            margin-top: 16px;
+            border-radius: 99px;
+            height: 5px;
+            margin-top: 12px;
             overflow: hidden;
-            box-shadow: inset 0 1px 3px var(--shadow-color);
             position: relative;
         }
 
@@ -820,23 +1111,18 @@
             width: 0%;
             height: 100%;
             background-color: var(--active-accent, var(--accent-blue));
-            border-radius: 6px;
+            border-radius: 99px;
             position: relative;
             overflow: hidden;
-            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .progress-bar-fill::after {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            right: 0;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-            animation: shimmer 2s infinite;
-            box-shadow: 0 0 10px var(--active-accent, var(--accent-blue));
-            /* Brilho neon na barra */
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+            animation: shimmer 1.8s infinite;
         }
 
         /* 4.6 Form Controls ---------------------------------------------------- */
@@ -862,14 +1148,10 @@
         .toggle-switch .switch {
             position: relative;
             display: inline-block;
-            --switch-width: 44px;
-            --switch-height: 24px;
-            --switch-padding: 3px;
-            --handle-size: calc(var(--switch-height) - (var(--switch-padding) * 2));
-            --handle-travel-distance: calc(var(--switch-width) - var(--handle-size) - (var(--switch-padding) * 2));
-            width: var(--switch-width);
-            height: var(--switch-height);
+            width: 36px;
+            height: 20px;
             margin: 0;
+            flex-shrink: 0;
         }
 
         .toggle-switch .switch input {
@@ -881,27 +1163,22 @@
         .toggle-switch .slider {
             position: absolute;
             cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            inset: 0;
             background-color: var(--bg-element-hover);
-            border-radius: var(--switch-height);
+            border-radius: 20px;
             transition: background-color var(--transition-speed) ease;
-            box-shadow: inset 0 1px 3px var(--shadow-color);
         }
 
         .toggle-switch .slider:before {
             position: absolute;
             content: "";
-            height: var(--handle-size);
-            width: var(--handle-size);
-            left: var(--switch-padding);
-            bottom: var(--switch-padding);
-            background-color: var(--text-primary);
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            top: 3px;
+            background-color: var(--text-secondary);
             border-radius: 50%;
-            box-shadow: 0 1px 6px var(--shadow-color);
-            transition: transform var(--transition-speed) cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform var(--transition-speed) ease, background-color var(--transition-speed);
         }
 
         .toggle-switch input:checked+.slider {
@@ -909,11 +1186,12 @@
         }
 
         .toggle-switch input:checked+.slider:before {
-            transform: translateX(var(--handle-travel-distance));
+            transform: translateX(16px);
+            background-color: #fff;
         }
 
         .toggle-switch input:focus-visible+.slider {
-            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 25%, transparent), inset 0 1px 3px var(--shadow-color);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 25%, transparent);
         }
 
         .toggle-switch .toggle-label {
@@ -980,20 +1258,31 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 1.5rem;
+            margin-bottom: 20px;
+            flex-shrink: 0;
         }
 
         #current-tab-title {
-            margin-bottom: 4px;
-            color: var(--active-accent, var(--accent-blue));
-            font-size: 1.8rem;
+            margin-bottom: 3px;
+            color: var(--text-primary);
+            font-size: 1.25rem;
             font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
         }
 
         #current-tab-description {
-            color: var(--text-secondary);
-            font-size: 1rem;
-            max-width: 80ch;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            max-width: 70ch;
+            line-height: 1.4;
+        }
+
+        #main-app-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text-primary);
         }
 
         #main-app-title.hidden {
@@ -1006,34 +1295,96 @@
             margin-top: 8px;
         }
 
+        /* ── Update overlay ── */
+        #update-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: rgba(12, 12, 15, 0.96);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            pointer-events: all;
+        }
+        #update-overlay.visible {
+            display: flex;
+        }
+        #update-overlay .upd-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--accent-blue) 15%, transparent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: upd-pulse 1.8s ease-in-out infinite;
+        }
+        #update-overlay .upd-icon svg {
+            animation: upd-spin 2s linear infinite;
+        }
+        #update-overlay .upd-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: 0.01em;
+        }
+        #update-overlay .upd-sub {
+            font-size: 12.5px;
+            color: var(--text-secondary);
+        }
+        #update-overlay .upd-bar-wrap {
+            width: 220px;
+            height: 4px;
+            border-radius: 99px;
+            background: var(--bg-element);
+            overflow: hidden;
+        }
+        #update-overlay .upd-bar {
+            height: 100%;
+            border-radius: 99px;
+            background: var(--accent-blue);
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+        @keyframes upd-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-blue) 40%, transparent); }
+            50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent-blue) 0%, transparent); }
+        }
+        @keyframes upd-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
         .app-footer {
             text-align: center;
-            margin-top: 1rem;
-            padding-top: 1rem;
+            margin-top: 16px;
+            padding-top: 14px;
             border-top: 1px solid var(--border-color);
             color: var(--text-muted);
-            font-size: 0.85em;
+            font-size: 11px;
             flex-shrink: 0;
         }
 
-        .app-footer p {
-            margin: 0;
-        }
+        .app-footer p { margin: 0; }
 
         .footer-controls {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 1.5rem;
-            margin-bottom: 0.5rem;
+            gap: 16px;
+            margin-bottom: 6px;
         }
 
         .theme-toggle {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 2px;
             background-color: var(--bg-element);
-            padding: 4px;
+            padding: 3px;
             border-radius: 99px;
             border: 1px solid var(--border-color);
         }
@@ -1041,27 +1392,31 @@
         .theme-toggle button {
             background-color: transparent;
             border: none;
-            padding: 6px;
+            padding: 5px;
             border-radius: 99px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--text-secondary);
-            transition: all var(--transition-speed);
+            color: var(--text-muted);
+            height: auto;
             margin: 0;
+            transition: background var(--transition-speed), color var(--transition-speed);
+        }
+
+        .theme-toggle button:hover:not(:disabled) {
+            background-color: transparent;
+            color: var(--text-secondary);
+            border-color: transparent;
         }
 
         .theme-toggle button.active {
             background-color: var(--bg-card);
             color: var(--text-primary);
-            box-shadow: 0 2px 4px var(--shadow-color);
+            box-shadow: 0 1px 3px var(--shadow-color);
         }
 
-        .theme-toggle svg {
-            width: 16px;
-            height: 16px;
-        }
+        .theme-toggle svg { width: 14px; height: 14px; }
 
         /* ==========================================================================
            5. TAB-SPECIFIC STYLES
@@ -1099,11 +1454,11 @@
         }
 
         .action-group {
-            background-color: var(--bg-element);
+            background-color: color-mix(in srgb, var(--bg-element) 60%, transparent);
             border: 1px solid var(--border-color);
             border-radius: var(--radius);
-            padding: 20px;
-            margin-top: 20px;
+            padding: 1.25rem;
+            margin-top: 1rem;
         }
 
         .action-group .input-group {
@@ -1781,21 +2136,32 @@
         }
 
         .modal-close-btn {
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            font-size: 2rem;
+            width: 28px;
+            height: 28px;
+            background: var(--bg-element);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-size: 1.25rem;
             font-weight: 300;
             cursor: pointer;
             padding: 0;
             margin: 0;
             line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             box-shadow: none;
+            transition: background var(--transition-speed), color var(--transition-speed), border-color var(--transition-speed);
         }
 
-        .modal-close-btn:hover {
+        .modal-close-btn:hover:not(:disabled) {
+            background: var(--bg-element-hover);
             color: var(--text-primary);
-            transform: scale(1.1);
+            border-color: var(--border-hover);
+            transform: none;
+            box-shadow: none;
+            filter: none;
         }
 
         .modal-body {
@@ -1953,90 +2319,22 @@
         .button.primary-button {
             background-color: var(--active-accent, var(--accent-blue));
             color: var(--accent-text);
+            border-color: var(--active-accent, var(--accent-blue));
         }
 
-        /* Estilo genérico para botões primários */
-        .button.primary-button:hover {
-            transform: translateY(-1px);
-        }
-
+        .button.primary-button:hover { filter: brightness(1.1); }
 
         /* ==========================================================================
            7. UTILITIES & ANIMATIONS
            ========================================================================== */
-        .custom-scrollbar::-webkit-scrollbar,
-        .main-content::-webkit-scrollbar,
-        .logs::-webkit-scrollbar,
-        .detail-list::-webkit-scrollbar,
-        .tabulation-call-list::-webkit-scrollbar,
-        .modal-body::-webkit-scrollbar,
-        .section::-webkit-scrollbar,
-        .files::-webkit-scrollbar,
-        .results-container::-webkit-scrollbar,
-        textarea::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-track,
-        .main-content::-webkit-scrollbar-track,
-        .logs::-webkit-scrollbar-track,
-        .detail-list::-webkit-scrollbar-track,
-        .tabulation-call-list::-webkit-scrollbar-track,
-        .modal-body::-webkit-scrollbar-track,
-        .section::-webkit-scrollbar-track,
-        .files::-webkit-scrollbar-track,
-        .results-container::-webkit-scrollbar-track,
-        textarea::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb,
-        .main-content::-webkit-scrollbar-thumb,
-        .logs::-webkit-scrollbar-thumb,
-        .detail-list::-webkit-scrollbar-thumb,
-        .tabulation-call-list::-webkit-scrollbar-thumb,
-        .modal-body::-webkit-scrollbar-thumb,
-        .section::-webkit-scrollbar-thumb,
-        .files::-webkit-scrollbar-thumb,
-        .results-container::-webkit-scrollbar-thumb,
-        textarea::-webkit-scrollbar-thumb {
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb {
             background-color: var(--bg-element-hover);
-            border-radius: 4px;
+            border-radius: 3px;
         }
+        ::-webkit-scrollbar-thumb:hover { background-color: var(--border-hover); }
 
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover,
-        .main-content::-webkit-scrollbar-thumb:hover,
-        .logs::-webkit-scrollbar-thumb:hover,
-        .detail-list::-webkit-scrollbar-thumb:hover,
-        .tabulation-call-list::-webkit-scrollbar-thumb:hover,
-        .modal-body::-webkit-scrollbar-thumb:hover,
-        .section::-webkit-scrollbar-thumb:hover,
-        .files::-webkit-scrollbar-thumb:hover,
-        .results-container::-webkit-scrollbar-thumb:hover,
-        textarea::-webkit-scrollbar-thumb:hover {
-            background-color: var(--text-muted);
-        }
-
-        .section::-webkit-resizer {
-            background-color: var(--border-color);
-            border-radius: 2px;
-            border-width: 4px;
-            border-style: solid;
-            border-color: transparent;
-            border-right-color: var(--border-color);
-            border-bottom-color: var(--border-color);
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-
-            to {
-                opacity: 1;
-            }
-        }
 
         @keyframes pulse {
 
@@ -2188,7 +2486,11 @@
     <div class="app-container">
         <aside class="sidebar">
             <header class="sidebar-header">
-                <h1 class="sidebar-title">Gerenciador de Bases</h1>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="var(--accent-blue)" viewBox="0 0 16 16" style="flex-shrink:0;">
+                    <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v.5H1v-.5z"/>
+                    <path d="M1 4.5h14v2a.5.5 0 0 1-.5.5h-13A.5.5 0 0 1 1 6.5v-2zm0 3h14v5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-5z"/>
+                </svg>
+                <span class="sidebar-title">Base Manager</span>
             </header>
             <nav>
                 <ul class="sidebar-nav">
@@ -2227,9 +2529,19 @@
                 </ul>
             </nav>
             <footer class="sidebar-footer">
+                <button class="changelog-btn" id="changelogBtn" title="Notas de Atualização">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zM8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4.002 4.002 0 0 0-3.203-3.92L8 1.917zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5.002 5.002 0 0 1 13 6c0 .88.32 4.2 1.22 6z"/>
+                    </svg>
+                    Notas de Atualização
+                    <span class="changelog-badge" id="changelogBadge">0</span>
+                </button>
                 <p>Usuário: <strong id="currentUser"></strong></p>
                 <button id="logoutBtn" class="btn-danger"
-                    style="padding: 4px 10px; font-size: 12px; display: none; margin-top: 8px;">Sair</button>
+                    style="padding: 5px 14px; font-size: 12px; display: none; margin-top: 10px; width: 100%;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2z"/><path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/></svg>
+                    Sair
+                </button>
             </footer>
         </aside>
 
@@ -2255,8 +2567,8 @@
                         <div class="section-header">
                             <h2>Limpeza por Lista Raiz</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <div
@@ -2328,8 +2640,8 @@
                         <div class="section-header">
                             <h2>Logs e Progresso</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <div style="margin-bottom: 1rem;"><button id="toggle-extra-tools-btn"
@@ -2354,8 +2666,8 @@
                         <div class="section-header">
                             <h2>Fila de Processamento</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <div id="apiDropzone">
@@ -2383,8 +2695,8 @@
                         <div class="section-header">
                             <h2>Configurações e Ações</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <div style="margin-bottom: 20px;">
@@ -2478,8 +2790,8 @@
                         <div class="section-header">
                             <h2>Enriquecer Planilhas</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <p
@@ -2531,8 +2843,8 @@
                         <div class="section-header">
                             <h2>Logs e Progresso do Enriquecimento</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <div id="enrichmentProgressContainer"></div>
@@ -2642,8 +2954,8 @@
                         <div class="section-header">
                             <h2>Verificar Números na Blocklist</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <div class="section-content">
@@ -2666,10 +2978,20 @@
                         <div class="section-header">
                             <h2>Ferramentas da Blocklist</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
+                        <div class="tool-group">
+                            <h3>Adicionar Números Manualmente</h3>
+                            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Cole um ou mais números de telefone (separados por vírgula, espaço ou linha) para adicioná-los diretamente à blocklist.</p>
+                            <textarea id="manual-blocklist-input" class="large-textarea" rows="4" placeholder="Ex:&#10;21999998888&#10;11988887777, 31977776666&#10;85966665555"></textarea>
+                            <button id="addManualBlocklistBtn" style="margin-top: 8px;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" style="margin-right:6px;"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+                                Adicionar à Blocklist
+                            </button>
+                        </div>
+                        <hr>
                         <div class="tool-group">
                             <h3>Alimentar Banco de Dados da Blocklist</h3>
                             <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 15px;">Selecione
@@ -2708,8 +3030,8 @@
                         <div class="section-header">
                             <h2>Logs e Progresso da Blocklist</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <div id="blocklistLog" class="logs custom-scrollbar">Aguardando início...</div>
@@ -2724,8 +3046,8 @@
                         <div class="section-header">
                             <h2>Pipeline de Relacionamento</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
 
@@ -2788,8 +3110,8 @@
                         <div class="section-header">
                             <h2>Logs do Processo</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <div id="relacionamentoLog" class="logs custom-scrollbar">Aguardando o início do processo...
@@ -2801,8 +3123,8 @@
                         <div class="section-header">
                             <h2>Divisão por Responsável</h2>
                             <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar">⋮⋮</button>
-                                <button class="section-control-btn hide-section" title="Ocultar">👁</button>
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
                             </div>
                         </div>
                         <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 1rem;">
@@ -3180,7 +3502,116 @@
         </div>
     </div>
 
+    <!-- Update overlay — blocks all interaction while downloading/installing -->
+    <div id="update-overlay">
+        <div class="upd-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 1 1-9-9"/>
+                <polyline points="21 3 21 9 15 9"/>
+            </svg>
+        </div>
+        <span class="upd-title" id="upd-title">Baixando atualização...</span>
+        <div class="upd-bar-wrap">
+            <div class="upd-bar" id="upd-bar"></div>
+        </div>
+        <span class="upd-sub" id="upd-sub">Por favor, aguarde</span>
+    </div>
+
     <script src="renderer.js"></script>
+    <script>
+        /* ── AUTO-UPDATE OVERLAY ── */
+        (function () {
+            const overlay  = document.getElementById('update-overlay');
+            const titleEl  = document.getElementById('upd-title');
+            const subEl    = document.getElementById('upd-sub');
+            const barEl    = document.getElementById('upd-bar');
+
+            if (!window.electronAPI) return;
+
+            window.electronAPI.onUpdateDownloading(({ version }) => {
+                titleEl.textContent = `Baixando atualização v${version}...`;
+                subEl.textContent   = 'Por favor, aguarde';
+                barEl.style.width   = '0%';
+                overlay.classList.add('visible');
+            });
+
+            window.electronAPI.onUpdateProgress(({ percent }) => {
+                barEl.style.width = percent + '%';
+                subEl.textContent = `${percent}% concluído`;
+            });
+
+            window.electronAPI.onUpdateReady(({ version }) => {
+                titleEl.textContent = 'Reiniciando para atualizar';
+                subEl.textContent   = `v${version} instalada — reiniciando agora...`;
+                barEl.style.width   = '100%';
+            });
+        })();
+
+        /* ── TAB FX: TEXT SCRAMBLE + HUD RAILS ── */
+        (function () {
+            /* --- Text scramble on section headers --- */
+            const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$%&@~:/\\';
+
+            function scramble(el) {
+                const orig = el.textContent;
+                if (!orig.trim() || orig.length > 50) return;
+                let f = 0;
+                const FRAMES = 16;
+                const tick = () => {
+                    const pct = f / FRAMES;
+                    el.textContent = [...orig].map((ch, i) => {
+                        if (ch === ' ' || ch === '\n') return ch;
+                        if (i / orig.length < pct) return ch;
+                        return CHARS[Math.floor(Math.random() * CHARS.length)];
+                    }).join('');
+                    if (++f <= FRAMES) requestAnimationFrame(tick);
+                    else el.textContent = orig;
+                };
+                requestAnimationFrame(tick);
+            }
+
+            document.addEventListener('tab-changed', ({ detail: { tabId } }) => {
+                const page = document.getElementById(tabId);
+                if (!page) return;
+                page.querySelectorAll('.section-header h3').forEach((el, i) => {
+                    setTimeout(() => scramble(el), 50 + i * 90);
+                });
+            });
+
+            /* --- HUD ambient light rails --- */
+            const sidebar = document.querySelector('.sidebar');
+            const leftPos = sidebar ? (sidebar.offsetWidth + 'px') : '220px';
+
+            [
+                { cls: 'hud-rail--left',  left: leftPos,  dur: '8s',  delay: '0s'   },
+                { cls: 'hud-rail--right', right: '0px',   dur: '13s', delay: '-6s'  },
+            ].forEach(({ cls, left, right, dur, delay }) => {
+                const el = document.createElement('div');
+                el.className = `hud-rail ${cls}`;
+                if (left)  el.style.left  = left;
+                if (right) el.style.right = right;
+                el.style.setProperty('--rail-dur',   dur);
+                el.style.setProperty('--rail-delay', delay);
+                document.body.appendChild(el);
+            });
+        })();
+    </script>
+
+    <!-- ── Changelog Modal ───────────────────────────────────────────── -->
+    <div class="modal-overlay hidden" id="changelog-modal">
+        <div class="modal-content" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3 style="margin:0; display:flex; align-items:center; gap:10px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="var(--accent-color)" viewBox="0 0 16 16">
+                        <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zM8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4.002 4.002 0 0 0-3.203-3.92L8 1.917zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5.002 5.002 0 0 1 13 6c0 .88.32 4.2 1.22 6z"/>
+                    </svg>
+                    Notas de Atualização
+                </h3>
+                <button class="modal-close-btn" id="close-changelog-modal">&times;</button>
+            </div>
+            <div class="modal-body" id="changelog-modal-body" style="padding: 8px 24px;"></div>
+        </div>
+    </div>
 </body>
 
 </html>

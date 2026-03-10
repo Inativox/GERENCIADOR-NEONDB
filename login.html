@@ -10,18 +10,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-app: #0d1117;
-            --bg-card: #161b22;
-            --bg-element: #21262d;
-            --text-primary: #f1f5f9;
-            --text-secondary: #8b949e;
-            --border-color: #30363d;
-            --accent-blue: #3081f2;
-            --accent-purple: #a371f7;
-            --accent-red: #e5534b;
-            --accent-green: #2da44e;
-            --radius: 0.75rem;
-            --transition-speed: 0.3s;
+            --bg-app:          #0c0c0f;
+            --bg-card:         #141418;
+            --bg-element:      #1d1d22;
+            --text-primary:    #f0f0f3;
+            --text-secondary:  #9898a6;
+            --text-muted:      #64646f;
+            --border-color:    #26262c;
+            --border-hover:    #3c3c45;
+            --accent-blue:     #6366f1;
+            --accent-purple:   #a855f7;
+            --accent-red:      #f43f5e;
+            --accent-green:    #22c55e;
+            --radius:          0.5rem;
+            --transition-speed: 0.15s;
         }
 
         * {
@@ -84,14 +86,14 @@
         .login-container {
             background-color: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: var(--radius);
+            border-radius: 12px;
             padding: 2.5rem;
             width: 100%;
-            max-width: 450px;
+            max-width: 420px;
             position: relative;
             z-index: 10;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-            animation: slideIn 0.7s cubic-bezier(0.25, 1, 0.5, 1);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+            animation: slideIn 0.5s cubic-bezier(0.25, 1, 0.5, 1);
         }
 
         @keyframes slideIn {
@@ -113,29 +115,16 @@
         }
 
         .login-title {
-            font-size: 2.25rem;
+            font-size: 1.75rem;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 0.5rem;
-            animation: glow 2s ease-in-out infinite alternate;
-        }
-
-        @keyframes glow {
-            from {
-                filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-blue) 50%, transparent));
-            }
-
-            to {
-                filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent-purple) 50%, transparent));
-            }
+            letter-spacing: -0.03em;
+            color: var(--text-primary);
+            margin-bottom: 0.4rem;
         }
 
         .login-subtitle {
-            color: var(--text-secondary);
-            font-size: 1rem;
+            color: var(--text-muted);
+            font-size: 0.875rem;
         }
 
         /* --- FORM ELEMENTS --- */
@@ -154,25 +143,25 @@
 
         .form-input {
             width: 100%;
-            padding: 1rem;
+            padding: 0.75rem 1rem;
             background-color: var(--bg-element);
             border: 1px solid var(--border-color);
             border-radius: var(--radius);
             color: var(--text-primary);
-            font-size: 1rem;
-            transition: all 0.3s ease;
+            font-size: 0.9375rem;
+            transition: border-color var(--transition-speed), box-shadow var(--transition-speed);
+            color-scheme: dark;
         }
 
         .form-input:focus {
             outline: none;
             border-color: var(--accent-blue);
             background-color: var(--bg-card);
-            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 25%, transparent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 20%, transparent);
         }
 
         .form-input::placeholder {
-            color: var(--text-secondary);
-            opacity: 0.6;
+            color: var(--text-muted);
         }
 
         /* --- DB CONNECTION GROUP --- */
@@ -188,27 +177,28 @@
         }
 
         .test-connection-btn {
-            padding: 0.9rem 1rem;
-            height: 54px;
-            /* Match input height */
+            padding: 0 1rem;
+            height: 48px;
             background-color: var(--bg-element);
             border: 1px solid var(--border-color);
             color: var(--text-secondary);
             border-radius: var(--radius);
             cursor: pointer;
-            font-size: 0.875rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            transition: all var(--transition-speed) ease;
             flex-shrink: 0;
+            font-family: 'Inter', sans-serif;
         }
 
         .test-connection-btn:hover:not(:disabled) {
-            border-color: var(--accent-purple);
-            color: var(--accent-purple);
+            border-color: var(--border-hover);
+            color: var(--text-primary);
+            background-color: color-mix(in srgb, var(--bg-element-hover) 80%, transparent);
         }
 
         .test-connection-btn:disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
         }
 
@@ -233,7 +223,8 @@
             display: flex;
             align-items: center;
             cursor: pointer;
-            color: var(--text-secondary);
+            color: var(--text-muted);
+            font-size: 0.875rem;
         }
 
         .remember-me input {
@@ -254,44 +245,31 @@
 
         /* --- BUTTON & MESSAGES --- */
         .login-button {
-            --base-color: var(--accent-blue);
-            /* Usando a cor de destaque do tema */
-            --grad-light: color-mix(in srgb, var(--base-color) 95%, #ffffff);
-            /* Mais base, menos branco */
-            --grad-dark: color-mix(in srgb, var(--base-color) 60%, #000000);
-            /* Mais base, menos preto */
-            --border-btn: color-mix(in srgb, var(--base-color) 70%, #000000);
-            /* Borda mais escura */
             width: 100%;
-            padding: 1rem;
-            background: linear-gradient(145deg, var(--grad-light), var(--grad-dark));
-            border: 1px solid var(--border-btn);
+            padding: 0.8rem;
+            background: var(--accent-blue);
+            border: none;
             border-radius: var(--radius);
-            color: var(--text-primary);
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-            /* Sombra no texto para contraste */
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-            font-size: 1rem;
+            color: #fff;
+            font-size: 0.9375rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all var(--transition-speed) ease;
+            font-family: 'Inter', sans-serif;
+            transition: filter var(--transition-speed) ease, opacity var(--transition-speed);
             margin-bottom: 1.25rem;
-            /* 20px */
-            box-shadow: inset 0 1px 1px color-mix(in srgb, var(--grad-light) 50%, transparent), 0 4px 8px rgba(0, 0, 0, 0.3);
-            /* Sombra padrão */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
         .login-button:hover:not(:disabled) {
-            transform: translateY(-2px);
-            filter: brightness(1.2);
-            box-shadow: inset 0 1px 1px color-mix(in srgb, var(--grad-light) 50%, transparent), 0 6px 12px rgba(0, 0, 0, 0.4), 0 0 15px var(--base-color);
-            /* Efeito neon no hover */
+            filter: brightness(1.12);
         }
 
         .login-button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
-            background: var(--bg-secondary);
         }
 
         .spinner {
@@ -342,6 +320,13 @@
 
     <main class="login-container" data-testid="login-container">
         <header class="login-header">
+            <div style="display:inline-flex; align-items:center; gap:8px; margin-bottom:0.75rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="var(--accent-blue)" viewBox="0 0 16 16">
+                    <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v.5H1v-.5z"/>
+                    <path d="M1 4.5h14v2a.5.5 0 0 1-.5.5h-13A.5.5 0 0 1 1 6.5v-2zm0 3h14v5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-5z"/>
+                </svg>
+                <span style="font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.12em; color:var(--text-muted);">Base Manager</span>
+            </div>
             <h1 class="login-title">Acesso Seguro</h1>
             <p class="login-subtitle">Entre com suas credenciais para continuar</p>
         </header>

@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (organizationType === 'whatsapp') {
                     options = {
                         removeBlocklist: document.getElementById('whatsapp-remove-blocklist')?.checked || false,
-                        tagMode: document.querySelector('input[name="whatsappTagMode"]:checked')?.value || 'auto',
+                        tagMode: document.getElementById('whatsapp-tag-filename')?.checked ? 'filename' : (document.querySelector('input[name="whatsappTagMode"]:checked')?.value || 'manual'),
                         manualTag: document.getElementById('whatsapp-manual-tag-input')?.value || '',
                         scheduleDate: document.getElementById('whatsapp-schedule-date')?.value || '',
                         scheduleTime: document.getElementById('whatsapp-schedule-time')?.value || '',
@@ -42,10 +42,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 appendLog(`Iniciando organização para ${files.length} arquivo(s) usando o formato: ${organizationType}`);
-                for (const filePath of files) {
-                    appendLog(`Organizando: ${getBasename(filePath)}`);
-                    window.electronAPI.organizeDailySheet(filePath, organizationType, options);
-                }
+                
+                // MODIFICADO: Envia todos os arquivos de uma vez para permitir processamento em lote (economia de API)
+                // O main.js já está preparado para receber um array em 'filePaths'
+                window.electronAPI.organizeDailySheet(files, organizationType, options);
+                
             } else {
                 appendLog('Nenhum arquivo selecionado. Operação cancelada.');
             }
@@ -85,20 +86,42 @@ document.addEventListener('DOMContentLoaded', () => {
         const style = document.createElement('style');
         style.textContent = `
             #organizeTypeSelect {
-                width: 100%; padding: 10px; border-radius: 10px;
+                width: 100%;
+                padding: 9px 36px 9px 14px;
+                border-radius: 8px;
                 border: 1px solid var(--border-color);
-                background-color: var(--bg-input); color: var(--text-primary);
-                margin-bottom: 15px; font-size: 14px; outline: none; cursor: pointer;
+                background-color: var(--bg-element);
+                color: var(--text-primary);
+                margin-bottom: 14px;
+                font-size: 13px;
+                font-weight: 500;
+                font-family: inherit;
+                outline: none;
+                cursor: pointer;
+                appearance: none;
+                -webkit-appearance: none;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2380808f' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+                background-repeat: no-repeat;
+                background-position: right 12px center;
+                transition: border-color 0.15s, background-color 0.15s;
+            }
+            #organizeTypeSelect:hover {
+                border-color: var(--border-hover);
+                background-color: var(--bg-element-hover);
+            }
+            #organizeTypeSelect:focus {
+                border-color: var(--accent-color);
+                box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent);
             }
             #organizeTypeSelect option {
-                background-color: var(--bg-input); color: var(--text-primary);
+                background-color: var(--bg-element);
+                color: var(--text-primary);
+                padding: 8px;
             }
-            /* Força bruta para garantir que o fundo não fique branco no tema escuro */
             body.dark-theme #organizeTypeSelect option {
-                background-color: #2d2d2d !important;
-                color: #ffffff !important;
+                background-color: #1d1d22 !important;
+                color: #f2f2f6 !important;
             }
-            /* Força o tema escuro/claro no dropdown nativo do navegador */
             body.dark-theme #organizeTypeSelect { color-scheme: dark; }
             body.light-theme #organizeTypeSelect { color-scheme: light; }
         `;
@@ -154,6 +177,36 @@ document.addEventListener('DOMContentLoaded', () => {
                             .wa-radio-group { display: flex; gap: 15px; flex-wrap: wrap; }
                             .wa-radio-label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
                             .wa-row { display: flex; gap: 10px; }
+                            .wa-tag-filename-row {
+                                display: flex; align-items: center; justify-content: space-between;
+                                padding: 10px 14px; border-radius: 8px;
+                                background: var(--bg-element);
+                                border: 1px solid var(--border-color);
+                                margin-bottom: 20px; cursor: pointer;
+                                transition: border-color 0.15s, background 0.15s;
+                            }
+                            .wa-tag-filename-row:has(#whatsapp-tag-filename:checked) {
+                                border-color: var(--accent-color);
+                                background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-element));
+                            }
+                            .wa-tag-filename-info { display: flex; flex-direction: column; gap: 2px; }
+                            .wa-tag-filename-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+                            .wa-tag-filename-desc { font-size: 11px; color: var(--text-muted); }
+                            .wa-toggle { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+                            .wa-toggle input { opacity: 0; width: 0; height: 0; }
+                            .wa-toggle-slider {
+                                position: absolute; inset: 0; background: var(--bg-element-hover);
+                                border-radius: 20px; transition: background 0.2s; cursor: pointer;
+                                border: 1px solid var(--border-color);
+                            }
+                            .wa-toggle-slider::before {
+                                content: ''; position: absolute; width: 14px; height: 14px;
+                                border-radius: 50%; background: var(--text-muted);
+                                top: 2px; left: 2px; transition: transform 0.2s, background 0.2s;
+                            }
+                            .wa-toggle input:checked + .wa-toggle-slider { background: var(--accent-color); border-color: var(--accent-color); }
+                            .wa-toggle input:checked + .wa-toggle-slider::before { transform: translateX(16px); background: #fff; }
+                            #whatsapp-tag-manual-section.wa-disabled { opacity: 0.4; pointer-events: none; }
                         </style>
 
                         <div class="wa-input-group">
@@ -177,19 +230,32 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="text" id="whatsapp-filename-input" class="wa-text-input" placeholder="Ex: Lista_Whatsapp_28_01">
                         </div>
 
-                        <div class="wa-input-group">
-                            <label class="wa-label">Tipo de Tag:</label>
-                            <div class="wa-radio-group">
-                                <label class="wa-radio-label"><input type="radio" name="whatsappTagMode" value="manual" checked> Manual</label>
-                                <label class="wa-radio-label"><input type="radio" name="whatsappTagMode" value="scheduled"> Agendamento (Setor)</label>
+                        <label class="wa-tag-filename-row">
+                            <div class="wa-tag-filename-info">
+                                <span class="wa-tag-filename-title">TAG NOME</span>
+                                <span class="wa-tag-filename-desc">Usa o nome de cada arquivo como tag (sem extensão)</span>
                             </div>
-                            <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);" id="whatsapp-tag-preview">
-                                Digite a tag manualmente.
-                            </div>
-                        </div>
+                            <label class="wa-toggle">
+                                <input type="checkbox" id="whatsapp-tag-filename">
+                                <span class="wa-toggle-slider"></span>
+                            </label>
+                        </label>
 
-                        <div id="whatsapp-manual-tag-container" class="wa-input-group" style="display: block;">
-                            <input type="text" id="whatsapp-manual-tag-input" class="wa-text-input" placeholder="Digite a tag personalizada...">
+                        <div id="whatsapp-tag-manual-section">
+                            <div class="wa-input-group">
+                                <label class="wa-label">Tipo de Tag:</label>
+                                <div class="wa-radio-group">
+                                    <label class="wa-radio-label"><input type="radio" name="whatsappTagMode" value="manual" checked> Manual</label>
+                                    <label class="wa-radio-label"><input type="radio" name="whatsappTagMode" value="scheduled"> Agendamento (Setor)</label>
+                                </div>
+                                <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);" id="whatsapp-tag-preview">
+                                    Digite a tag manualmente.
+                                </div>
+                            </div>
+
+                            <div id="whatsapp-manual-tag-container" class="wa-input-group" style="display: block;">
+                                <input type="text" id="whatsapp-manual-tag-input" class="wa-text-input" placeholder="Digite a tag personalizada...">
+                            </div>
                         </div>
 
                         <div id="whatsapp-schedule-container" class="wa-input-group" style="display: none;">
@@ -228,6 +294,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const manualContainer = document.getElementById('whatsapp-manual-tag-container');
             const scheduleContainer = document.getElementById('whatsapp-schedule-container');
             const previewText = document.getElementById('whatsapp-tag-preview');
+            const tagFilenameToggle = document.getElementById('whatsapp-tag-filename');
+            const tagManualSection = document.getElementById('whatsapp-tag-manual-section');
+
+            tagFilenameToggle.addEventListener('change', () => {
+                if (tagFilenameToggle.checked) {
+                    tagManualSection.classList.add('wa-disabled');
+                } else {
+                    tagManualSection.classList.remove('wa-disabled');
+                }
+            });
 
             tagRadios.forEach(r => {
                 r.addEventListener('change', () => {
@@ -277,6 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const apiFishModeCheckbox = document.getElementById('apiFishModeCheckbox');
         if (apiFishModeCheckbox) {
             const allowedFishUsers = ['Davi', 'Pablo', 'Matheus'];
+            // Garante que a restrição seja aplicada
             if (!allowedFishUsers.includes(username)) {
                 apiFishModeCheckbox.checked = false;
                 apiFishModeCheckbox.disabled = true;
@@ -285,6 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     parent.style.opacity = '0.5';
                     parent.title = 'Recurso restrito a administradores específicos.';
                 }
+                // Remove o listener de click para evitar bypass via devtools se possível, ou apenas visual
             } else {
                 apiFishModeCheckbox.disabled = false;
             }
@@ -384,13 +462,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('nav-monitoramento').style.display = 'none';
         }
     }
-    window.electronAPI.onUpdateMessage((message) => {
-        const updateMessageElement = document.getElementById('update-message');
-        if (updateMessageElement) {
-            updateMessageElement.innerText = message;
-        }
-    });
-
     // --- LÓGICA DE TEMA (CLARO/ESCURO) ---
     const lightThemeBtn = document.getElementById('light-theme-btn');
     const darkThemeBtn = document.getElementById('dark-theme-btn');
@@ -412,11 +483,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Adiciona a classe do tema ao body para que as variáveis CSS funcionem
     body.classList.add(`${savedTheme}-theme`);
-
-    window.electronAPI.onUpdateMessage((message) => {
-        const updateMessageElement = document.getElementById('update-message');
-        if (updateMessageElement) { updateMessageElement.innerText = message; }
-    });
 
     // --- LÓGICA DA BARRA DE TÍTULO PERSONALIZADA ---
     document.getElementById('minimize-btn').addEventListener('click', () => window.electronAPI.minimizeWindow());
@@ -470,13 +536,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let sortableInstances = {};
 
-    // MODIFICADO: Salva também largura e altura
     function saveSectionState(tabId, sections) {
         const state = sections.map(section => ({
             id: section.dataset.sectionId,
             visible: !section.classList.contains('hidden'),
-            width: section.style.width,
-            height: section.style.height
+            flexGrow: section.style.flexGrow,
+            height:   section.style.height
         }));
         localStorage.setItem(`sections-layout-${tabId}`, JSON.stringify(state));
     }
@@ -487,18 +552,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return saved ? JSON.parse(saved) : null;
     }
 
-    // MODIFICADO: Aplica também largura e altura
     function applySectionState(grid, state) {
         if (!state) return;
 
         const sections = Array.from(grid.querySelectorAll('.section'));
 
-        // Primeiro, aplica os estilos e visibilidade
         sections.forEach(section => {
             const savedSection = state.find(s => s.id === section.dataset.sectionId);
             if (savedSection) {
-                section.style.width = savedSection.width || '';
-                section.style.height = savedSection.height || '';
+                // Limpa qualquer width absoluto de estados antigos
+                section.style.width    = '';
+                section.style.flex     = '';
+                // Restaura proporção horizontal via flex-grow (nunca causa wrap)
+                section.style.flexGrow = savedSection.flexGrow || '';
+                // Restaura altura vertical
+                section.style.height    = savedSection.height || '';
+                section.style.alignSelf = savedSection.height ? 'flex-start' : '';
             }
         });
 
@@ -531,9 +600,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const grid = document.getElementById(gridId);
         if (grid) {
             grid.querySelectorAll('.section').forEach(section => {
-                section.style.width = '';
-                section.style.height = '';
-                section.classList.remove('hidden');
+                section.style.width     = '';
+                section.style.height    = '';
+                section.style.flex      = '';
+                section.style.flexGrow  = '';
+                section.style.alignSelf = '';
+                section.classList.remove('hidden', 'section--compact', 'section--tiny');
+                section.querySelectorAll('.section-resize-handle').forEach(h => h.remove());
             });
             // Recarrega a página para reordenar para o padrão do HTML
             location.reload();
@@ -561,14 +634,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         sortableInstances[gridId] = sortable;
 
-        // NOVO: Observer para salvar o tamanho dos cards ao redimensionar
-        const resizeObserver = new ResizeObserver(() => {
-            // Usamos um timeout para evitar salvar em cada pixel do redimensionamento
-            clearTimeout(grid.resizeTimeout);
-            grid.resizeTimeout = setTimeout(() => {
-                const sections = Array.from(grid.querySelectorAll('.section'));
-                saveSectionState(storageKey, sections);
-            }, 500);
+        // Observer apenas para atualizar classes de layout compacto
+        const resizeObserver = new ResizeObserver((entries) => {
+            entries.forEach(entry => {
+                const section = entry.target;
+                const w = entry.contentRect.width;
+                section.classList.toggle('section--compact', w < 380);
+                section.classList.toggle('section--tiny',    w < 260);
+            });
         });
 
         // Adiciona listeners para os botões e o observer
@@ -593,6 +666,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
         grid.querySelectorAll('.section').forEach(section => {
             resizeObserver.observe(section);
+
+            // Handle de resize customizado com área maior de clique
+            const handle = document.createElement('div');
+            handle.className = 'section-resize-handle';
+            section.appendChild(handle);
+
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handle.classList.add('dragging');
+
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startH = section.offsetHeight;
+                // Proporção horizontal via flex-grow (nunca causa wrap na linha)
+                const startGrow = parseFloat(section.style.flexGrow) || 1;
+                const visibleSections = Array.from(grid.querySelectorAll('.section:not(.hidden)'));
+                const totalGrow = visibleSections.reduce((s, sec) => s + (parseFloat(sec.style.flexGrow) || 1), 0);
+                const growPerPx  = totalGrow / grid.offsetWidth;
+
+                const onMove = (e) => {
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    // Horizontal: ajusta flex-grow mantendo seções sempre na mesma linha
+                    const newGrow = Math.max(0.15, startGrow + dx * growPerPx);
+                    section.style.flexGrow = newGrow;
+                    // Vertical: ajusta altura
+                    const newH = Math.max(160, startH + dy);
+                    section.style.height    = newH + 'px';
+                    section.style.alignSelf = 'flex-start';
+                    // Classes compactas pela largura real renderizada
+                    const w = section.offsetWidth;
+                    section.classList.toggle('section--compact', w < 380);
+                    section.classList.toggle('section--tiny',    w < 260);
+                };
+
+                const onUp = () => {
+                    handle.classList.remove('dragging');
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    const sections = Array.from(grid.querySelectorAll('.section'));
+                    saveSectionState(storageKey, sections);
+                };
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
         });
     }
 
@@ -645,18 +765,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const showNewPage = () => {
-            pageContents.forEach(content => content.classList.remove('active', 'fade-out')); // Remove fade-out também
+            pageContents.forEach(content => content.classList.remove('active', 'fade-out'));
             const newPage = document.getElementById(tabNameId);
             if (newPage) {
                 newPage.classList.add('active');
+                document.dispatchEvent(new CustomEvent('tab-changed', { detail: { tabId: tabNameId } }));
             }
             isTransitioning = false;
         };
 
         if (activePage && activePage.id !== tabNameId) {
-            activePage.classList.add('fade-out'); // Adiciona a classe de fade-out
-            // A duração do setTimeout deve corresponder à duração da animação fadeOut no CSS
-            setTimeout(showNewPage, 300);
+            activePage.classList.add('fade-out');
+            setTimeout(showNewPage, 230);
         } else {
             showNewPage();
         }
@@ -680,6 +800,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // A nova aba 'relacionamento' não precisa de tema por enquanto
         if (themeClass) mainContent.classList.add(themeClass);
+
+        // Sync HUD rail color to current tab accent
+        const accentVal = getComputedStyle(mainContent).getPropertyValue('--active-accent').trim();
+        document.documentElement.style.setProperty('--hud-accent', accentVal || 'var(--accent-blue)');
 
 
         const tabButtonText = event ? event.currentTarget.querySelector('span').textContent.trim() : '';
@@ -1264,6 +1388,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     window.electronAPI.onApiProgress(({ current, total }) => { const percent = Math.round((current / total) * 100); apiProgressBarFill.style.width = `${percent}%`; apiStatusSpan.textContent = `Processando Lote ${current} de ${total}`; });
     function appendApiLog(msg) { if (apiLogDiv) { apiLogDiv.innerHTML += `> ${msg.replace(/\n/g, '<br>> ')}\n`; apiLogDiv.scrollTop = apiLogDiv.scrollHeight; } }
+    
+    // NOVO: Listener para erro de Lock (Concorrência)
+    window.electronAPI.onApiLockError((message) => {
+        alert(message); // Exibe um popup nativo para chamar atenção
+        appendApiLog(`❌ BLOQUEIO: ${message}`);
+    });
+
     const selectMasterFilesBtn = document.getElementById('selectMasterFilesBtn');
     const selectedMasterFilesDiv = document.getElementById('selectedMasterFiles');
     const startLoadToDbBtn = document.getElementById('startLoadToDbBtn');
@@ -1450,6 +1581,28 @@ document.addEventListener('DOMContentLoaded', () => {
             appendBlocklistLog(`Iniciando alimentação com ${files.length} arquivo(s).`);
             const sendEmail = document.getElementById('sendBlocklistEmailCheckbox').checked;
             window.electronAPI.feedBlocklist({ filePaths: files, sendEmail }); // MODIFICADO: Envia o objeto com a opção de e-mail
+        });
+    }
+
+    const manualBlocklistInput = document.getElementById('manual-blocklist-input');
+    const addManualBlocklistBtn = document.getElementById('addManualBlocklistBtn');
+    if (addManualBlocklistBtn) {
+        addManualBlocklistBtn.addEventListener('click', async () => {
+            const raw = manualBlocklistInput ? manualBlocklistInput.value.trim() : '';
+            if (!raw) return appendBlocklistLog('⚠️ Cole ao menos um número antes de adicionar.');
+            const numbers = raw.split(/[,\s\n]+/).map(n => n.replace(/\D/g, '')).filter(n => n.length >= 8);
+            if (numbers.length === 0) return appendBlocklistLog('⚠️ Nenhum número válido encontrado.');
+            appendBlocklistLog(`Adicionando ${numbers.length} número(s) à blocklist...`);
+            addManualBlocklistBtn.disabled = true;
+            const result = await window.electronAPI.addNumbersToBlocklist(numbers);
+            addManualBlocklistBtn.disabled = false;
+            if (result.success) {
+                appendBlocklistLog(`✅ ${result.added} de ${result.total} número(s) adicionado(s) (duplicados ignorados).`);
+                if (manualBlocklistInput) manualBlocklistInput.value = '';
+                updateBlocklistStats();
+            } else {
+                appendBlocklistLog(`❌ Erro: ${result.message}`);
+            }
         });
     }
 
@@ -2429,4 +2582,83 @@ document.addEventListener('DOMContentLoaded', () => {
         startSplitByResponsibleBtn.disabled = false;
     });
     // --- FIM: LÓGICA DIVISÃO POR RESPONSÁVEL ---
+
+    // =========================================================
+    // SISTEMA DE CHANGELOG / NOTAS DE ATUALIZAÇÃO
+    // =========================================================
+    const CHANGELOG = [
+        {
+            version: '1.5.0',
+            date: '2026-03-04',
+            highlights: 'Performance & Notificações',
+            notes: [
+                '🚀 Blocklist carregada em memória — verificação de limpeza até 100x mais rápida (zero consultas ao BD por linha)',
+                '⚡ Processamento paralelo de até 4 arquivos simultâneos na limpeza local',
+                '🔄 Cache da blocklist sincronizado automaticamente ao adicionar/alimentar números',
+                '🔔 Sistema de notas de atualização com badge vermelho de notificação',
+                '🎨 Novo seletor de organização de planilhas com design aprimorado',
+                '🏷️ Opção "TAG NOME" no Whatsapp: usa o nome do arquivo como tag automaticamente',
+                '📜 Scroll interno restaurado em todas as seções do gerenciador',
+            ]
+        }
+    ];
+
+    function updateChangelogBadge() {
+        const lastRead = localStorage.getItem('changelog-last-read') || '0.0.0';
+        const unread = CHANGELOG.filter(e => e.version > lastRead).length;
+        const badge = document.getElementById('changelogBadge');
+        if (!badge) return;
+        if (unread > 0) {
+            badge.textContent = unread;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    function markChangelogRead() {
+        if (CHANGELOG.length > 0) {
+            localStorage.setItem('changelog-last-read', CHANGELOG[0].version);
+        }
+        updateChangelogBadge();
+    }
+
+    function buildChangelogModal() {
+        const body = document.getElementById('changelog-modal-body');
+        if (!body) return;
+        body.innerHTML = CHANGELOG.map(entry => `
+            <div class="changelog-entry">
+                <div class="changelog-entry-header">
+                    <span class="changelog-version">v${entry.version}</span>
+                    <span class="changelog-highlights">${entry.highlights}</span>
+                    <span class="changelog-date">${entry.date}</span>
+                </div>
+                <ul class="changelog-notes">
+                    ${entry.notes.map(note => `<li>${note}</li>`).join('')}
+                </ul>
+            </div>
+        `).join('');
+    }
+
+    const changelogBtn   = document.getElementById('changelogBtn');
+    const changelogModal = document.getElementById('changelog-modal');
+    const closeChangelog = document.getElementById('close-changelog-modal');
+
+    if (changelogBtn) {
+        changelogBtn.addEventListener('click', () => {
+            buildChangelogModal();
+            changelogModal?.classList.remove('hidden');
+            markChangelogRead();
+        });
+    }
+    if (closeChangelog) {
+        closeChangelog.addEventListener('click', () => changelogModal?.classList.add('hidden'));
+    }
+    if (changelogModal) {
+        changelogModal.addEventListener('click', e => {
+            if (e.target === changelogModal) changelogModal.classList.add('hidden');
+        });
+    }
+
+    updateChangelogBadge();
 });

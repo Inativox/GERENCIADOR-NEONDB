@@ -38,11 +38,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     feedBlocklist: (filePaths) => ipcRenderer.send("feed-blocklist", filePaths), // NOVO
     getBlocklistStats: () => ipcRenderer.invoke("get-blocklist-stats"), // NOVO
     checkBlocklistNumbers: (numbers) => ipcRenderer.invoke("check-blocklist-numbers", numbers), // NOVO
+    addNumbersToBlocklist: (numbers) => ipcRenderer.invoke("add-numbers-to-blocklist", numbers),
+    refreshBlocklistCache: () => ipcRenderer.invoke("refresh-blocklist-cache"),
     splitList: (args) => ipcRenderer.send("split-list", args),
     splitLargeCsv: (args) => ipcRenderer.send("split-large-csv", args), // NOVO
     saveStoredCnpjsToExcel: () => ipcRenderer.invoke("save-stored-cnpjs-to-excel"),
     deleteBatch: (batchId) => ipcRenderer.invoke("delete-batch", batchId),
     organizeDailySheet: (filePath, organizationType, options) => ipcRenderer.send('organize-daily-sheet', filePath, organizationType, options),
+    organizeDailySheet: (filePaths, organizationType, options) => ipcRenderer.send('organize-daily-sheet', filePaths, organizationType, options),
 
     // --- Funções da API de Consulta (C6) ---
     addFilesToApiQueue: (files) => ipcRenderer.send("add-files-to-api-queue", files),
@@ -78,6 +81,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onApiQueueUpdate: (callback) => ipcRenderer.on("api-queue-update", (event, ...args) => callback(...args)),
     onApiLog: (callback) => ipcRenderer.on("api-log", (event, ...args) => callback(...args)),
     onApiProgress: (callback) => ipcRenderer.on("api-progress", (event, ...args) => callback(...args)),
+    onApiLockError: (callback) => ipcRenderer.on("api-lock-error", (event, ...args) => callback(...args)), // NOVO: Erro de Lock
     onEnrichmentLog: (callback) => ipcRenderer.on("enrichment-log", (event, ...args) => callback(...args)),
     onEnrichmentProgress: (callback) => ipcRenderer.on("enrichment-progress", (event, ...args) => callback(...args)),
     onDbLoadProgress: (callback) => ipcRenderer.on("db-load-progress", (event, ...args) => callback(...args)),
@@ -85,7 +89,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onBlocklistLog: (callback) => ipcRenderer.on("blocklist-log", (event, ...args) => callback(...args)), // NOVO
     onEnrichmentFinished: (callback) => ipcRenderer.on("enrichment-finished", (event, ...args) => callback(...args)),
     onFishScheduleUpdate: (callback) => ipcRenderer.on('fish-schedule-update', (event, ...args) => callback(...args)),
-    onUpdateMessage: (callback) => ipcRenderer.on("update-message", (event, ...args) => callback(...args)),
+    onUpdateDownloading: (callback) => ipcRenderer.on("update-downloading", (event, ...args) => callback(...args)),
+    onUpdateProgress: (callback) => ipcRenderer.on("update-progress", (event, ...args) => callback(...args)),
+    onUpdateReady: (callback) => ipcRenderer.on("update-ready", (event, ...args) => callback(...args)),
     onRootFeedFinished: (callback) => ipcRenderer.on('root-feed-finished', (event, ...args) => callback(...args)),
 
     // --- INÍCIO DA MODIFICAÇÃO: Listeners de Relacionamento ---
@@ -96,5 +102,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // --- FIM DA MODIFICAÇÃO ---
 
     // Função para remover todos os listeners para evitar memory leaks ao recarregar
-    removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
+    removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+    
 });
