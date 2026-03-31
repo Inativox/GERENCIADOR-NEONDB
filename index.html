@@ -1069,6 +1069,85 @@
             /* Brilho neon vermelho */
         }
 
+        /* === CONECTOR FISH === */
+        #fishConnectorSection {
+            background: var(--bg-element);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 12px 14px;
+            margin-bottom: 20px;
+        }
+        #fishConnectorSection label {
+            display: block;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+        #fishConnectorList {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        .fish-connector-btn {
+            height: 28px;
+            padding: 0 12px;
+            border-radius: 99px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s, background 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .fish-connector-btn:hover {
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+        .fish-connector-btn.active {
+            border-color: var(--accent-blue);
+            background: color-mix(in srgb, var(--accent-blue) 18%, transparent);
+            color: var(--accent-blue);
+        }
+        .fish-connector-btn .connector-delete {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            color: var(--text-muted);
+            transition: color 0.15s;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .fish-connector-btn .connector-delete:hover {
+            color: var(--accent-red);
+        }
+        #fishConnectorAdd {
+            display: flex;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        #newConnectorInput {
+            flex: 1;
+            height: 28px;
+            font-size: 12px;
+            padding: 0 10px;
+        }
+        #addConnectorBtn {
+            height: 28px;
+            padding: 0 12px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
         /* Ajuste para a lista de arquivos do agendamento se expandir */
         #selectedFishScheduleFiles {
             height: auto;
@@ -2732,6 +2811,27 @@
                             <label class="switch"><input type="checkbox" id="apiFishModeCheckbox"><span
                                     class="slider"></span></label>
                             <span class="toggle-label">Modo FISH</span>
+                        </div>
+                        <div id="fishConnectorSection" style="display: none;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <label style="margin: 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted);">Conector</label>
+                                <div style="margin-left: auto; display: flex; align-items: center; gap: 6px;">
+                                    <label class="switch" style="margin: 0;"><input type="checkbox" id="fishSplitModeCheckbox"><span class="slider"></span></label>
+                                    <span style="font-size: 11px; color: var(--text-secondary);">Dividir entre 2</span>
+                                </div>
+                            </div>
+                            <div id="fishSplitHint" style="display: none; font-size: 11px; color: var(--accent-blue); margin-bottom: 8px; padding: 6px 8px; background: color-mix(in srgb, var(--accent-blue) 10%, transparent); border-radius: 6px; border: 1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent);">
+                                Selecione 2 conectores. Os clientes serão divididos igualmente entre eles.
+                            </div>
+                            <div id="fishConnectorList">
+                                <button class="fish-connector-btn active" data-connector="RESGATE">RESGATE</button>
+                                <button class="fish-connector-btn" data-connector="FISHING">FISHING</button>
+                                <button class="fish-connector-btn" data-connector="C6">C6</button>
+                            </div>
+                            <div id="fishConnectorAdd">
+                                <input type="text" id="newConnectorInput" placeholder="Nome do novo conector...">
+                                <button id="addConnectorBtn">+ Adicionar</button>
+                            </div>
                         </div>
                         <hr>
                         <button id="startApiBtn" style="display: inline-flex;" disabled><svg

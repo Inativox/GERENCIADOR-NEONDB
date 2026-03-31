@@ -2694,8 +2694,17 @@ ipcMain.on("resume-api-queue", (event) => {
         isApiQueuePaused = false;
         event.sender.send("api-log", "\n▶️ Fila de processamento RETOMADA.");
         event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
-        processNextInApiQueue(event); // Continue processing
+        // Only trigger next file if no file is currently mid-processing (while-loop will auto-resume)
+        if (!apiQueue.processing) {
+            processNextInApiQueue(event);
+        }
     }
+});
+
+ipcMain.on("set-api-key-mode", (event, keyMode) => {
+    if (!isAdmin()) return;
+    currentApiOptions.keyMode = keyMode;
+    event.sender.send("api-log", `⚙️ Modo de chave alterado para: ${keyMode} (aplicado no próximo lote)`);
 });
 
 ipcMain.on("start-api-queue", async (event, options) => { // MODIFICADO para async
@@ -2732,7 +2741,10 @@ ipcMain.on("start-api-queue", async (event, options) => { // MODIFICADO para asy
 
     // NOVO: Lógica para o modo FISH
     if (options.isFishMode) {
-        event.sender.send("api-log", `🐟 Modo FISH ativado. Clientes serão enviados para o webhook N8N.`);
+        const splitInfo = options.splitMode && options.connectors?.length >= 2
+            ? ` | Divisão ativa entre: ${options.connectors.join(' e ')}`
+            : ` | Conector: ${(options.connectors?.[0] || options.connector || 'RESGATE')}`;
+        event.sender.send("api-log", `🐟 Modo FISH ativado. Clientes serão enviados para o webhook N8N.${splitInfo}`);
     }
 
     cancelCurrentApiTask = false;
@@ -3007,7 +3019,10 @@ async function processNextInApiQueue(event) {
 
 // FUNÇÃO runApiConsultation ATUALIZADA COM LÓGICA DE RETENTATIVA CORRIGIDA
 async function runApiConsultation(filePath, options, log, progress, fishPath) {
-    const { keyMode, removeClients, isFishMode, extractClients } = options;
+    const { keyMode, removeClients, isFishMode, extractClients, connectors, splitMode } = options;
+    // Resolve connector list: supports new array format (connectors) or legacy single connector
+    const resolvedConnectors = connectors && connectors.length > 0 ? connectors : (options.connector ? [options.connector] : ['RESGATE']);
+    let fishClientIndex = 0; // counter used to alternate connectors in split mode
     const credentials = {
         c6: {
             CLIENT_ID: "EA8ZUFeZVSeqMGr49XJSsZKFuxSZub3i",
@@ -3038,7 +3053,7 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const normalizeCnpj = (cnpj) => (String(cnpj).replace(/\D/g, "")).padStart(14, "0");
 
-    const sendToN8NWebhook = async (header, rowData) => {
+    const sendToN8NWebhook = async (header, rowData, connector) => {
         const N8N_WEBHOOK_URL = 'https://n8n.upscales.com.br/webhook/2ccead38-deb8-48d0-9f44-0edccafcc026';
         if (!rowData) return;
 
@@ -3053,6 +3068,7 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
         params.nome = rowData[headerMap['nome']] || '';
         params.cpf = rowData[headerMap['cpf']] || rowData[headerMap['cnpj']] || '';
         params.chave = rowData[headerMap['chave']] || '';
+        if (connector) params.conector = connector;
 
         // Adiciona todos os campos 'fone'
         for (const key in headerMap) {
@@ -3074,7 +3090,7 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
 
         try {
             await axios.get(finalUrl, { timeout: 15000 });
-            log(`🐟 FISH: Cliente ${params.cpf || 'sem CPF'} enviado para o N8N.`);
+            log(`🐟 FISH: Cliente ${params.cpf || 'sem CPF'} enviado [conector: ${connector || 'N/A'}].`);
         } catch (error) {
             const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
             log(`❌🐟 FISH ERRO: Falha ao enviar cliente para o N8N: ${errorMessage}`);
@@ -3105,6 +3121,13 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
 
         let cnpjColNumber = -1;
         let fileHeader = worksheet.getRow(1).values; // Captura o cabeçalho
+
+        // Fix 1: Precompute fone column indices for fish mode filter
+        const foneColIndices = [];
+        fileHeader.forEach((h, idx) => {
+            if (h && String(h).toLowerCase().startsWith('fone')) foneColIndices.push(idx);
+        });
+
         worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
             const val = cell.value ? String(cell.value).trim().toLowerCase() : "";
             if (val === "cpf" || val === "cnpj") cnpjColNumber = colNumber;
@@ -3177,7 +3200,8 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
                 try {
                     let encontrados = new Set();
 
-                    if (keyMode === 'dupla') {
+                    const currentKeyMode = options.keyMode; // Read in real-time from options object
+                    if (currentKeyMode === 'dupla') {
                         // --- INÍCIO DA LÓGICA CORRIGIDA ---
                         log("Modo 'Dupla' ativado. Consultando com ambas as chaves simultaneamente.");
                         const meio = Math.ceil(lote.length / 2);
@@ -3203,15 +3227,15 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
 
                     } else { // Modos 'chave1', 'chave2', 'intercalar'
                         let currentCreds;
-                        if (keyMode === "intercalar") {
+                        if (currentKeyMode === "intercalar") {
                             currentCreds = i % 2 === 0 ? credentials.c6 : credentials.im;
                             log(`Usando credenciais intercaladas: ${currentCreds.name}`);
-                        } else if (keyMode === "chave2") {
+                        } else if (currentKeyMode === "chave2") {
                             currentCreds = credentials.im;
                         } else {
                             currentCreds = credentials.c6;
                         }
-                        if (keyMode !== "intercalar" && i === 0) {
+                        if (currentKeyMode !== "intercalar" && i === 0) {
                             log(`Usando credenciais fixas: ${currentCreds.name}`);
                         }
                         encontrados = await performApiCall(lote.map(r => r.cnpj), currentCreds);
@@ -3228,7 +3252,16 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
                         } else {
                             row.getCell(statusColNumber).value = "cliente";
                             if (isFishMode) { // Se o modo Fish estiver ativo, envia para o webhook
-                                await sendToN8NWebhook(fileHeader, row.values);
+                                const hasFone = foneColIndices.some(idx => {
+                                    const v = row.values[idx];
+                                    return v !== null && v !== '' && v !== undefined;
+                                });
+                                if (hasFone) {
+                                    const activeConnector = splitMode && resolvedConnectors.length >= 2
+                                        ? resolvedConnectors[fishClientIndex++ % resolvedConnectors.length]
+                                        : resolvedConnectors[0];
+                                    await sendToN8NWebhook(fileHeader, row.values, activeConnector);
+                                }
                             }
                         }
                     }
@@ -3260,11 +3293,7 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
             }
             const successDelayMs = getSuccessDelayMs();
             if (sucesso) {
-                if (isApiQueuePaused && i < lotes.length - 1) { // If paused and not the last batch
-                    log(`Fila PAUSADA. O processamento do arquivo será retomado do lote ${i + 2}.`);
-                    return { status: 'paused', clientData: { header: null, rows: [] } };
-                }
-                if (i < lotes.length - 1) { // If not the last batch and not paused
+                if (i < lotes.length - 1) { // If not the last batch
                     if (cancelCurrentApiTask) break;
                     log(`Aguardando ${successDelayMs / 60000} minutos antes do próximo lote...`);
                     await sleep(successDelayMs);

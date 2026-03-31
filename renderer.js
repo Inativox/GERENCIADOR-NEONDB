@@ -796,7 +796,6 @@ document.addEventListener('DOMContentLoaded', () => {
             themeClass = 'monitoring-theme';
         } else if (tabNameId === 'blocklist') {
             themeClass = 'blocklist-theme';
-            updateBlocklistStats(); // Atualiza as estatísticas ao abrir a aba
         }
         // A nova aba 'relacionamento' não precisa de tema por enquanto
         if (themeClass) mainContent.classList.add(themeClass);
@@ -1252,18 +1251,155 @@ document.addEventListener('DOMContentLoaded', () => {
             apiStatusSpan.textContent = 'Iniciando processamento da fila...';
             const removeClients = document.getElementById('apiRemoveClientsCheckbox').checked;
             const extractClients = document.getElementById('apiExtractClientsCheckbox').checked;
-            const fishMode = document.getElementById('apiFishModeCheckbox').checked; // NOVO
-            window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value, removeClients: removeClients, extractClients: extractClients, isFishMode: fishMode }); // MODIFICADO
+            const fishMode = document.getElementById('apiFishModeCheckbox').checked;
+            const connectors = fishMode ? getActiveConnectors() : null;
+            const splitMode = fishMode && fishSplitCheckbox?.checked && connectors?.length >= 2;
+            window.electronAPI.startApiQueue({ keyMode: apiKeySelection.value, removeClients: removeClients, extractClients: extractClients, isFishMode: fishMode, connectors, splitMode });
         });
     }
     if (resetApiBtn) resetApiBtn.addEventListener('click', () => { window.electronAPI.resetApiQueue(); });
-    // NOVO: Listeners para os inputs de delay
+    // Listeners para os inputs de delay
     if (apiDelayBetweenBatchesInput) {
         apiDelayBetweenBatchesInput.addEventListener('input', sendApiTimingSettings);
     }
     if (apiRetryDelayInput) {
         apiRetryDelayInput.addEventListener('input', sendApiTimingSettings);
     }
+    // Real-time key mode change while queue is running
+    if (apiKeySelection) {
+        apiKeySelection.addEventListener('change', () => {
+            window.electronAPI.updateApiKeyMode(apiKeySelection.value);
+        });
+    }
+
+    // === CONECTOR FISH ===
+    const PREDEFINED_CONNECTORS = ['RESGATE', 'FISHING', 'C6'];
+    const CONNECTORS_STORAGE_KEY = 'fish-custom-connectors';
+    const fishConnectorSection = document.getElementById('fishConnectorSection');
+    const fishConnectorList = document.getElementById('fishConnectorList');
+    const newConnectorInput = document.getElementById('newConnectorInput');
+    const addConnectorBtn = document.getElementById('addConnectorBtn');
+    const apiFishCheckbox = document.getElementById('apiFishModeCheckbox');
+    const fishSplitCheckbox = document.getElementById('fishSplitModeCheckbox');
+    const fishSplitHint = document.getElementById('fishSplitHint');
+
+    function getCustomConnectors() {
+        try { return JSON.parse(localStorage.getItem(CONNECTORS_STORAGE_KEY) || '[]'); } catch { return []; }
+    }
+    function saveCustomConnectors(list) {
+        localStorage.setItem(CONNECTORS_STORAGE_KEY, JSON.stringify(list));
+    }
+    function isSplitMode() {
+        return fishSplitCheckbox?.checked === true;
+    }
+    function getActiveConnectors() {
+        return [...document.querySelectorAll('.fish-connector-btn.active')].map(b => b.dataset.connector);
+    }
+    function handleConnectorClick(btn) {
+        if (isSplitMode()) {
+            const active = document.querySelectorAll('.fish-connector-btn.active');
+            if (btn.classList.contains('active')) {
+                // Deselect if already active
+                btn.classList.remove('active');
+            } else if (active.length < 2) {
+                btn.classList.add('active');
+            }
+            // If already 2 active and clicking a 3rd, ignore
+        } else {
+            fishConnectorList.querySelectorAll('.fish-connector-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+    }
+    function buildConnectorList() {
+        if (!fishConnectorList) return;
+        const activeNames = getActiveConnectors();
+        // Remove custom connector buttons (keep predefined ones)
+        fishConnectorList.querySelectorAll('.fish-connector-btn[data-custom]').forEach(b => b.remove());
+        // Re-add custom connectors
+        getCustomConnectors().forEach(name => {
+            const btn = document.createElement('button');
+            btn.className = 'fish-connector-btn' + (activeNames.includes(name) ? ' active' : '');
+            btn.dataset.connector = name;
+            btn.dataset.custom = '1';
+            btn.innerHTML = `${name}<span class="connector-delete" title="Remover"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg></span>`;
+            btn.addEventListener('click', (e) => {
+                if (e.target.closest('.connector-delete')) {
+                    const customs = getCustomConnectors().filter(c => c !== name);
+                    saveCustomConnectors(customs);
+                    btn.remove();
+                    // If no active buttons remain, activate first predefined
+                    if (getActiveConnectors().length === 0) {
+                        fishConnectorList.querySelector('.fish-connector-btn')?.classList.add('active');
+                    }
+                } else {
+                    handleConnectorClick(btn);
+                }
+            });
+            fishConnectorList.appendChild(btn);
+        });
+        // Restore active state on predefined buttons
+        fishConnectorList.querySelectorAll('.fish-connector-btn:not([data-custom])').forEach(b => {
+            b.classList.toggle('active', activeNames.includes(b.dataset.connector));
+        });
+    }
+
+    // Click handler for predefined connector buttons
+    if (fishConnectorList) {
+        fishConnectorList.querySelectorAll('.fish-connector-btn:not([data-custom])').forEach(btn => {
+            btn.addEventListener('click', () => handleConnectorClick(btn));
+        });
+    }
+
+    // Split mode toggle: show/hide hint and enforce single selection when disabling
+    if (fishSplitCheckbox) {
+        fishSplitCheckbox.addEventListener('change', () => {
+            if (fishSplitHint) fishSplitHint.style.display = fishSplitCheckbox.checked ? 'block' : 'none';
+            if (!fishSplitCheckbox.checked) {
+                // Enforce single selection: keep only the first active
+                const actives = fishConnectorList.querySelectorAll('.fish-connector-btn.active');
+                actives.forEach((b, i) => { if (i > 0) b.classList.remove('active'); });
+                if (getActiveConnectors().length === 0) {
+                    fishConnectorList.querySelector('.fish-connector-btn')?.classList.add('active');
+                }
+            }
+        });
+    }
+
+    // Add new connector
+    if (addConnectorBtn && newConnectorInput) {
+        addConnectorBtn.addEventListener('click', () => {
+            const name = newConnectorInput.value.trim().toUpperCase();
+            if (!name) return;
+            if (PREDEFINED_CONNECTORS.includes(name) || getCustomConnectors().includes(name)) {
+                newConnectorInput.value = '';
+                return;
+            }
+            const customs = getCustomConnectors();
+            customs.push(name);
+            saveCustomConnectors(customs);
+            newConnectorInput.value = '';
+            buildConnectorList();
+            // Activate the new connector
+            const newBtn = fishConnectorList.querySelector(`[data-connector="${name}"]`);
+            if (newBtn) handleConnectorClick(newBtn);
+        });
+        newConnectorInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') addConnectorBtn.click();
+        });
+    }
+
+    // Show/hide connector section based on Fish mode checkbox
+    function updateFishConnectorVisibility() {
+        if (!fishConnectorSection) return;
+        fishConnectorSection.style.display = apiFishCheckbox?.checked ? 'block' : 'none';
+    }
+    if (apiFishCheckbox) {
+        apiFishCheckbox.addEventListener('change', updateFishConnectorVisibility);
+        updateFishConnectorVisibility();
+    }
+    buildConnectorList();
+    // === FIM CONECTOR FISH ===
+
     const apiCancelledDiv = document.getElementById('apiCancelled');
     if (!apiCancelledDiv) {
         console.log("WARNING: The element with id 'apiCancelled' was not found. The cancelled files list will not be displayed.");
@@ -1429,7 +1565,6 @@ document.addEventListener('DOMContentLoaded', () => {
         enrichmentLogDiv.scrollTop = enrichmentLogDiv.scrollHeight;
     }
     async function updateEnrichedCnpjCount() { if (!enrichedCnpjCountSpan) return; try { enrichedCnpjCountSpan.textContent = 'Carregando...'; const count = await window.electronAPI.getEnrichedCnpjCount(); enrichedCnpjCountSpan.textContent = count.toLocaleString('pt-BR'); } catch (error) { enrichedCnpjCountSpan.textContent = 'Erro'; appendEnrichmentLog(`❌ Erro ao carregar contador: ${error.message}`); } }
-    if (enrichedCnpjCountSpan) updateEnrichedCnpjCount();
     if (refreshCountBtn) refreshCountBtn.addEventListener('click', updateEnrichedCnpjCount);
     if (downloadEnrichedDataBtn) downloadEnrichedDataBtn.addEventListener('click', async () => { downloadEnrichedDataBtn.disabled = true; downloadEnrichedDataBtn.textContent = 'Preparando download...'; try { const result = await window.electronAPI.downloadEnrichedData(); if (result.success) { appendEnrichmentLog(`✅ ${result.message}`); } else { appendEnrichmentLog(`❌ ${result.message}`); } } catch (error) { appendEnrichmentLog(`❌ Erro no download: ${error.message}`); } finally { downloadEnrichedDataBtn.disabled = false; downloadEnrichedDataBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/></svg>Baixar Dados Enriquecidos`; } });
     if (selectMasterFilesBtn) selectMasterFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione as Planilhas Mestras', multi: true }); if (!files?.length) return; enrichmentMasterFiles = files; selectedMasterFilesDiv.innerHTML = ''; files.forEach(file => { addFileToUI(selectedMasterFilesDiv, file, false); }); });
@@ -2588,12 +2723,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.6.0',
+            date: '2026-03-10',
+            highlights: 'Correções API & Fish Mode',
+            notes: [
+                '🐟 Fish Mode: somente registros com ao menos 1 telefone são enviados ao N8N (fone1, fone2…)',
+                '▶️ Correção de bug: pausar/retomar a fila API continua do ponto exato onde parou, sem pular para o próximo arquivo',
+                '⚙️ Troca de perfil de chave em tempo real enquanto a fila API está processando — igual ao ajuste de delay',
+            ]
+        },
+        {
             version: '1.5.0',
             date: '2026-03-04',
             highlights: 'Performance & Notificações',
             notes: [
-                '🚀 Blocklist carregada em memória — verificação de limpeza até 100x mais rápida (zero consultas ao BD por linha)',
-                '⚡ Processamento paralelo de até 4 arquivos simultâneos na limpeza local',
+                '🚀 Blocklist carregada em lotes de 30k — verificação eficiente sem consumo excessivo de RAM',
+                '⚡ Processamento paralelo de 2 arquivos simultâneos na limpeza local com logs organizados',
                 '🔄 Cache da blocklist sincronizado automaticamente ao adicionar/alimentar números',
                 '🔔 Sistema de notas de atualização com badge vermelho de notificação',
                 '🎨 Novo seletor de organização de planilhas com design aprimorado',
