@@ -62,6 +62,11 @@ async function initializePool(connectionString, windowToLog) {
 
     pool = new Pool({
         connectionString: connectionString,
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 15000,
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10000,
     });
 
     try {
@@ -105,6 +110,49 @@ async function initializePool(connectionString, windowToLog) {
     }
 }
 
+
+// #################################################################
+// #           QUERY COM RETRY AUTOMÁTICO                         #
+// #################################################################
+const RETRYABLE_PG_CODES = new Set([
+    '08000', '08003', '08006', '08001', '08004', // erros de conexão
+    '40001', '40P01',                             // deadlock / serialization failure
+    '57P03', '53300',                             // cannot connect now / too many connections
+]);
+
+async function queryWithRetry(sql, params = [], maxRetries = 3, logFn = null) {
+    let lastError;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            if (!pool) throw new Error('Pool de conexão não disponível.');
+            return await pool.query(sql, params);
+        } catch (err) {
+            lastError = err;
+            const isRetryable =
+                RETRYABLE_PG_CODES.has(err.code) ||
+                ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND'].includes(err.code) ||
+                /connection|timeout|terminating|broken pipe|reset/i.test(err.message);
+
+            if (!isRetryable || attempt === maxRetries) throw err;
+
+            const delay = 1500 * attempt; // 1.5s, 3s, 4.5s
+            const msg = `⚠️ Erro de BD na tentativa ${attempt}/${maxRetries} (${err.code || err.message.slice(0, 60)}). Reconectando em ${delay / 1000}s...`;
+            if (logFn) logFn(msg);
+            console.warn(`[queryWithRetry] ${msg}`);
+
+            await new Promise(r => setTimeout(r, delay));
+
+            // Tenta recriar o pool com a connection string salva
+            try {
+                const savedCs = store.get('dbConnectionString');
+                if (savedCs) await initializePool(savedCs, null);
+            } catch (reconnErr) {
+                console.warn('[queryWithRetry] Falha ao reconectar pool:', reconnErr.message);
+            }
+        }
+    }
+    throw lastError;
+}
 
 // --- FUNÇÃO DE LOG DO SISTEMA (AUDIT) ---
 async function logSystemAction(username, action, details) {
@@ -1249,7 +1297,7 @@ ipcMain.on("start-cleaning", async (event, args) => {
         const rootSet = new Set();
         if (args.isAutoRoot) {
             log("Auto Raiz ATIVADO. Carregando lista raiz do Banco de Dados...");
-            const result = await pool.query('SELECT cnpj FROM raiz_cnpjs');
+            const result = await queryWithRetry('SELECT cnpj FROM raiz_cnpjs', [], 3, log);
             result.rows.forEach(row => rootSet.add(row.cnpj));
             log(`✅ Raiz do BD carregada. Total de CNPJs na raiz: ${rootSet.size}.`);
         } else if (args.rootFile) { // MODIFICADO: Carrega o arquivo raiz apenas se ele for fornecido
@@ -1321,7 +1369,7 @@ ipcMain.on("start-cleaning", async (event, args) => {
                 SELECT d.cnpj, $2 FROM unnest($1::text[]) AS d(cnpj)
                 ON CONFLICT (cnpj) DO NOTHING;
             `;
-            const result = await pool.query(query, [cnpjsArray, batchId]);
+            const result = await queryWithRetry(query, [cnpjsArray, batchId], 3, log);
             event.sender.send("upload-progress", { current: 1, total: 1 });
             cnpjsArray.forEach(cnpj => storedCnpjs.add(cnpj));
 
@@ -1494,9 +1542,11 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
         });
         const blocked = new Set();
         if (phonesInBatch.size > 0) {
-            const { rows } = await pool.query(
+            const { rows } = await queryWithRetry(
                 'SELECT telefone FROM blocklist WHERE telefone = ANY($1::text[])',
-                [Array.from(phonesInBatch)]
+                [Array.from(phonesInBatch)],
+                3,
+                log
             );
             rows.forEach(r => blocked.add(r.telefone));
         }
@@ -1537,7 +1587,7 @@ ipcMain.on("start-db-only-cleaning", async (event, { filesToClean, saveToDb }) =
         log(`\nEnviando ${allNewCnpjs.size} novos CNPJs para o banco de dados...`);
         const cnpjsArray = Array.from(allNewCnpjs);
         const query = `INSERT INTO limpeza_cnpjs (cnpj, batch_id) SELECT d.cnpj, $2 FROM unnest($1::text[]) AS d(cnpj) ON CONFLICT (cnpj) DO NOTHING;`;
-        const result = await pool.query(query, [cnpjsArray, batchId]);
+        const result = await queryWithRetry(query, [cnpjsArray, batchId], 3, log);
         event.sender.send("upload-progress", { current: 1, total: 1 });
         cnpjsArray.forEach(cnpj => storedCnpjs.add(cnpj));
         log(`✅ ${result.rowCount} novos registros adicionados. Total agora: ${storedCnpjs.size}.`);
@@ -2550,7 +2600,6 @@ ipcMain.on("split-list", async (event, { filePath, linesPerSplit }) => {
         let currentRow = 2; // Start from the second row (after header)
         for (let i = 0; i < numFiles; i++) {
             const newWorkbook = new ExcelJS.Workbook();
-            const newWorksheet = newWorkbook.addWorksheet("Sheet1");
             newWorksheet.addRow(header); // Add header to new file
 
             const startRow = currentRow;
