@@ -2871,7 +2871,7 @@ def _salvar_limpeza(resultados: list):
     conn.close()
 
 N8N_FISH_URL    = "https://n8n.upscales.com.br/webhook/2ccead38-deb8-48d0-9f44-0edccafcc026"
-TELEFONES_DB_URL = "postgresql://neondb_owner:npg_ki2aKHqlnFY9@ep-quiet-night-ac2uu9kc-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require"
+TELEFONES_DB_URL = "postgresql://neondb_owner:npg_7CNknmUcTSI3@ep-quiet-night-ac2uu9kc-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require"
 
 def _buscar_telefones_externos(cnpj: str) -> list:
     """Busca telefones na tabela telefones do banco externo pelo CNPJ."""

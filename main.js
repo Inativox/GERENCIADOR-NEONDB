@@ -178,7 +178,6 @@ const users = {
     'Thalles': { password: 'Flamengo@2025', role: 'admin' },
     'Matheus Kauss': { password: 'Flamengo@2025', role: 'admin' },
     'Matheus': { password: 'N7*FAlBmukm^ND', role: 'admin' },
-    'Gabriel': { password: 'Vasco@2025', role: 'admin' },
     'Felipe': { password: 'Flamengo@2025', role: 'admin' },
     'Davi': { password: '080472Fr*', role: 'admin' },
     'Tatiane': { password: '123456', role: 'master' },
