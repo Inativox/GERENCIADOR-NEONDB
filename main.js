@@ -173,23 +173,7 @@ async function logSystemAction(username, action, details) {
 // #           SISTEMA DE LOGIN E PERMISSÕES (Com alterações)      #
 // #################################################################
 
-const users = {
-    'Pablo': { password: 'Pickliss@1dois3', role: 'admin' },
-    'Thalles': { password: 'Flamengo@2025', role: 'admin' },
-    'Matheus Kauss': { password: 'Flamengo@2025', role: 'admin' },
-    'Matheus': { password: 'N7*FAlBmukm^ND', role: 'admin' },
-    'Felipe': { password: 'Flamengo@2025', role: 'admin' },
-    'Davi': { password: '080472Fr*', role: 'admin' },
-    'Tatiane': { password: '123456', role: 'master' },
-    'Gomes': { password: '123456', role: 'master' },
-    'Mayko': { password: '123456', role: 'limited', teamId: '106' },
-    'Bruna': { password: '123456', role: 'limited', teamId: '85' },
-    'Laiane': { password: '123456', role: 'limited', teamId: '123' },
-    'Waleska': { password: '123456', role: 'limited', teamId: '87' },
-    'Natallia': { password: '123456', role: 'limited', teamId: '106' },
-    'Camila': { password: '123456', role: 'limited', teamId: '120' },
-    'Tef': { password: '123456', role: 'limited', teamId: '133' }
-};
+const users = JSON.parse(fs.readFileSync(path.join(__dirname, 'users.json'), 'utf8'));
 let mainWindow;
 let loginWindow;
 let currentUser = null;
@@ -1754,8 +1738,8 @@ ipcMain.on('organize-daily-sheet', async (event, filePaths, organizationType, op
             availableCnpjs = new Set();
             
             const credentials = {
-                CLIENT_ID: "imWzrW41HcnoJgvZqHCaLvziUGlhAJAH", // Chave 2 (IM)
-                CLIENT_SECRET: "A0lAqZO73uW3wryU"
+                CLIENT_ID: process.env.IM_CLIENT_ID,
+                CLIENT_SECRET: process.env.IM_CLIENT_SECRET
             };
             const TOKEN_URL = "https://crm-leads-p.c6bank.info/querie-partner/token";
             const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
@@ -3073,13 +3057,13 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
     let fishClientIndex = 0; // counter used to alternate connectors in split mode
     const credentials = {
         c6: {
-            CLIENT_ID: "EA8ZUFeZVSeqMGr49XJSsZKFuxSZub3i",
-            CLIENT_SECRET: "EUomxjGf6BvBZ1HO",
+            CLIENT_ID: process.env.C6_CLIENT_ID,
+            CLIENT_SECRET: process.env.C6_CLIENT_SECRET,
             name: "Chave 1 (Padrão)"
         },
         im: {
-            CLIENT_ID: "imWzrW41HcnoJgvZqHCaLvziUGlhAJAH",
-            CLIENT_SECRET: "A0lAqZO73uW3wryU",
+            CLIENT_ID: process.env.IM_CLIENT_ID,
+            CLIENT_SECRET: process.env.IM_CLIENT_SECRET,
             name: "Chave 2 (Alternativa)"
         }
     };
