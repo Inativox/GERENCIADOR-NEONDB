@@ -16,6 +16,10 @@ firebase-debug.*.log*
 .env
 users.json
 
+# Claude — overrides pessoais (não compartilhar)
+CLAUDE.local.md
+.claude/settings.local.json
+
 # Dependências
 node_modules/
 bower_components/
