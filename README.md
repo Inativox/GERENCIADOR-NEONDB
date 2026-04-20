@@ -78,26 +78,59 @@ O instalador é gerado na pasta `dist/`.
 
 ```
 .
-├── main.js               # Processo principal Electron + lógica de negócio
-├── renderer.js           # Lógica do frontend (processo renderer)
+├── main.js               # Entry point do Electron (1 linha → carrega src/main/)
 ├── preload.js            # Bridge segura entre main e renderer (contextBridge)
-├── index.html            # Interface principal do app
+├── index.html            # Interface principal do app (carrega src/renderer/)
 ├── login.html            # Tela de login
 ├── package.json          # Dependências e configurações de build
 ├── .env.example          # Template de variáveis de ambiente
+│
+├── src/
+│   ├── main/                         # ── Processo Principal (Node.js) ──
+│   │   ├── index.js                  # Inicializa app, janelas, auto-updater
+│   │   ├── state.js                  # Estado compartilhado (pool, janelas, usuário)
+│   │   ├── database/
+│   │   │   ├── connection.js         # Pool PostgreSQL, retry automático, CNAEs proibidos
+│   │   │   └── cache.js              # Cache em memória de CNPJs e blocklist
+│   │   └── handlers/                 # Um arquivo por funcionalidade
+│   │       ├── auth.js               # Login, logout, sessão, configurações de UI
+│   │       ├── files.js              # Diálogos de arquivo, leitura/escrita de planilhas
+│   │       ├── limpeza.js            # Limpeza local, organização de planilhas, merge
+│   │       ├── cnpj.js               # Fila da API, modo Fish, agendamento, locks
+│   │       ├── enriquecimento.js     # Carga e enriquecimento de dados no BD
+│   │       ├── blocklist.js          # Feed, verificação e stats da blocklist
+│   │       ├── monitoramento.js      # Relatórios de monitoramento e Bitrix
+│   │       └── relacionamento.js     # Pipeline de relacionamento comercial
+│   │
+│   └── renderer/                     # ── Processo Renderer (Browser) ──
+│       └── index.js                  # Toda a lógica de interface e abas
+│
+├── gerenciador-backup/               # Cópia dos arquivos originais (referência)
 │
 ├── CLAUDE.md             # Instruções do projeto para o Claude (versionado)
 ├── CLAUDE.local.md       # Overrides pessoais do Claude (gitignored)
 │
 └── .claude/
-    ├── settings.json     # Permissões e config do Claude Code (versionado)
-    ├── settings.local.json  # Permissões pessoais (gitignored)
-    ├── commands/         # Comandos slash customizados (/push, /review)
-    │   ├── push.md
-    │   └── review.md
-    └── rules/            # Regras de código aplicadas automaticamente
+    ├── settings.json     # Permissões e config do Claude Code
+    ├── commands/
+    │   ├── push.md       # Comando /push — commit e push automático
+    │   └── review.md     # Comando /review — revisão do código alterado
+    └── rules/
         ├── code-style.md
         └── electron-conventions.md
+```
+
+### Como o código flui
+
+```
+npm start
+   └── Electron carrega main.js
+          └── main.js carrega src/main/index.js
+                 ├── Registra todos os handlers IPC (src/main/handlers/)
+                 ├── Conecta ao banco (src/main/database/)
+                 └── Abre a janela → index.html
+                        └── index.html carrega src/renderer/index.js
+                               └── Interface das abas + comunicação com main via preload.js
 ```
 
 ---
