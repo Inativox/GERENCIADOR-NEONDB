@@ -92,7 +92,7 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     const logBuffer = [];
     const log = (msg) => logBuffer.push(msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
-    const { destCol, backup, checkDb, saveToDb, checkBlocklist, removeLandlines } = options;
+    const { backup, checkDb, saveToDb, checkBlocklist, removeLandlines } = options;
 
     const cleanClientName = (name) => {
         if (!name || typeof name !== 'string') return name;
@@ -118,8 +118,6 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     }
 
     const header = data[0];
-    const destColIdx = letterToIndex(destCol);
-
     const cpfColIdx = header.findIndex(h => ["cpf", "cnpj"].includes(String(h).trim().toLowerCase()));
     const nomeColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "nome");
     const cnaeColIdx = header.findIndex(h => ["cnae", "livre3"].includes(String(h).trim().toLowerCase()));
@@ -155,7 +153,7 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
 
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
-        const key = row[destColIdx] ? String(row[destColIdx]).trim() : "";
+        const key = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : "";
         const cnpj = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : "";
 
         if (checkDb && cnpj && cnpjsHistory.has(cnpj)) {
@@ -551,13 +549,11 @@ function register() {
                 }
 
                 if (rootIdx === -1) {
-                    log(`⚠️ Coluna 'CPF' ou 'CNPJ' não encontrada automaticamente na Raiz. Usando a coluna selecionada manualmente (${args.rootCol}).`);
-                    rootIdx = letterToIndex(args.rootCol);
-                } else {
-                    log(`✅ Coluna Raiz detectada automaticamente: ${dataRoot[0][rootIdx]} (Índice ${rootIdx})`);
+                    return log(`❌ Arquivo raiz inválido: coluna 'cpf' ou 'cnpj' não encontrada em ${path.basename(args.rootFile)}.`);
                 }
+                log(`✅ Coluna raiz detectada: "${dataRoot[0][rootIdx]}" (índice ${rootIdx})`);
 
-                const rowsRoot = dataRoot.map(r => r[rootIdx]).filter(v => v).map(v => String(v).trim());
+                const rowsRoot = dataRoot.map(r => r[rootIdx]).filter(v => v).map(v => String(v).trim().replace(/\D/g, "")).filter(v => v);
                 rowsRoot.forEach(item => rootSet.add(item));
                 log(`Lista raiz do arquivo carregada com ${rootSet.size} valores.`);
             } else {
@@ -1373,42 +1369,35 @@ function register() {
         logSystemAction(state.currentUser.username, 'Divisão Lista', `Dividiu arquivo ${path.basename(filePath)}`);
 
         try {
-            const workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.readFile(filePath);
-            const worksheet = workbook.worksheets[0];
+            const wb = await readSpreadsheet(filePath);
+            const sheet = wb.Sheets[wb.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
 
-            if (!worksheet || worksheet.rowCount <= 1) {
-                log(`⚠️ Arquivo ${path.basename(filePath)} vazio ou sem dados. Pulando.\n`);
+            if (data.length <= 1) {
+                log(`⚠️ Arquivo ${path.basename(filePath)} vazio ou sem dados.\n`);
                 return;
             }
 
-            const header = worksheet.getRow(1).values.filter(Boolean);
-            const totalRows = worksheet.rowCount - 1;
+            const header = data[0];
+            const rows = data.slice(1);
+            const totalRows = rows.length;
             const numFiles = Math.ceil(totalRows / linesPerSplit);
             const baseName = path.basename(filePath, path.extname(filePath));
             const outputDir = path.dirname(filePath);
 
             log(`Total de ${totalRows} linhas de dados. Será dividido em ${numFiles} arquivo(s) com ${linesPerSplit} linhas cada.\n`);
 
-            let currentRow = 2;
             for (let i = 0; i < numFiles; i++) {
-                const newWorkbook = new ExcelJS.Workbook();
-                const newWorksheet = newWorkbook.addWorksheet('Dados');
-                newWorksheet.addRow(header);
-
-                const startRow = currentRow;
-                const endRow = Math.min(currentRow + linesPerSplit - 1, totalRows + 1);
-
-                for (let j = startRow; j <= endRow; j++) {
-                    const row = worksheet.getRow(j);
-                    newWorksheet.addRow(row.values.filter(Boolean));
-                }
+                const chunk = rows.slice(i * linesPerSplit, (i + 1) * linesPerSplit);
+                const newWb = XLSX.utils.book_new();
+                const newSheet = XLSX.utils.aoa_to_sheet([header, ...chunk]);
+                XLSX.utils.book_append_sheet(newWb, newSheet, 'Dados');
 
                 const newFilePath = path.join(outputDir, `${baseName}_parte${i + 1}.xlsx`);
-                await newWorkbook.xlsx.writeFile(newFilePath);
+                writeSpreadsheet(newWb, newFilePath);
                 log(`✅ Parte ${i + 1} salva em: ${path.basename(newFilePath)}\n`);
-                currentRow = endRow + 1;
             }
+
             log(`\n--- Divisão de Lista concluída com sucesso! ---\n`);
             event.sender.send("log", `🎉 Arquivos divididos salvos em: ${outputDir}`);
             shell.showItemInFolder(path.join(outputDir, `${baseName}_parte1.xlsx`));

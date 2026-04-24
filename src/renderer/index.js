@@ -864,8 +864,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedCleanFilesDiv = document.getElementById('selectedCleanFiles');
     const progressContainer = document.getElementById('progressContainer');
     const logDiv = document.getElementById('log');
-    const rootColSelect = document.getElementById('rootCol');
-    const destColSelect = document.getElementById('destCol');
     const selectMergeFilesBtn = document.getElementById('selectMergeFilesBtn');
     const startMergeBtn = document.getElementById('startMergeBtn');
     const selectedMergeFilesDiv = document.getElementById('selectedMergeFiles');
@@ -906,8 +904,6 @@ document.addEventListener('DOMContentLoaded', () => {
             saveToDb: saveToDbCheckbox.checked,
             checkBlocklist: checkBlocklistCheckbox.checked,
             autoRoot: autoRootBtn.dataset.on === 'true',
-            rootCol: rootColSelect.value,
-            destCol: destColSelect.value,
             organizeType: document.getElementById('organizeTypeSelect') ? document.getElementById('organizeTypeSelect').value : (document.querySelector('input[name="organizeType"]:checked')?.value || 'bernardo'),
             mergeStrategy: document.querySelector('input[name="mergeStrategy"]:checked')?.value || 'all',
             customMergeCount: customMergeCountInput.value,
@@ -967,9 +963,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setChecked(checkDbCheckbox, settings.checkDb);
         setChecked(saveToDbCheckbox, settings.saveToDb);
         setChecked(checkBlocklistCheckbox, settings.checkBlocklist);
-        setValue(rootColSelect, settings.rootCol);
-        setValue(destColSelect, settings.destCol);
-        
+
         const organizeSelect = document.getElementById('organizeTypeSelect');
         if (organizeSelect && settings.organizeType) {
             organizeSelect.value = settings.organizeType;
@@ -1095,8 +1089,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 isAutoRoot,
                 rootFile: isAutoRoot ? null : rootFile,
                 cleanFiles,
-                rootCol: rootColSelect.value,
-                destCol: destColSelect.value,
                 backup: backupEnabled,
                 removeLandlines: removeLandlinesEnabled, // NOVO
                 checkDb: checkDbEnabled,
