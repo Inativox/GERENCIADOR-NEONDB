@@ -13,6 +13,7 @@ const store = new Store();
 
 const state = require('../state');
 const { logSystemAction } = require('../database/connection');
+const { getApiCredentials } = require('../keyfile');
 
 // #################################################################
 // #           ESTADO LOCAL DA FILA DE API                        #
@@ -199,15 +200,20 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
     const { keyMode, removeClients, isFishMode, extractClients, connectors, splitMode } = options;
     const resolvedConnectors = connectors && connectors.length > 0 ? connectors : (options.connector ? [options.connector] : ['RESGATE']);
     let fishClientIndex = 0;
+    const _kf = getApiCredentials();
+    if (!_kf) {
+        log('❌ Licença de API não carregada. Importe o arquivo .mbkey na tela de login.');
+        return;
+    }
     const credentials = {
         c6: {
-            CLIENT_ID: process.env.C6_CLIENT_ID,
-            CLIENT_SECRET: process.env.C6_CLIENT_SECRET,
+            CLIENT_ID: _kf.c6.clientId,
+            CLIENT_SECRET: _kf.c6.clientSecret,
             name: "Chave 1 (Padrão)"
         },
         im: {
-            CLIENT_ID: process.env.IM_CLIENT_ID,
-            CLIENT_SECRET: process.env.IM_CLIENT_SECRET,
+            CLIENT_ID: _kf.im.clientId,
+            CLIENT_SECRET: _kf.im.clientSecret,
             name: "Chave 2 (Alternativa)"
         }
     };

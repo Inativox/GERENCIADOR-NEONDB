@@ -153,6 +153,36 @@
             color: var(--text-muted);
         }
 
+        /* --- KEY FILE GROUP --- */
+        .key-file-group {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .key-file-badge {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 1rem;
+            border-radius: var(--radius);
+            border: 1px dashed var(--border-color);
+            background: var(--bg-element);
+            font-size: 0.8125rem;
+            font-weight: 500;
+            min-height: 48px;
+            color: var(--text-muted);
+            transition: all var(--transition-speed);
+        }
+
+        .key-file-badge.key-file-loaded {
+            color: var(--accent-green);
+            border-color: color-mix(in srgb, var(--accent-green) 35%, transparent);
+            background: color-mix(in srgb, var(--accent-green) 8%, var(--bg-element));
+            border-style: solid;
+        }
+
         /* --- DB CONNECTION GROUP --- */
         .db-connection-group {
             display: flex;

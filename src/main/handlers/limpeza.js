@@ -15,6 +15,7 @@ const state = require('../state');
 const { PROHIBITED_CNAES, queryWithRetry, logSystemAction } = require('../database/connection');
 const { readSpreadsheet, writeSpreadsheet, letterToIndex } = require('./files');
 const cache = require('../database/cache');
+const { getApiCredentials } = require('../keyfile');
 
 const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
 
@@ -800,10 +801,14 @@ function register() {
                 const cnpjsArray = Array.from(allCnpjsToConsult);
                 availableCnpjs = new Set();
 
+                const _kf = getApiCredentials();
                 const credentials = {
-                    CLIENT_ID: process.env.IM_CLIENT_ID,
-                    CLIENT_SECRET: process.env.IM_CLIENT_SECRET
+                    CLIENT_ID: _kf ? _kf.im.clientId : '',
+                    CLIENT_SECRET: _kf ? _kf.im.clientSecret : ''
                 };
+                if (!_kf) {
+                    log('❌ Licença de API não carregada. Importe o arquivo .mbkey na tela de login.');
+                }
                 const TOKEN_URL = "https://crm-leads-p.c6bank.info/querie-partner/token";
                 const CONSULTA_URL = "https://crm-leads-p.c6bank.info/querie-partner/client/avaliable";
 

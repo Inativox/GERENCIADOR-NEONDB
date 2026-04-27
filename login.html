@@ -43,6 +43,20 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">Licença de API</label>
+                <div class="key-file-group">
+                    <div id="key-file-badge" class="key-file-badge">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span id="key-file-status-text">Nenhuma licença importada</span>
+                    </div>
+                    <button type="button" id="import-key-btn" class="test-connection-btn">Importar</button>
+                </div>
+            </div>
+
+            <div class="form-group">
                 <label for="username" class="form-label">Usuário</label>
                 <input type="text" id="username" class="form-input" placeholder="Digite seu usuário" required
                     autocomplete="username" data-testid="username-input">

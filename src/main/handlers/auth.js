@@ -10,6 +10,7 @@ const store = new Store();
 const state = require('../state');
 const { initializePool } = require('../database/connection');
 const { loadStoredCnpjs } = require('../database/cache');
+const { loadKeyFile, clearCredentials, hasCredentials } = require('../keyfile');
 
 const users = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../users.json'), 'utf8'));
 
@@ -142,6 +143,7 @@ function register() {
 
     ipcMain.on('logout', () => {
         store.delete('credentials');
+        clearCredentials();
         state.currentUser = null;
         if (state.pool) {
             state.pool.end();
@@ -153,6 +155,31 @@ function register() {
         if (!state.loginWindow) {
             createLoginWindow();
         }
+    });
+
+    ipcMain.handle('load-key-file', async () => {
+        const result = await dialog.showOpenDialog({
+            title: 'Importar Licença de API',
+            filters: [{ name: 'Licença de API', extensions: ['mbkey'] }],
+            properties: ['openFile'],
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+            return { success: false, cancelled: true };
+        }
+
+        const filePath = result.filePaths[0];
+        try {
+            loadKeyFile(filePath);
+            store.set('key_file_path', filePath);
+            return { success: true, path: filePath };
+        } catch (error) {
+            return { success: false, message: error.message };
+        }
+    });
+
+    ipcMain.handle('get-key-file-status', () => {
+        return { loaded: hasCredentials(), path: store.get('key_file_path') || null };
     });
 
     ipcMain.handle('get-ui-settings', () => {

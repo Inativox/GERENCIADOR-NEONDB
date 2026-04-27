@@ -28,11 +28,24 @@
         const dbConnectionStringInput = document.getElementById('db-connection-string');
         const testDbBtn = document.getElementById('test-db-btn');
         const dbStatusMessage = document.getElementById('db-status-message');
+        const importKeyBtn = document.getElementById('import-key-btn');
+        const keyFileBadge = document.getElementById('key-file-badge');
+        const keyFileStatusText = document.getElementById('key-file-status-text');
 
         // --- Helper Functions ---
         const showMessage = (text, type = 'error') => {
             messageDiv.textContent = text;
             messageDiv.className = type === 'success' ? 'success-message' : 'error-message';
+        };
+
+        const setKeyFileStatus = (loaded) => {
+            if (loaded) {
+                keyFileBadge.classList.add('key-file-loaded');
+                keyFileStatusText.textContent = 'Licença de API carregada';
+            } else {
+                keyFileBadge.classList.remove('key-file-loaded');
+                keyFileStatusText.textContent = 'Nenhuma licença importada';
+            }
         };
 
         const setDbStatus = (text, type = 'info') => {
@@ -113,9 +126,27 @@
             }
         };
 
+        const handleImportKeyFile = async () => {
+            importKeyBtn.disabled = true;
+            importKeyBtn.textContent = 'Importando...';
+            try {
+                const result = await window.electronAPI.selectAndLoadKeyFile();
+                if (result.cancelled) return;
+                if (result.success) {
+                    setKeyFileStatus(true);
+                } else {
+                    showMessage(result.message || 'Falha ao carregar licença.');
+                }
+            } finally {
+                importKeyBtn.disabled = false;
+                importKeyBtn.textContent = 'Importar';
+            }
+        };
+
         // --- Event Listeners ---
         loginForm.addEventListener('submit', handleLogin);
         testDbBtn.addEventListener('click', handleTestDbConnection);
+        importKeyBtn.addEventListener('click', handleImportKeyFile);
 
         dbConnectionStringInput.addEventListener('input', () => {
             dbConnectionStringInput.style.borderColor = 'var(--border-color)';
@@ -146,6 +177,11 @@
             }
 
             checkFormValidity();
+
+            if (window.electronAPI?.getKeyFileStatus) {
+                const status = await window.electronAPI.getKeyFileStatus();
+                setKeyFileStatus(status.loaded);
+            }
 
             window.electronAPI?.onAutoLoginFailed?.((message) => {
                 showMessage(message);

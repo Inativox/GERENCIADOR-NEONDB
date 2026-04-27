@@ -8,6 +8,7 @@ const { app } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
 const store = new Store();
+const { loadKeyFile } = require('./keyfile');
 
 const state = require('./state');
 
@@ -65,6 +66,17 @@ cache.register();
 
 // Ciclo de vida do app
 app.whenReady().then(async () => {
+    const keyFilePath = store.get('key_file_path');
+    if (keyFilePath) {
+        try {
+            loadKeyFile(keyFilePath);
+            console.log('Licença de API carregada automaticamente.');
+        } catch (e) {
+            console.warn('Falha ao carregar licença de API salva:', e.message);
+            store.delete('key_file_path');
+        }
+    }
+
     const savedCredentials = store.get('credentials');
 
     if (savedCredentials && savedCredentials.username && savedCredentials.password) {

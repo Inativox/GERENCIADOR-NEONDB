@@ -16,6 +16,9 @@ firebase-debug.*.log*
 .env
 users.json
 
+# Arquivo-chave de API (distribuir manualmente, nunca commitar)
+*.mbkey
+
 # Claude — overrides pessoais (não compartilhar)
 CLAUDE.local.md
 .claude/settings.local.json

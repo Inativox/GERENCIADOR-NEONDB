@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getDbConnectionString: () => ipcRenderer.invoke('get-db-connection-string'),
     saveAndTestDbConnection: (connectionString) => ipcRenderer.invoke('save-and-test-db-connection', connectionString),
 
+    // --- Licença de API (arquivo-chave .mbkey) ---
+    selectAndLoadKeyFile: () => ipcRenderer.invoke('load-key-file'),
+    getKeyFileStatus: () => ipcRenderer.invoke('get-key-file-status'),
+
     // --- Funções de Configuração da UI ---
     getUiSettings: () => ipcRenderer.invoke('get-ui-settings'),
     saveUiSettings: (settings) => ipcRenderer.send('save-ui-settings', settings),
