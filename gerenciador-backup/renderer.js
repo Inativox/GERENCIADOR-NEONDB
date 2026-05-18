@@ -864,6 +864,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedCleanFilesDiv = document.getElementById('selectedCleanFiles');
     const progressContainer = document.getElementById('progressContainer');
     const logDiv = document.getElementById('log');
+    const rootColSelect = document.getElementById('rootCol');
+    const destColSelect = document.getElementById('destCol');
     const selectMergeFilesBtn = document.getElementById('selectMergeFilesBtn');
     const startMergeBtn = document.getElementById('startMergeBtn');
     const selectedMergeFilesDiv = document.getElementById('selectedMergeFiles');
@@ -904,6 +906,8 @@ document.addEventListener('DOMContentLoaded', () => {
             saveToDb: saveToDbCheckbox.checked,
             checkBlocklist: checkBlocklistCheckbox.checked,
             autoRoot: autoRootBtn.dataset.on === 'true',
+            rootCol: rootColSelect.value,
+            destCol: destColSelect.value,
             organizeType: document.getElementById('organizeTypeSelect') ? document.getElementById('organizeTypeSelect').value : (document.querySelector('input[name="organizeType"]:checked')?.value || 'bernardo'),
             mergeStrategy: document.querySelector('input[name="mergeStrategy"]:checked')?.value || 'all',
             customMergeCount: customMergeCountInput.value,
@@ -919,6 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Aba Enriquecimento
             masterFileYear: document.getElementById('master-file-year-input').value,
+            enrichmentYear: document.getElementById('enrichment-year-input').value,
             enrichStrategy: document.querySelector('input[name="enrichStrategy"]:checked')?.value || 'append',
 
             // Aba Blocklist
@@ -962,7 +967,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setChecked(checkDbCheckbox, settings.checkDb);
         setChecked(saveToDbCheckbox, settings.saveToDb);
         setChecked(checkBlocklistCheckbox, settings.checkBlocklist);
-
+        setValue(rootColSelect, settings.rootCol);
+        setValue(destColSelect, settings.destCol);
+        
         const organizeSelect = document.getElementById('organizeTypeSelect');
         if (organizeSelect && settings.organizeType) {
             organizeSelect.value = settings.organizeType;
@@ -992,6 +999,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Aba Enriquecimento
         setValue(document.getElementById('master-file-year-input'), settings.masterFileYear);
+        setValue(document.getElementById('enrichment-year-input'), settings.enrichmentYear);
         setRadio('enrichStrategy', settings.enrichStrategy);
 
         // Aba Blocklist
@@ -1087,6 +1095,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 isAutoRoot,
                 rootFile: isAutoRoot ? null : rootFile,
                 cleanFiles,
+                rootCol: rootColSelect.value,
+                destCol: destColSelect.value,
                 backup: backupEnabled,
                 removeLandlines: removeLandlinesEnabled, // NOVO
                 checkDb: checkDbEnabled,
@@ -1583,18 +1593,58 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectEnrichFilesBtn) selectEnrichFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione Arquivos para Enriquecer', multi: true }); if (!files?.length) return; window.electronAPI.prepareEnrichmentFiles(files); enrichmentEnrichFiles = []; selectedEnrichFilesDiv.innerHTML = ''; enrichmentProgressContainer.innerHTML = ''; files.forEach(file => { const id = `enrich-${enrichmentEnrichFiles.length}`; enrichmentEnrichFiles.push({ path: file, id }); appendEnrichmentLog(`Adicionado para enriquecimento: ${file}`); addFileToUI(selectedEnrichFilesDiv, file, false); enrichmentProgressContainer.innerHTML += `<div class="file-progress" style="margin-bottom: 15px;"><div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;"><strong>${getBasename(file)}</strong><span id="eta-${id}" style="font-size: 12px; color: var(--text-secondary);"></span></div><div class="progress-bar-container"><div class="progress-bar-fill" id="${id}"></div></div></div>`; }); });
 
     if (startEnrichmentBtn) {
-        startEnrichmentBtn.addEventListener('click', () => {
+        startEnrichmentBtn.addEventListener('click', async () => { // MODIFICADO para async
             if (enrichmentEnrichFiles.length === 0) {
                 return appendEnrichmentLog('❌ ERRO: Selecione pelo menos um arquivo para enriquecer.');
+            }
+            const useAllDb = document.getElementById('enrichment-all-db-checkbox').checked; // NOVO
+            const enrichmentYearInput = document.getElementById('enrichment-year-input');
+            const year = enrichmentYearInput.value;
+            const batchSizeInput = document.getElementById('enrichment-batch-size-input'); // NOVO
+            const batchSize = parseInt(batchSizeInput.value, 10); // NOVO
+
+            // MODIFICADO: A validação do ano só é necessária se "Todo Banco" não estiver marcado
+            if (!useAllDb && (!year || isNaN(parseInt(year)) || year.length !== 4)) {
+                return appendEnrichmentLog('❌ ERRO: Por favor, insira um ano válido para pesquisar no banco.');
+            }
+
+            // NOVO: Lógica de confirmação para lotes grandes
+            if (batchSize >= 10000) {
+                const confirmed = await window.electronAPI.showConfirmDialog({
+                    title: 'Confirmação de Lote Grande',
+                    message: `Você selecionou um tamanho de lote de ${batchSize.toLocaleString('pt-BR')} registros. Valores altos podem causar lentidão ou travamentos. Deseja continuar?`
+                });
+                if (!confirmed) {
+                    return appendEnrichmentLog('⚠️ Operação cancelada pelo usuário devido ao tamanho do lote.');
+                }
             }
 
             startEnrichmentBtn.disabled = true;
             const strategy = document.querySelector('input[name="enrichStrategy"]:checked').value;
             const backup = document.getElementById('backupCheckbox').checked;
-            const fillCpf = document.getElementById('enrichment-fill-cpf-checkbox').checked;
+            const usePadrao = document.getElementById('enrichment-padrao-checkbox').checked;
 
             appendEnrichmentLog(`Iniciando enriquecimento com a estratégia: ${strategy.toUpperCase()}`);
-            window.electronAPI.startEnrichment({ filesToEnrich: enrichmentEnrichFiles, strategy, backup, year: null, batchSize: 20000, usePadrao: false, useAllDb: true, fillCpf });
+            // MODIFICADO: Envia as novas opções
+            window.electronAPI.startEnrichment({ filesToEnrich: enrichmentEnrichFiles, strategy, backup, year: parseInt(year) || null, batchSize: batchSize || null, usePadrao, useAllDb });
+        });
+    }
+
+    // NOVO: Lógica para desabilitar/habilitar inputs com base na seleção de "Todo Banco"
+    const enrichmentAllDbCheckbox = document.getElementById('enrichment-all-db-checkbox');
+    const enrichmentYearInput = document.getElementById('enrichment-year-input');
+    const enrichmentPadraoCheckbox = document.getElementById('enrichment-padrao-checkbox');
+
+    if (enrichmentAllDbCheckbox) {
+        enrichmentAllDbCheckbox.addEventListener('change', () => {
+            const isChecked = enrichmentAllDbCheckbox.checked;
+            enrichmentYearInput.disabled = isChecked;
+            enrichmentPadraoCheckbox.disabled = isChecked;
+
+            if (isChecked) {
+                enrichmentYearInput.value = ''; // Limpa o valor do ano
+                enrichmentPadraoCheckbox.checked = false; // Desmarca a outra opção
+            }
         });
     }
 
