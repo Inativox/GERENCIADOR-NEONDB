@@ -15,6 +15,7 @@ firebase-debug.*.log*
 # Ambiente
 .env
 users.json
+.vscode
 
 # Arquivo-chave de API (distribuir manualmente, nunca commitar)
 *.mbkey
@@ -22,6 +23,7 @@ users.json
 # Claude — overrides pessoais (não compartilhar)
 CLAUDE.local.md
 .claude/settings.local.json
+fluxo.md
 
 # Dependências
 node_modules/
