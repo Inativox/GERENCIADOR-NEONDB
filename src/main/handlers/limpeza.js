@@ -93,7 +93,7 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     const logBuffer = [];
     const log = (msg) => logBuffer.push(msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
-    const { backup, checkDb, saveToDb, checkBlocklist, removeLandlines } = options;
+    const { backup, checkDb, saveToDb, checkBlocklist, removeLandlines, checkNumerosInvalidos } = options; //checkNumerosInvalidos adicionado por Enzo
 
     const cleanClientName = (name) => {
         if (!name || typeof name !== 'string') return name;
@@ -139,6 +139,10 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     if (foneIdxs.length === 0 && checkBlocklist) {
         log(`⚠️ AVISO: A verificação de blocklist está ativa, mas nenhuma coluna 'fone' (fone1 a fone16) foi encontrada.`);
     }
+    //verificacao se as colunas fone da planilha estao presentes. adicionado por enzo. 
+    if(foneIdxs.length === 0 && checkNumerosInvalidos){
+     log(`⚠️ AVISO: A verificação de números inválidos está ativa, mas nenhuma coluna 'fone' (fone1 a fone16) foi encontrada.`);
+    }
     if (cnaeColIdx === -1) {
         log(`⚠️ AVISO: Nenhuma coluna "cnae" ou "livre3" encontrada em ${path.basename(file)}. A verificação de CNAE será ignorada para este arquivo.`);
     }
@@ -148,6 +152,7 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     let removedDuplicates = 0;
     let removedByCnae = 0;
     let removedByBlocklist = 0;
+    let removedInvalidPhonesNumber = 0; // adicionado por enzo
     let removedDdiCount = 0;
     let cleanedPhones = 0;
     const newCnpjsInThisFile = new Set();
@@ -205,7 +210,7 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
         }
     }
 
-    if (!checkBlocklist || foneIdxs.length === 0) {
+    if ((!checkBlocklist && !checkNumerosInvalidos) || foneIdxs.length === 0) {
         const finalWB = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(finalWB, XLSX.utils.aoa_to_sheet(cleaned), wb.SheetNames[0]);
         writeSpreadsheet(finalWB, file);
@@ -230,7 +235,8 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
             });
         });
         const blocked = new Set();
-        if (phonesInBatch.size > 0) {
+        //condicao nao verifica o checkBlockList se o toogle estiver desativado vai remover os blocklist de qualquer jeito. para corrigir isso devemos colocar (if (checkBlocklist && phonesInBatch.size > 0)) tornado a utilizacao do toggle sendo feito de forma correta. essa correcao foi adicionada por enzo.
+        if (checkBlocklist && phonesInBatch.size > 0) {
             const { rows } = await queryWithRetry(
                 'SELECT telefone FROM blocklist WHERE telefone = ANY($1::text[])',
                 [Array.from(phonesInBatch)],
@@ -239,12 +245,41 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
             );
             rows.forEach(r => blocked.add(r.telefone));
         }
+
+        //esse bloco de codigo verifica se tem numeros invalidos e numeros no lote faz uma query de leitura da tabela telefones_invalidos
+        // e adiciona no set. adicionado por enzo.
+        const invalidPhones = new Set()
+        if(checkNumerosInvalidos && phonesInBatch.size > 0){
+        const {rows} = await queryWithRetry(
+        'SELECT telefone from telefones_invalidos WHERE telefone = ANY($1::text[])',
+        [Array.from(phonesInBatch)], 3, log
+        );
+        rows.forEach(r => invalidPhones.add(r.telefone))
+        
+        }
+
+        //esse bloco de codigo verifica se o numero esta bloqueado entao remove a linha da planilha ja numero invalidos remove apenas a celula. parte de numeros invalidos adicionado por enzo.
         for (const row of batch) {
             const isBlocked = foneIdxs.some(foneIdx => {
                 const v = row[foneIdx] ? String(row[foneIdx]).replace(/\D/g, "").trim() : "";
                 return v && blocked.has(v);
             });
-            if (isBlocked) { removedByBlocklist++; } else { finalCleaned.push(row); }
+            
+            if (isBlocked) { removedByBlocklist++; continue; }
+            //codigo abaixo remove apenas a celula do numero de telefone invalido.
+            let hadInvalidPhone =  false;
+            foneIdxs.forEach(foneIdx =>{
+            const v = row[foneIdx] ? String(row[foneIdx]).replace(/\D/g, "").trim() : "";
+            if(v && invalidPhones.has(v)){
+            row[foneIdx] = null;
+            hadInvalidPhone = true
+            }
+            });
+            if(hadInvalidPhone){
+            removedInvalidPhonesNumber++
+            }
+
+            finalCleaned.push(row); 
         }
         progress(Math.floor(((i + batch.length) / dataToVerify.length) * 100));
         await new Promise(resolve => setImmediate(resolve));
@@ -254,8 +289,8 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     XLSX.utils.book_append_sheet(newWB, XLSX.utils.aoa_to_sheet(finalCleaned), wb.SheetNames[0]);
     writeSpreadsheet(newWB, file);
     progress(100);
-
-    log(`✅ ${path.basename(file)}\n   • Repetidos (BD): ${removedDuplicates} | Pela Raiz: ${removedByRoot} | Blocklist: ${removedByBlocklist} | CNAE: ${removedByCnae}\n   • DDIs removidos: ${removedDdiCount} | Fones fixos: ${cleanedPhones}\n   • Total final: ${finalCleaned.length - 1}`);
+    //adiciona a quantidade de numeros invalidos removidos no log. adicionado por enzo
+    log(`✅ ${path.basename(file)}\n   • Repetidos (BD): ${removedDuplicates} | Pela Raiz: ${removedByRoot} | Blocklist: ${removedByBlocklist} | Números Inválidos: ${removedInvalidPhonesNumber}| CNAE: ${removedByCnae}\n   • DDIs removidos: ${removedDdiCount} | Fones fixos: ${cleanedPhones}\n   • Total final: ${finalCleaned.length - 1}`);
 
     return { newCnpjs: newCnpjsInThisFile, logs: logBuffer };
 }
@@ -518,9 +553,10 @@ function register() {
     ipcMain.on("start-cleaning", async (event, args) => {
         if (!isAdmin()) { event.sender.send("log", "❌ Acesso negado."); return; }
         const log = (msg) => event.sender.send("log", msg);
-        const { isAutoRoot, rootFile, checkDb, saveToDb, checkBlocklist, removeLandlines, autoAdjust } = args;
-
-        if ((isAutoRoot || checkDb || saveToDb || checkBlocklist) && !state.pool) {
+        // desestruturacao do objeto adiconando checkNumerosInvalidos adicionado por enzo.
+        const { isAutoRoot, rootFile, checkDb, saveToDb, checkBlocklist, removeLandlines, autoAdjust, checkNumerosInvalidos} = args; 
+        //checkNumerosInvalidos adicionado por enzo.
+        if ((isAutoRoot || checkDb || saveToDb || checkBlocklist || checkNumerosInvalidos) && !state.pool) {
             return log("❌ ERRO: Uma ou mais opções de Banco de Dados estão ativadas, mas a conexão com o BD falhou ou não foi configurada.");
         }
 
@@ -565,6 +601,7 @@ function register() {
             log(`Histórico de CNPJs em memória com ${storedCnpjs.size} registros.`);
             if (args.checkDb) log("Opção \"Consultar Banco de Dados\" está ATIVADA.");
             if (args.checkBlocklist) log(`Opção "Verificar Blocklist" está ATIVADA (consulta via BD).`);
+            if(args.checkNumerosInvalidos) log(`Opção "Verificar Números Inválidos" está ATIVADA (consulta via BD).`)
             if (args.saveToDb) log("Opção \"Salvar no Banco de Dados\" está ATIVADA.");
             if (args.autoAdjust) log("Opção \"Ajustar Fones Pós-Limpeza\" está ATIVADA.");
             if (args.removeLandlines) log("Opção \"Remover Fones Fixos\" está ATIVADA.");
