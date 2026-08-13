@@ -801,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         'Limpeza de Colunas': {
             title: 'Limpeza de Colunas',
-            description: 'Reduz suas planilhas a NOME, CPF e FONE1, com os números já normalizados e sem notação científica. Aceita CSV e Excel na entrada, sempre gera Excel, e os arquivos originais permanecem intactos.'
+            description: 'Reduz suas planilhas a NOME, CPF e FONE1. Converte telefone e CNPJ de notação científica para número inteiro e remove o ,00 do final. Entra .xlsx e sai .xlsx, sem alterar os arquivos originais.'
         }
     };
 

@@ -174,28 +174,34 @@ coluna faltando — é validado rodando o app com planilhas reais.
 | Coluna faltando | Pula o arquivo, segue o lote | Um arquivo ruim não deve travar os outros |
 | Posição na HUD | Aba própria na sidebar, após Relacionamento | Ferramenta independente do pipeline de relacionamento |
 
-## Emenda — entrada em CSV (2026-08-13)
+## Emenda — CSV recusado na entrada (2026-08-13)
 
-A entrada aceita CSV. **A saída é sempre `.xlsx`**, venha de CSV ou de Excel — as regras
-de limpeza e a gravação numérica com máscara são exatamente as mesmas nos dois casos.
+O CSV chegou a ser aceito na entrada e foi **removido**. Entra `.xlsx`, sai `.xlsx`.
 
-Sair em Excel é o que faz a máscara `00000000000000` continuar valendo: o CNPJ fica
-numérico de verdade e o zero à esquerda aparece. Um CSV de saída não teria como segurar
-isso, porque CSV não tem formatação de célula.
+### Por que CSV não serve aqui
 
-### Leitura de CSV
+O motivo é o mesmo problema que a feature existe para resolver. Quando o Excel exibe um
+telefone como `5,52199E+12` e a planilha é exportada para CSV, ele grava o **texto
+exibido**, não o valor: sobram 6 algarismos significativos de 13. Os outros 7 dígitos
+deixam de existir no arquivo.
 
-Dois cuidados que o comportamento padrão do ExcelJS obrigou:
+Expandir esse texto produz `5521990000000` — um telefone plausível e errado, que iria
+para o discador. Foi exatamente o sintoma relatado: colunas inteiras terminando em zeros.
 
-- **Delimitador de entrada é detectado**, não assumido. A primeira linha do arquivo é
-  lida (só os primeiros 8 KB) e o delimitador com mais ocorrências vence. Sem isso, um
-  CSV brasileiro separado por `;` seria lido como uma coluna só.
-- **`map` identidade no parser.** Por padrão o ExcelJS converte cada campo do CSV para
-  número quando ele parece número — `04252011000110` viraria `4252011000110` na leitura,
-  perdendo o zero antes das regras rodarem. Com o `map` identidade, todo campo chega
-  como texto cru e a interpretação fica inteiramente com as regras deste projeto.
-- **BOM.** `textoDe` remove o BOM inicial, senão o cabeçalho da primeira coluna nunca
-  casaria pelo match exato.
+No `.xlsx` isso não acontece: o valor numérico está guardado com precisão total e a
+notação científica é só máscara de exibição. É por isso que a conversão funciona e o
+`,00` some — a parte decimal nunca foi dígito de telefone.
+
+### Guarda contra científico truncado
+
+Um `.xlsx` ainda pode conter a string `"5,52199E+12"` numa coluna formatada como Texto.
+Para esse caso `normalizarDigitos` compara os algarismos significativos do texto com o
+tamanho do número expandido: se o texto tem menos, o valor é irrecuperável e a função
+devolve vazio em vez de inventar dígito.
+
+Esses casos são contados por arquivo (`truncados`) e o log explica ao usuário como
+reexportar. Célula em branco é melhor que telefone errado: não discar é melhor que
+discar para o número de outra pessoa.
 
 ## Fora de escopo
 

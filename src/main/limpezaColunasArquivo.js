@@ -19,7 +19,6 @@ const FORMATO_CPF = '00000000000000';
 const FORMATO_FONE = '0';
 const NOME_ABA_SAIDA = 'Lista';
 const EXTENSAO_SAIDA = '.xlsx';
-const BYTES_AMOSTRA = 8192;
 
 /** Devolve o primeiro `<base>_LIMPO*.xlsx` que ainda não existe na pasta do original. */
 function caminhoDisponivel(caminhoEntrada) {
@@ -35,43 +34,25 @@ function caminhoDisponivel(caminhoEntrada) {
     return candidato;
 }
 
-/** Lê só o começo do arquivo — não vale carregar uma base inteira para ver a linha 1. */
-function primeiraLinha(caminhoEntrada) {
-    const buffer = Buffer.alloc(BYTES_AMOSTRA);
-    const descritor = fs.openSync(caminhoEntrada, 'r');
-    try {
-        const lidos = fs.readSync(descritor, buffer, 0, BYTES_AMOSTRA, 0);
-        return buffer.toString('utf8', 0, lidos).split(/\r?\n/)[0] || '';
-    } finally {
-        fs.closeSync(descritor);
-    }
-}
-
-/** Base exportada no Brasil costuma vir com ponto e vírgula; lá fora, com vírgula. */
-function detectarDelimitador(caminhoEntrada) {
-    const linha = primeiraLinha(caminhoEntrada);
-    const pontoEVirgula = (linha.match(/;/g) || []).length;
-    const virgula = (linha.match(/,/g) || []).length;
-    return pontoEVirgula > virgula ? ';' : ',';
-}
-
+/**
+ * Só `.xlsx` entra.
+ *
+ * CSV é recusado de propósito: quando o Excel exporta uma coluna exibida como
+ * "5,52199E+12", ele grava o texto exibido, e os dígitos que faltam já não
+ * existem no arquivo. No `.xlsx` o valor numérico está guardado inteiro e o
+ * científico é só máscara de exibição — por isso a conversão funciona aqui.
+ */
 async function lerPrimeiraAba(caminhoEntrada) {
     const extensao = path.extname(caminhoEntrada).toLowerCase();
     if (extensao === '.xls') {
         throw new Error('formato .xls antigo nao e suportado, converta para .xlsx');
     }
+    if (extensao === '.csv') {
+        throw new Error('CSV nao e aceito: os digitos em notacao cientifica ja vem perdidos. Use o .xlsx');
+    }
 
     const workbook = new ExcelJS.Workbook();
-    if (extensao === '.csv') {
-        // `map` identidade: sem ele o ExcelJS converte "04252011000110" em número
-        // na leitura e o zero à esquerda se perde antes das regras rodarem.
-        await workbook.csv.readFile(caminhoEntrada, {
-            parserOptions: { delimiter: detectarDelimitador(caminhoEntrada) },
-            map: (valor) => valor,
-        });
-    } else {
-        await workbook.xlsx.readFile(caminhoEntrada);
-    }
+    await workbook.xlsx.readFile(caminhoEntrada);
 
     const aba = workbook.worksheets[0];
     if (!aba) throw new Error('o arquivo nao possui nenhuma aba');
