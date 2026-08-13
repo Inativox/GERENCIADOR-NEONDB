@@ -70,6 +70,12 @@
                                 <path fill-rule="evenodd"
                                     d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
                             </svg><span>Relacionamento</span></a></li>
+                    <li class="nav-item"><a href="#" class="tab-button" data-tab-name="limpezaColunas"><svg
+                                xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor"
+                                viewBox="0 0 16 16">
+                                <path
+                                    d="M6 10.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z" />
+                            </svg><span>Limpeza de Colunas</span></a></li>
                 </ul>
             </nav>
             <footer class="sidebar-footer">
@@ -687,6 +693,79 @@
                             style="margin-top: 10px; min-height: 80px;">
                             Aguardando arquivo...
                         </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="page-content" id="limpezaColunas">
+                <div class="grid" id="limpezaColunasGrid" style="gap: 1rem;">
+
+                    <div class="section" data-section-id="config-limpeza-colunas">
+                        <div class="section-header">
+                            <h2>Limpeza de Colunas</h2>
+                            <div class="section-controls">
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
+                            </div>
+                        </div>
+
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 1rem;">
+                            Reduz cada planilha a três colunas — <strong>NOME</strong>, <strong>CPF</strong> e
+                            <strong>FONE1</strong>. Telefone e CNPJ em notação científica viram número inteiro e o
+                            <code>,00</code> do fim é removido. Entra <code>.xlsx</code>, sai <code>.xlsx</code>:
+                            cada arquivo vira um <code>_LIMPO.xlsx</code> na mesma pasta, sem alterar o original.
+                        </p>
+
+                        <div class="callout callout--warning">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor"
+                                viewBox="0 0 16 16">
+                                <path
+                                    d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                            </svg>
+                            <div class="callout-body">
+                                <strong class="callout-title">Antes de selecionar: prepare a planilha de
+                                    origem</strong>
+                                As colunas <strong>CNPJ</strong> e <strong>Telefone Celular</strong> precisam estar
+                                como <strong>Número</strong>, sem casas decimais. Se estiverem como Texto exibindo
+                                <code>5,52199E+12</code>, os dígitos que faltam já se perderam no arquivo e não tem
+                                como recuperar — o campo sai em branco.
+                                <ol>
+                                    <li>Selecione as duas colunas no Excel.</li>
+                                    <li>Formatar Células → <strong>Número</strong>.</li>
+                                    <li>Casas decimais: <strong>0</strong> — some o <code>,000</code> do final.</li>
+                                    <li>Salve e só então selecione o arquivo aqui.</li>
+                                </ol>
+                            </div>
+                        </div>
+
+                        <div class="tool-group">
+                            <label>Selecione as planilhas:</label>
+                            <button id="limpezaColunasSelectBtn">Selecionar Arquivos</button>
+                            <div id="limpezaColunasFilePaths" class="files"></div>
+                        </div>
+
+                        <div class="tool-group">
+                            <button id="limpezaColunasStartBtn" style="width: 100%;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                                    viewBox="0 0 16 16">
+                                    <path
+                                        d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z" />
+                                </svg>
+                                Iniciar Limpeza
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="section full-width" data-section-id="logs-limpeza-colunas">
+                        <div class="section-header">
+                            <h2>Logs do Processo</h2>
+                            <div class="section-controls">
+                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
+                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
+                            </div>
+                        </div>
+                        <div id="limpezaColunasLog" class="logs custom-scrollbar">Aguardando arquivos...</div>
                     </div>
 
                 </div>

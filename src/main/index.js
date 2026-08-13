@@ -21,6 +21,7 @@ const enriquecimento = require('./handlers/enriquecimento');
 const blocklist = require('./handlers/blocklist');
 const monitoramento = require('./handlers/monitoramento');
 const relacionamento = require('./handlers/relacionamento');
+const limpezaColunas = require('./handlers/limpezaColunas');
 
 // Cache/BD
 const cache = require('./database/cache');
@@ -62,6 +63,7 @@ enriquecimento.register();
 blocklist.register();
 monitoramento.register();
 relacionamento.register();
+limpezaColunas.register();
 cache.register();
 
 // Ciclo de vida do app

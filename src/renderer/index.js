@@ -524,6 +524,59 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // --- Limpeza de Colunas ---
+    const limpezaColunasSelectBtn = document.getElementById('limpezaColunasSelectBtn');
+    const limpezaColunasStartBtn = document.getElementById('limpezaColunasStartBtn');
+    const limpezaColunasFilePaths = document.getElementById('limpezaColunasFilePaths');
+    const limpezaColunasLog = document.getElementById('limpezaColunasLog');
+    let limpezaColunasFiles = [];
+
+    const appendLimpezaColunasLog = (mensagem) => {
+        if (!limpezaColunasLog) return;
+        if (limpezaColunasLog.textContent === 'Aguardando arquivos...') {
+            limpezaColunasLog.textContent = '';
+        }
+        limpezaColunasLog.textContent += `${mensagem}\n`;
+        limpezaColunasLog.scrollTop = limpezaColunasLog.scrollHeight;
+    };
+
+    if (limpezaColunasSelectBtn) {
+        limpezaColunasSelectBtn.addEventListener('click', async () => {
+            const arquivos = await window.electronAPI.selectFile({
+                title: 'Selecione as planilhas para limpar',
+                multi: true
+            });
+            if (!arquivos || arquivos.length === 0) {
+                appendLimpezaColunasLog('Nenhum arquivo selecionado.');
+                return;
+            }
+            limpezaColunasFiles = arquivos;
+            limpezaColunasFilePaths.innerHTML = arquivos.map(p => `<div>${getBasename(p)}</div>`).join('');
+            appendLimpezaColunasLog(`${arquivos.length} arquivo(s) selecionado(s).`);
+        });
+    }
+
+    if (limpezaColunasStartBtn) {
+        limpezaColunasStartBtn.addEventListener('click', () => {
+            if (limpezaColunasFiles.length === 0) {
+                appendLimpezaColunasLog('❌ Selecione pelo menos um arquivo antes de iniciar.');
+                return;
+            }
+            limpezaColunasStartBtn.disabled = true;
+            window.electronAPI.startLimpezaColunas(limpezaColunasFiles);
+        });
+    }
+
+    window.electronAPI.onLimpezaColunasLog(appendLimpezaColunasLog);
+    window.electronAPI.onLimpezaColunasFinished(({ success, processados, pulados }) => {
+        if (limpezaColunasStartBtn) limpezaColunasStartBtn.disabled = false;
+        if (success) {
+            appendLimpezaColunasLog(`✅ Finalizado. ${processados} gerado(s), ${pulados} pulado(s).`);
+        } else {
+            appendLimpezaColunasLog('❌ Processo finalizado com erro.');
+        }
+    });
+
     const gridConfigs = {
         'localGrid': 'local-sections',
         'apiGrid': 'api-sections',
@@ -532,6 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'api-tools-panel': 'api-tools-sections',
         'blocklistGrid': 'blocklist-sections',
         'relacionamentoGrid': 'relacionamento-sections', // <-- Adicionado para a nova aba
+        'limpezaColunasGrid': 'limpeza-colunas-sections',
     };
 
     let sortableInstances = {};
@@ -744,6 +798,10 @@ document.addEventListener('DOMContentLoaded', () => {
         'Relacionamento': { // <-- Adicionado para a nova aba
             title: 'Pipeline de Relacionamento',
             description: 'Execute o pipeline de processamento de planilhas para gerar a base de elegíveis do modo padrão ou relacionamento.'
+        },
+        'Limpeza de Colunas': {
+            title: 'Limpeza de Colunas',
+            description: 'Reduz suas planilhas a NOME, CPF e FONE1. Converte telefone e CNPJ de notação científica para número inteiro e remove o ,00 do final. Entra .xlsx e sai .xlsx, sem alterar os arquivos originais.'
         }
     };
 
