@@ -10,6 +10,19 @@ const { limparArquivo } = require('../limpezaColunasArquivo');
 
 const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
 
+/**
+ * Número em notação científica que chegou como texto já perdeu dígitos na origem.
+ * Vale avisar em vez de entregar telefone terminado em zeros sem explicação.
+ */
+function avisarTruncados(truncados, log) {
+    if (!truncados) return;
+    log(`   ⚠️ ${truncados.toLocaleString('pt-BR')} numero(s) vieram em notacao cientifica ja truncada`);
+    log('      (ex: "5,52199E+12"). Os digitos perdidos nao existem mais no arquivo,');
+    log('      entao ficaram em branco em vez de virar um numero errado.');
+    log('      Solucao: use o .xlsx original, ou formate a coluna como Texto antes');
+    log('      de exportar o CSV.');
+}
+
 async function processarLote(caminhos, log) {
     let processados = 0;
     let pulados = 0;
@@ -23,6 +36,7 @@ async function processarLote(caminhos, log) {
             processados++;
             if (!primeiraSaida) primeiraSaida = resultado.caminhoSaida;
             log(`${nome} -> OK (${resultado.linhas.toLocaleString('pt-BR')} linhas)`);
+            avisarTruncados(resultado.truncados, log);
         } else {
             pulados++;
             log(`${nome} -> PULADO`);

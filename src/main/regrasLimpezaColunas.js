@@ -64,6 +64,34 @@ function numeroParaTexto(numero) {
 }
 
 /**
+ * Expande notação científica que veio como TEXTO.
+ *
+ * Um CSV exportado do Excel guarda o texto exibido, não o valor: uma coluna que
+ * aparecia como "5,52199E+12" grava só 6 algarismos significativos, e os outros 7
+ * dígitos do telefone deixaram de existir no arquivo. Expandir isso produziria
+ * 5521990000000 — um número plausível e errado. Melhor devolver vazio do que
+ * inventar dígito.
+ *
+ * Científico com todos os significativos ("5,521998364849E+12") é expandido normal.
+ */
+function expandirCientifico(texto) {
+    const numero = Number(texto.replace(',', '.'));
+    if (!Number.isFinite(numero)) return '';
+
+    const significativos = (texto.split(/[eE]/)[0].match(/\d/g) || []).length;
+    const expandido = numeroParaTexto(numero).replace(/\D/g, '');
+    return significativos < expandido.length ? '' : expandido;
+}
+
+/** Um texto científico cujos dígitos já se perderam na origem. */
+function ehCientificoTruncado(valor) {
+    const bruto = desembrulhar(valor);
+    if (typeof bruto !== 'string') return false;
+    if (!/\d\s*[eE][+-]?\d/.test(bruto)) return false;
+    return expandirCientifico(bruto.trim()) === '';
+}
+
+/**
  * Corta o sufixo decimal (",00") do texto.
  * Um separador que aparece mais de uma vez é separador de milhar, não decimal:
  * sem essa checagem, um CNPJ escrito como "04.252.011.0001.10" perderia os dois
@@ -94,8 +122,7 @@ function normalizarDigitos(valor) {
     } else {
         texto = String(bruto).trim();
         if (/e/i.test(texto)) {
-            const numero = Number(texto.replace(',', '.'));
-            texto = Number.isFinite(numero) ? numeroParaTexto(numero) : texto;
+            texto = expandirCientifico(texto);
         } else {
             texto = cortarDecimal(texto);
         }
@@ -112,5 +139,6 @@ module.exports = {
     normalizarCabecalho,
     acharCabecalho,
     normalizarDigitos,
+    ehCientificoTruncado,
     numeroParaTexto,
 };

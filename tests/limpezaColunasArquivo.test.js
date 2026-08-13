@@ -209,6 +209,38 @@ test('CSV com telefone vazio gera celula em branco, nao zero', async () => {
     assert.strictEqual(linhas[1][2], null);
 });
 
+test('CSV com cientifico truncado deixa em branco e conta o estrago', async () => {
+    const entrada = criarFixtureCsv('truncado.csv', [
+        'Nome do Negócio;CNPJ;Telefone Celular',
+        'Padaria Sol;12345678000199;5,52199E+12',
+        'Mercado Lua;12345678000199;5,52199E+12',
+        'Oficina Zé;12345678000199;5521998364849',
+    ]);
+
+    const resultado = await limparArquivo(entrada);
+    const { linhas } = await lerSaida(resultado.caminhoSaida);
+
+    assert.strictEqual(resultado.ok, true);
+    assert.strictEqual(resultado.truncados, 2);
+    // em branco, nunca um telefone inventado terminado em zeros
+    assert.strictEqual(linhas[1][2], null);
+    assert.strictEqual(linhas[2][2], null);
+    // o que estava inteiro passa normal
+    assert.strictEqual(linhas[3][2], 5521998364849);
+});
+
+test('arquivo sem cientifico truncado reporta zero', async () => {
+    const entrada = await criarFixture(
+        'limpo.xlsx',
+        ['Nome do Negócio', 'CNPJ', 'Telefone Celular'],
+        [['Padaria Sol', '12345678000199', 5521998364849]]
+    );
+
+    const resultado = await limparArquivo(entrada);
+
+    assert.strictEqual(resultado.truncados, 0);
+});
+
 test('XLSX continua saindo como XLSX', async () => {
     const entrada = await criarFixture(
         'planilha.xlsx',

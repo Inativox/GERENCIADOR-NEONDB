@@ -7,7 +7,13 @@ const fs = require('fs');
 const path = require('path');
 const ExcelJS = require('exceljs');
 
-const { ALVOS, textoDe, acharCabecalho, normalizarDigitos } = require('./regrasLimpezaColunas');
+const {
+    ALVOS,
+    textoDe,
+    acharCabecalho,
+    normalizarDigitos,
+    ehCientificoTruncado,
+} = require('./regrasLimpezaColunas');
 
 const FORMATO_CPF = '00000000000000';
 const FORMATO_FONE = '0';
@@ -110,18 +116,26 @@ function aplicarFormatos(aba) {
 
 function copiarLinhas(origem, destino, colunas) {
     let linhas = 0;
+    let truncados = 0;
+
     for (let numero = 2; numero <= origem.rowCount; numero++) {
         const linha = origem.getRow(numero);
+        const brutoCpf = linha.getCell(colunas.CPF).value;
+        const brutoFone = linha.getCell(colunas.FONE1).value;
+
         const nome = textoDe(linha.getCell(colunas.NOME).value);
-        const cpf = normalizarDigitos(linha.getCell(colunas.CPF).value);
-        const fone = normalizarDigitos(linha.getCell(colunas.FONE1).value);
+        const cpf = normalizarDigitos(brutoCpf);
+        const fone = normalizarDigitos(brutoFone);
+
+        if (ehCientificoTruncado(brutoCpf)) truncados++;
+        if (ehCientificoTruncado(brutoFone)) truncados++;
 
         if (nome === '' && cpf === '' && fone === '') continue;
 
         destino.addRow([nome || null, cpf ? Number(cpf) : null, fone ? Number(fone) : null]);
         linhas++;
     }
-    return linhas;
+    return { linhas, truncados };
 }
 
 /**
@@ -135,13 +149,13 @@ async function limparArquivo(caminhoEntrada) {
 
         const workbook = new ExcelJS.Workbook();
         const destino = montarAbaDestino(workbook);
-        const linhas = copiarLinhas(origem, destino, colunas);
+        const { linhas, truncados } = copiarLinhas(origem, destino, colunas);
         aplicarFormatos(destino);
 
         const caminhoSaida = caminhoDisponivel(caminhoEntrada);
         await workbook.xlsx.writeFile(caminhoSaida);
 
-        return { ok: true, caminhoSaida, linhas };
+        return { ok: true, caminhoSaida, linhas, truncados };
     } catch (erro) {
         return { ok: false, motivo: erro.message };
     }

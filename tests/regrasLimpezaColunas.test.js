@@ -7,6 +7,7 @@ const {
     normalizarCabecalho,
     acharCabecalho,
     normalizarDigitos,
+    ehCientificoTruncado,
     ALVOS,
 } = require('../src/main/regrasLimpezaColunas');
 
@@ -63,6 +64,30 @@ test('normalizarDigitos limpa telefone em varios formatos', () => {
 test('normalizarDigitos corta o decimal antes de tirar o separador', () => {
     // sem a ordem correta isso viraria 552199836484900
     assert.notStrictEqual(normalizarDigitos('5521998364849,00'), '552199836484900');
+});
+
+test('normalizarDigitos recusa cientifico ja truncado em vez de inventar digito', () => {
+    // CSV exportado do Excel guarda o texto EXIBIDO: 6 significativos de 13.
+    // Expandir daria 5521990000000 — plausível e errado.
+    assert.strictEqual(normalizarDigitos('5,52199E+12'), '');
+    assert.strictEqual(normalizarDigitos('5.52199E+12'), '');
+    assert.strictEqual(normalizarDigitos('5,5219E+12'), '');
+});
+
+test('normalizarDigitos aceita cientifico que preservou todos os digitos', () => {
+    assert.strictEqual(normalizarDigitos('5,521998364849E+12'), '5521998364849');
+    assert.strictEqual(normalizarDigitos('5.521998364849E+12'), '5521998364849');
+    // valor numérico de verdade nunca passa pelo caminho do científico
+    assert.strictEqual(normalizarDigitos(5521998364849), '5521998364849');
+});
+
+test('ehCientificoTruncado identifica so o texto cientifico sem volta', () => {
+    assert.strictEqual(ehCientificoTruncado('5,52199E+12'), true);
+    assert.strictEqual(ehCientificoTruncado('5,521998364849E+12'), false);
+    assert.strictEqual(ehCientificoTruncado('5521998364849'), false);
+    assert.strictEqual(ehCientificoTruncado(5521998364849), false);
+    assert.strictEqual(ehCientificoTruncado(''), false);
+    assert.strictEqual(ehCientificoTruncado(null), false);
 });
 
 test('normalizarDigitos nunca remove o 55 do numero', () => {
