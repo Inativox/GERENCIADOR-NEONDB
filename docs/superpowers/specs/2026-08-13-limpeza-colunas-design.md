@@ -17,8 +17,10 @@ prontas para uso.
 
 ## Escopo
 
-Só a **primeira aba** de cada arquivo é lida. Nenhuma linha é removida: a feature
-opera sobre colunas, não sobre registros. Não há consulta a banco de dados nem a API.
+Só a **primeira aba** de cada arquivo é lida. Nenhum registro é removido: a feature
+opera sobre colunas, não sobre registros. A única exceção é a linha em que as três
+colunas ficam vazias — normalmente sobra de formatação no fim da planilha, e não é um
+registro. Não há consulta a banco de dados nem a API.
 
 ## Arquitetura
 
@@ -147,7 +149,9 @@ O projeto não tem framework de teste instalado. As regras de normalização ser
 **funções puras exportadas** pelo handler:
 
 - `normalizarDigitos(valor)` — os cinco passos da seção anterior
-- `acharCabecalho(cabecalhos, alvo)` — a busca em três níveis
+- `acharCabecalho(cabecalhos, alvo)` — a busca em três níveis, devolve o índice
+  0-based ou `-1`
+- `normalizarCabecalho(valor)` / `textoDe(valor)` / `desembrulhar(valor)` — auxiliares
 
 Isso permite um script de asserções em `node` puro, sem subir o Electron, cobrindo:
 
