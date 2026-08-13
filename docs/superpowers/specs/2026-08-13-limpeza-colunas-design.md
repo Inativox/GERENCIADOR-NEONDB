@@ -109,6 +109,10 @@ Exemplos:
 
 ## Fluxo de uso
 
+0. A aba exibe um aviso fixo instruindo a preparar a planilha de origem antes: formatar
+   as colunas CNPJ e Telefone Celular como **Número** com **0 casas decimais**. É o
+   único jeito de garantir que os dígitos cheguem inteiros — coluna como Texto exibindo
+   `5,52199E+12` já perdeu a informação no arquivo.
 1. O usuário seleciona uma ou mais planilhas (seleção múltipla no diálogo nativo).
 2. Clica em "Iniciar Limpeza".
 3. Cada arquivo gera um `<nome>_LIMPO.xlsx` na **mesma pasta do original**.
