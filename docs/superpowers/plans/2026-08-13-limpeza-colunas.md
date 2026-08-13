@@ -61,7 +61,7 @@ No bloco `"scripts"`, adicione a linha `test` (as outras três continuam iguais)
 ```json
   "scripts": {
     "start": "electron . --max-old-space-size=8192",
-    "test": "node --test tests/",
+    "test": "node --test \"tests/*.test.js\"",
     "dist": "electron-builder",
     "publish": "electron-builder --publish always"
   },
