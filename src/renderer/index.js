@@ -571,7 +571,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.onLimpezaColunasFinished(({ success, processados, pulados }) => {
         if (limpezaColunasStartBtn) limpezaColunasStartBtn.disabled = false;
         if (success) {
-            appendLimpezaColunasLog(`🎉 Finalizado. ${processados} gerado(s), ${pulados} pulado(s).`);
+            appendLimpezaColunasLog(`✅ Finalizado. ${processados} gerado(s), ${pulados} pulado(s).`);
         } else {
             appendLimpezaColunasLog('❌ Processo finalizado com erro.');
         }
