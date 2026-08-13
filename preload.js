@@ -79,6 +79,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     splitByResponsible: (filePath) => ipcRenderer.send('split-by-responsible', filePath), // NOVO
     // --- FIM DA MODIFICAÇÃO ---
 
+    // --- Funções de Limpeza de Colunas ---
+    startLimpezaColunas: (caminhos) => ipcRenderer.send('start-limpeza-colunas', caminhos),
+
     // --- Listeners de Eventos (Renderer "escuta" o Main) ---
     onLog: (callback) => ipcRenderer.on("log", (event, ...args) => callback(...args)),
     onProgress: (callback) => ipcRenderer.on("progress", (event, ...args) => callback(...args)),
@@ -105,6 +108,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onSplitByResponsibleLog: (callback) => ipcRenderer.on('split-by-responsible-log', (event, ...args) => callback(...args)), // NOVO
     onSplitByResponsibleFinished: (callback) => ipcRenderer.on('split-by-responsible-finished', (event, ...args) => callback(...args)), // NOVO
     // --- FIM DA MODIFICAÇÃO ---
+
+    // --- Listeners de Limpeza de Colunas ---
+    onLimpezaColunasLog: (callback) => ipcRenderer.on("limpeza-colunas-log", (event, ...args) => callback(...args)),
+    onLimpezaColunasFinished: (callback) => ipcRenderer.on("limpeza-colunas-finished", (event, ...args) => callback(...args)),
 
     // Função para remover todos os listeners para evitar memory leaks ao recarregar
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
