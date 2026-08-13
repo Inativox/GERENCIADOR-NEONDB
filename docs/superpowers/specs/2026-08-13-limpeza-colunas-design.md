@@ -174,25 +174,14 @@ coluna faltando — é validado rodando o app com planilhas reais.
 | Coluna faltando | Pula o arquivo, segue o lote | Um arquivo ruim não deve travar os outros |
 | Posição na HUD | Aba própria na sidebar, após Relacionamento | Ferramenta independente do pipeline de relacionamento |
 
-## Emenda — saída em CSV (2026-08-13)
+## Emenda — entrada em CSV (2026-08-13)
 
-A saída passa a **espelhar o formato da entrada**: `.csv` gera `.csv`, `.xlsx` gera
-`.xlsx`. As regras de limpeza são as mesmas nos dois casos; muda só como o valor é
-gravado.
+A entrada aceita CSV. **A saída é sempre `.xlsx`**, venha de CSV ou de Excel — as regras
+de limpeza e a gravação numérica com máscara são exatamente as mesmas nos dois casos.
 
-### Diferenças do CSV
-
-| Aspecto | XLSX | CSV |
-|---|---|---|
-| CPF e FONE1 | número com `numFmt` | texto de dígitos |
-| Zero à esquerda do CNPJ | preservado pela máscara `00000000000000` | preservado por ser texto |
-| Separador de saída | — | `;` (padrão do Excel em português) |
-| Codificação | — | UTF-8 com BOM, para o Excel não quebrar os acentos |
-
-CSV não tem formatação de célula, então a máscara não existe lá — o zero à esquerda só
-sobrevive se o valor for texto. Consequência conhecida: abrir esse CSV **no Excel** faz
-o Excel reinterpretar a coluna como número e comer o zero de novo. Isso é comportamento
-de importação do Excel, não do arquivo gerado.
+Sair em Excel é o que faz a máscara `00000000000000` continuar valendo: o CNPJ fica
+numérico de verdade e o zero à esquerda aparece. Um CSV de saída não teria como segurar
+isso, porque CSV não tem formatação de célula.
 
 ### Leitura de CSV
 
@@ -207,12 +196,6 @@ Dois cuidados que o comportamento padrão do ExcelJS obrigou:
   como texto cru e a interpretação fica inteiramente com as regras deste projeto.
 - **BOM.** `textoDe` remove o BOM inicial, senão o cabeçalho da primeira coluna nunca
   casaria pelo match exato.
-
-### Célula vazia no CSV
-
-No CSV, célula vazia é gravada como string vazia, não `null`. O escritor do ExcelJS monta
-a linha a partir de `row.values`, e um `null` no fim encurta o array — a linha sairia com
-duas colunas em vez de três, gerando um CSV irregular.
 
 ## Fora de escopo
 

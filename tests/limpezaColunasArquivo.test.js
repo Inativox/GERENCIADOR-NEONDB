@@ -123,20 +123,15 @@ test('limparArquivo descarta a linha em que as tres colunas estao vazias', async
 test('caminhoDisponivel nunca sobrescreve arquivo existente', async () => {
     const entrada = await criarFixture('lote.xlsx', ['Nome do Negócio', 'CNPJ', 'Telefone Celular'], []);
 
-    const primeiro = caminhoDisponivel(entrada, '.xlsx');
+    const primeiro = caminhoDisponivel(entrada);
     assert.strictEqual(path.basename(primeiro), 'lote_LIMPO.xlsx');
 
     fs.writeFileSync(primeiro, 'ocupado');
-    const segundo = caminhoDisponivel(entrada, '.xlsx');
+    const segundo = caminhoDisponivel(entrada);
     assert.strictEqual(path.basename(segundo), 'lote_LIMPO_1.xlsx');
 });
 
-test('caminhoDisponivel respeita a extensao de saida', async () => {
-    const entrada = criarFixtureCsv('lista.csv', ['a;b']);
-    assert.strictEqual(path.basename(caminhoDisponivel(entrada, '.csv')), 'lista_LIMPO.csv');
-});
-
-test('CSV com ponto e virgula entra e sai como CSV com ponto e virgula', async () => {
+test('CSV separado por ponto e virgula entra e sai como XLSX', async () => {
     const entrada = criarFixtureCsv('base.csv', [
         'ID;Nome do Negócio;CNPJ;Telefone Celular;Lixo',
         '1;Padaria Sol;04.252.011/0001-10;5521998364849,00;x',
@@ -146,26 +141,32 @@ test('CSV com ponto e virgula entra e sai como CSV com ponto e virgula', async (
     const resultado = await limparArquivo(entrada);
 
     assert.strictEqual(resultado.ok, true);
-    assert.strictEqual(path.extname(resultado.caminhoSaida), '.csv');
+    assert.strictEqual(path.extname(resultado.caminhoSaida), '.xlsx');
+    assert.strictEqual(path.basename(resultado.caminhoSaida), 'base_LIMPO.xlsx');
     assert.strictEqual(resultado.linhas, 2);
 
-    const conteudo = fs.readFileSync(resultado.caminhoSaida, 'utf8').replace(/^﻿/, '');
-    const linhas = conteudo.trim().split(/\r?\n/);
-    assert.strictEqual(linhas[0], 'NOME;CPF;FONE1');
-    assert.strictEqual(linhas[1], 'Padaria Sol;04252011000110;5521998364849');
-    assert.strictEqual(linhas[2], 'Mercado Lua;12345678000199;21998364849');
+    const { linhas } = await lerSaida(resultado.caminhoSaida);
+    assert.deepStrictEqual(linhas[0], ['NOME', 'CPF', 'FONE1']);
+    assert.deepStrictEqual(linhas[1], ['Padaria Sol', 4252011000110, 5521998364849]);
+    assert.deepStrictEqual(linhas[2], ['Mercado Lua', 12345678000199, 21998364849]);
 });
 
-test('CSV preserva o zero a esquerda do CNPJ como texto', async () => {
+test('CSV gera numero de verdade com a mascara do CNPJ', async () => {
     const entrada = criarFixtureCsv('zero.csv', [
         'Nome do Negócio;CNPJ;Telefone Celular',
-        'Padaria Sol;04252011000110;5521998364849',
+        'Padaria Sol;04252011000110;5,521998364849E+12',
     ]);
 
     const resultado = await limparArquivo(entrada);
-    const conteudo = fs.readFileSync(resultado.caminhoSaida, 'utf8').replace(/^﻿/, '');
+    const { aba, linhas } = await lerSaida(resultado.caminhoSaida);
 
-    assert.match(conteudo, /;04252011000110;/);
+    // o ExcelJS converteria "04252011000110" para número já na leitura do CSV;
+    // com o map identidade o zero à esquerda chega inteiro nas regras
+    assert.strictEqual(linhas[1][1], 4252011000110);
+    assert.strictEqual(aba.getCell('B2').numFmt, '00000000000000');
+    // científico vindo do CSV também vira número limpo
+    assert.strictEqual(linhas[1][2], 5521998364849);
+    assert.strictEqual(aba.getCell('C2').numFmt, '0');
 });
 
 test('CSV separado por virgula tambem e lido', async () => {
@@ -178,8 +179,8 @@ test('CSV separado por virgula tambem e lido', async () => {
 
     assert.strictEqual(resultado.ok, true);
     assert.strictEqual(resultado.linhas, 1);
-    const conteudo = fs.readFileSync(resultado.caminhoSaida, 'utf8').replace(/^﻿/, '');
-    assert.match(conteudo, /^NOME;CPF;FONE1/);
+    const { linhas } = await lerSaida(resultado.caminhoSaida);
+    assert.deepStrictEqual(linhas[1], ['Padaria Sol', 12345678000199, 5521998364849]);
 });
 
 test('CSV com BOM no cabecalho e lido normalmente', async () => {
@@ -194,17 +195,18 @@ test('CSV com BOM no cabecalho e lido normalmente', async () => {
     assert.strictEqual(resultado.linhas, 1);
 });
 
-test('CSV mantem as tres colunas mesmo com o telefone vazio', async () => {
+test('CSV com telefone vazio gera celula em branco, nao zero', async () => {
     const entrada = criarFixtureCsv('semfone.csv', [
         'Nome do Negócio;CNPJ;Telefone Celular',
         'Loja Vazia;12345678000199;',
     ]);
 
     const resultado = await limparArquivo(entrada);
-    const conteudo = fs.readFileSync(resultado.caminhoSaida, 'utf8').replace(/^﻿/, '');
-    const linhas = conteudo.trim().split(/\r?\n/);
+    const { linhas } = await lerSaida(resultado.caminhoSaida);
 
-    assert.strictEqual(linhas[1], 'Loja Vazia;12345678000199;');
+    assert.strictEqual(linhas[1][0], 'Loja Vazia');
+    assert.strictEqual(linhas[1][1], 12345678000199);
+    assert.strictEqual(linhas[1][2], null);
 });
 
 test('XLSX continua saindo como XLSX', async () => {
