@@ -65,6 +65,27 @@ test('normalizarDigitos corta o decimal antes de tirar o separador', () => {
     assert.notStrictEqual(normalizarDigitos('5521998364849,00'), '552199836484900');
 });
 
+test('normalizarDigitos nunca remove o 55 do numero', () => {
+    // DDI 55 com DDD 55 (Santa Maria/RS) é o caso que mais parece duplicado
+    assert.strictEqual(normalizarDigitos('5555999887766'), '5555999887766');
+    assert.strictEqual(normalizarDigitos('55 55 99988-7766'), '5555999887766');
+    assert.strictEqual(normalizarDigitos('(55) 99988-7766'), '55999887766');
+    assert.strictEqual(normalizarDigitos(5555999887766), '5555999887766');
+    assert.strictEqual(normalizarDigitos('5555999887766,00'), '5555999887766');
+    assert.strictEqual(normalizarDigitos('5,555999887766E+12'), '5555999887766');
+    // 55 no começo, no meio e no fim continua inteiro
+    assert.strictEqual(normalizarDigitos('555599988776655'), '555599988776655');
+});
+
+test('normalizarDigitos nao confunde separador de milhar com decimal', () => {
+    // o ponto aparece 4 vezes: é agrupamento, não decimal — os 14 dígitos ficam
+    assert.strictEqual(normalizarDigitos('04.252.011.0001.10'), '04252011000110');
+    assert.strictEqual(normalizarDigitos('55.55.99988.7766'), '5555999887766');
+    // com um separador só, é decimal mesmo e sai
+    assert.strictEqual(normalizarDigitos('5.521.998.364.849,00'), '5521998364849');
+    assert.strictEqual(normalizarDigitos('5521998364849,0'), '5521998364849');
+});
+
 test('normalizarDigitos preserva o zero a esquerda do CNPJ', () => {
     assert.strictEqual(normalizarDigitos('04.252.011/0001-10'), '04252011000110');
     assert.strictEqual(normalizarDigitos('12.345.678/0001-99'), '12345678000199');

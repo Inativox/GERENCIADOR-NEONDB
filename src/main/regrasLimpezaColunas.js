@@ -64,6 +64,21 @@ function numeroParaTexto(numero) {
 }
 
 /**
+ * Corta o sufixo decimal (",00") do texto.
+ * Um separador que aparece mais de uma vez é separador de milhar, não decimal:
+ * sem essa checagem, um CNPJ escrito como "04.252.011.0001.10" perderia os dois
+ * últimos dígitos e sairia com 12 em vez de 14.
+ */
+function cortarDecimal(texto) {
+    const decimal = texto.match(/([.,])\d{1,2}$/);
+    if (!decimal) return texto;
+
+    const separador = decimal[1];
+    const ocorrencias = texto.split(separador).length - 1;
+    return ocorrencias === 1 ? texto.slice(0, decimal.index) : texto;
+}
+
+/**
  * Reduz o valor a uma sequência de dígitos.
  * A ordem importa: o sufixo decimal (,00) é cortado ANTES de remover os
  * separadores, senão "5521998364849,00" viraria "552199836484900".
@@ -82,7 +97,7 @@ function normalizarDigitos(valor) {
             const numero = Number(texto.replace(',', '.'));
             texto = Number.isFinite(numero) ? numeroParaTexto(numero) : texto;
         } else {
-            texto = texto.replace(/[.,]\d{1,2}$/, '');
+            texto = cortarDecimal(texto);
         }
     }
 
