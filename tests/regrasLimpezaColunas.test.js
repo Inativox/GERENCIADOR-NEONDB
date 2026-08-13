@@ -8,6 +8,7 @@ const {
     acharCabecalho,
     normalizarDigitos,
     ehCientificoTruncado,
+    removerDdi,
     ALVOS,
 } = require('../src/main/regrasLimpezaColunas');
 
@@ -88,6 +89,28 @@ test('ehCientificoTruncado identifica so o texto cientifico sem volta', () => {
     assert.strictEqual(ehCientificoTruncado(5521998364849), false);
     assert.strictEqual(ehCientificoTruncado(''), false);
     assert.strictEqual(ehCientificoTruncado(null), false);
+});
+
+test('removerDdi tira o 55 quando ele e mesmo o DDI', () => {
+    // 13 dígitos: 55 + DDD 21 + celular de 9
+    assert.strictEqual(removerDdi('5521998364849'), '21998364849');
+    // 12 dígitos: 55 + DDD 21 + fixo de 8
+    assert.strictEqual(removerDdi('552199836484'), '2199836484');
+    // DDI 55 + DDD 55: sai o DDI, fica o DDD
+    assert.strictEqual(removerDdi('5555999887766'), '55999887766');
+});
+
+test('removerDdi nao toca no 55 que e DDD', () => {
+    // 10 dígitos: DDD 55 + fixo de 8, sem DDI. Cortar deixaria 8 dígitos.
+    assert.strictEqual(removerDdi('5599887766'), '5599887766');
+    // 11 dígitos: DDD 55 + celular de 9, sem DDI
+    assert.strictEqual(removerDdi('55999887766'), '55999887766');
+});
+
+test('removerDdi ignora numero que nao comeca com 55', () => {
+    assert.strictEqual(removerDdi('21998364849'), '21998364849');
+    assert.strictEqual(removerDdi('11987654321'), '11987654321');
+    assert.strictEqual(removerDdi(''), '');
 });
 
 test('normalizarDigitos nunca remove o 55 do numero', () => {

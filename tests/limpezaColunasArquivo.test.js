@@ -53,7 +53,8 @@ test('limparArquivo mantem so as tres colunas e renomeia os cabecalhos', async (
 
     const { linhas } = await lerSaida(resultado.caminhoSaida);
     assert.deepStrictEqual(linhas[0], ['NOME', 'CPF', 'FONE1']);
-    assert.deepStrictEqual(linhas[1], ['Padaria Sol', 4252011000110, 5521998364849]);
+    // o DDI 55 sai; o CNPJ mantém os 14 dígitos
+    assert.deepStrictEqual(linhas[1], ['Padaria Sol', 4252011000110, 21998364849]);
 });
 
 test('limparArquivo grava CPF e FONE1 como numero com formato', async () => {
@@ -147,7 +148,7 @@ test('celula exibida como cientifico vira numero inteiro', async () => {
     const resultado = await limparArquivo(entrada);
     const { linhas } = await lerSaida(resultado.caminhoSaida);
 
-    assert.strictEqual(linhas[1][2], 5521998364849);
+    assert.strictEqual(linhas[1][2], 21998364849);
     assert.strictEqual(linhas[1][1], 4252011000110);
     assert.strictEqual(resultado.truncados, 0);
 });
@@ -170,7 +171,7 @@ test('texto cientifico truncado dentro do xlsx fica em branco e e contado', asyn
     assert.strictEqual(resultado.truncados, 2);
     assert.strictEqual(linhas[1][2], null);
     assert.strictEqual(linhas[2][2], null);
-    assert.strictEqual(linhas[3][2], 5521998364849);
+    assert.strictEqual(linhas[3][2], 21998364849);
 });
 
 test('arquivo sem cientifico truncado reporta zero', async () => {
@@ -198,6 +199,43 @@ test('telefone vazio gera celula em branco, nao zero', async () => {
     assert.strictEqual(linhas[1][0], 'Loja Vazia');
     assert.strictEqual(linhas[1][1], 12345678000199);
     assert.strictEqual(linhas[1][2], null);
+});
+
+test('remove o DDI do FONE1 e conta quantos sairam', async () => {
+    const entrada = await criarFixture(
+        'ddi.xlsx',
+        ['Nome do Negócio', 'CNPJ', 'Telefone Celular'],
+        [
+            ['Padaria Sol', '12345678000199', 5521998364849],   // com DDI
+            ['Mercado Lua', '12345678000199', 5555999887766],   // DDI + DDD 55
+            ['Oficina Zé', '12345678000199', '5599887766'],     // DDD 55 sem DDI
+            ['Bar do Zé', '12345678000199', '21998364849'],     // já sem DDI
+        ]
+    );
+
+    const resultado = await limparArquivo(entrada);
+    const { linhas } = await lerSaida(resultado.caminhoSaida);
+
+    assert.strictEqual(linhas[1][2], 21998364849);
+    assert.strictEqual(linhas[2][2], 55999887766);  // o DDD 55 sobreviveu
+    assert.strictEqual(linhas[3][2], 5599887766);   // intacto, não era DDI
+    assert.strictEqual(linhas[4][2], 21998364849);
+    assert.strictEqual(resultado.ddisRemovidos, 2);
+});
+
+test('o DDI nunca e removido do CPF', async () => {
+    // CNPJ que por acaso começa com 55 não pode perder os dois dígitos
+    const entrada = await criarFixture(
+        'cnpj55.xlsx',
+        ['Nome do Negócio', 'CNPJ', 'Telefone Celular'],
+        [['Padaria Sol', '55123456000199', '21998364849']]
+    );
+
+    const resultado = await limparArquivo(entrada);
+    const { linhas } = await lerSaida(resultado.caminhoSaida);
+
+    assert.strictEqual(linhas[1][1], 55123456000199);
+    assert.strictEqual(resultado.ddisRemovidos, 0);
 });
 
 test('limparArquivo recusa CSV explicando o motivo', async () => {

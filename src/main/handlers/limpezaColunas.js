@@ -35,7 +35,7 @@ async function processarLote(caminhos, log) {
         if (resultado.ok) {
             processados++;
             if (!primeiraSaida) primeiraSaida = resultado.caminhoSaida;
-            log(`${nome} -> OK (${resultado.linhas.toLocaleString('pt-BR')} linhas)`);
+            log(`${nome} -> OK (${resultado.linhas.toLocaleString('pt-BR')} linhas, ${resultado.ddisRemovidos.toLocaleString('pt-BR')} DDIs removidos)`);
             avisarTruncados(resultado.truncados, log);
         } else {
             pulados++;

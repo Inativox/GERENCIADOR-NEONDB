@@ -3,6 +3,10 @@
  * Sem I/O e sem Electron — de propósito, para poder testar com `node --test`.
  */
 
+const DDI_BRASIL = '55';
+// telefone brasileiro sem DDI: DDD (2) + fixo (8) ou celular (9)
+const TAMANHOS_SEM_DDI = [10, 11];
+
 const ALVOS = {
     NOME: { rotulo: 'Nome do Negócio', exato: 'NOME DO NEGOCIO', especifico: 'NEGOCIO', generico: 'NOME' },
     CPF: { rotulo: 'CNPJ', exato: 'CNPJ', especifico: 'CNPJ', generico: null },
@@ -132,8 +136,27 @@ function normalizarDigitos(valor) {
     return /^0*$/.test(digitos) ? '' : digitos;
 }
 
+/**
+ * Tira o 55 do DDI do telefone, replicando o "Ajuste de Fones"
+ * (`handlers/limpeza.js`), com uma guarda a mais.
+ *
+ * O original corta o 55 de qualquer número que comece com 55. Isso engole o DDD
+ * de quem é de Santa Maria/RS: 5599887766 (DDD 55, sem DDI) viraria 99887766.
+ * Aqui o corte só acontece quando o que sobra continua sendo um telefone válido,
+ * então DDI sai e DDD 55 fica.
+ *
+ * Vale só para telefone — CNPJ que começa com 55 nunca passa por aqui.
+ */
+function removerDdi(digitos) {
+    if (!digitos.startsWith(DDI_BRASIL)) return digitos;
+
+    const semDdi = digitos.slice(DDI_BRASIL.length);
+    return TAMANHOS_SEM_DDI.includes(semDdi.length) ? semDdi : digitos;
+}
+
 module.exports = {
     ALVOS,
+    removerDdi,
     desembrulhar,
     textoDe,
     normalizarCabecalho,

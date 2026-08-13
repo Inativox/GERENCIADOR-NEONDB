@@ -13,6 +13,7 @@ const {
     acharCabecalho,
     normalizarDigitos,
     ehCientificoTruncado,
+    removerDdi,
 } = require('./regrasLimpezaColunas');
 
 const FORMATO_CPF = '00000000000000';
@@ -98,6 +99,7 @@ function aplicarFormatos(aba) {
 function copiarLinhas(origem, destino, colunas) {
     let linhas = 0;
     let truncados = 0;
+    let ddisRemovidos = 0;
 
     for (let numero = 2; numero <= origem.rowCount; numero++) {
         const linha = origem.getRow(numero);
@@ -106,8 +108,11 @@ function copiarLinhas(origem, destino, colunas) {
 
         const nome = textoDe(linha.getCell(colunas.NOME).value);
         const cpf = normalizarDigitos(brutoCpf);
-        const fone = normalizarDigitos(brutoFone);
+        const foneComDdi = normalizarDigitos(brutoFone);
+        // só o telefone perde o DDI; CNPJ iniciado em 55 fica intacto
+        const fone = removerDdi(foneComDdi);
 
+        if (fone !== foneComDdi) ddisRemovidos++;
         if (ehCientificoTruncado(brutoCpf)) truncados++;
         if (ehCientificoTruncado(brutoFone)) truncados++;
 
@@ -116,7 +121,7 @@ function copiarLinhas(origem, destino, colunas) {
         destino.addRow([nome || null, cpf ? Number(cpf) : null, fone ? Number(fone) : null]);
         linhas++;
     }
-    return { linhas, truncados };
+    return { linhas, truncados, ddisRemovidos };
 }
 
 /**
@@ -130,13 +135,13 @@ async function limparArquivo(caminhoEntrada) {
 
         const workbook = new ExcelJS.Workbook();
         const destino = montarAbaDestino(workbook);
-        const { linhas, truncados } = copiarLinhas(origem, destino, colunas);
+        const { linhas, truncados, ddisRemovidos } = copiarLinhas(origem, destino, colunas);
         aplicarFormatos(destino);
 
         const caminhoSaida = caminhoDisponivel(caminhoEntrada);
         await workbook.xlsx.writeFile(caminhoSaida);
 
-        return { ok: true, caminhoSaida, linhas, truncados };
+        return { ok: true, caminhoSaida, linhas, truncados, ddisRemovidos };
     } catch (erro) {
         return { ok: false, motivo: erro.message };
     }
