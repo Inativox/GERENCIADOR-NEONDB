@@ -1,7 +1,7 @@
 /**
  * Handler da aba de Limpeza de Colunas: reduz planilhas a NOME, CPF e FONE1.
  */
-const { ipcMain, shell } = require('electron');
+const { ipcMain } = require('electron');
 const path = require('path');
 
 const state = require('../state');
@@ -57,7 +57,9 @@ function register() {
 
             log('');
             log(`Concluido: ${processados} de ${caminhos.length} arquivo(s).`);
-            if (primeiraSaida) shell.showItemInFolder(primeiraSaida);
+            // Sem abrir o explorador: o caminho vai para o log para o usuário
+            // continuar no gerenciador e saber onde os arquivos caíram.
+            if (primeiraSaida) log(`Arquivos salvos em: ${path.dirname(primeiraSaida)}`);
 
             finalizar(true, processados, pulados);
         } catch (erro) {

@@ -112,9 +112,9 @@ Exemplos:
 1. O usuário seleciona uma ou mais planilhas (seleção múltipla no diálogo nativo).
 2. Clica em "Iniciar Limpeza".
 3. Cada arquivo gera um `<nome>_LIMPO.xlsx` na **mesma pasta do original**.
-4. Ao final, revela no explorador o primeiro arquivo gerado com sucesso. Como os
-   originais podem vir de pastas diferentes, o app revela um arquivo específico, não
-   uma pasta. Se nenhum arquivo foi gerado, nada é aberto.
+4. Ao final, **nada é aberto fora do app** — o usuário permanece no gerenciador. O
+   caminho da pasta de saída vai para o log, para ele saber onde os arquivos caíram
+   sem trocar de janela.
 
 O arquivo original nunca é aberto para escrita. Se `<nome>_LIMPO.xlsx` já existir, o
 próximo vira `<nome>_LIMPO_1.xlsx`, `<nome>_LIMPO_2.xlsx` e assim por diante — a
