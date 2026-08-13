@@ -25,6 +25,12 @@ test('normalizarCabecalho tira acento, caixa e espaco sobrando', () => {
     assert.strictEqual(normalizarCabecalho('  TELEFONE   CELULAR'), 'TELEFONE CELULAR');
     assert.strictEqual(normalizarCabecalho('cnpj'), 'CNPJ');
     assert.strictEqual(normalizarCabecalho(null), '');
+    // CSV do Excel vem com BOM grudado na primeira célula
+    assert.strictEqual(normalizarCabecalho('﻿Nome do Negócio'), 'NOME DO NEGOCIO');
+});
+
+test('acharCabecalho casa por exato mesmo com BOM na primeira celula', () => {
+    assert.strictEqual(acharCabecalho(['﻿Nome do Negócio', 'X'], ALVOS.NOME), 0);
 });
 
 test('acharCabecalho acha por exato, por especifico e por generico', () => {

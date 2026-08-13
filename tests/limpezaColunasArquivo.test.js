@@ -19,6 +19,14 @@ async function criarFixture(nome, cabecalhos, linhas) {
     return caminho;
 }
 
+/** Escreve um CSV cru numa pasta temporária e devolve o caminho. */
+function criarFixtureCsv(nome, linhas, prefixo = '') {
+    const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'limpcol-'));
+    const caminho = path.join(pasta, nome);
+    fs.writeFileSync(caminho, prefixo + linhas.join('\r\n'), 'utf8');
+    return caminho;
+}
+
 /** Lê a saída gerada e devolve as linhas como array de arrays. */
 async function lerSaida(caminho) {
     const workbook = new ExcelJS.Workbook();
@@ -115,10 +123,98 @@ test('limparArquivo descarta a linha em que as tres colunas estao vazias', async
 test('caminhoDisponivel nunca sobrescreve arquivo existente', async () => {
     const entrada = await criarFixture('lote.xlsx', ['Nome do Negócio', 'CNPJ', 'Telefone Celular'], []);
 
-    const primeiro = caminhoDisponivel(entrada);
+    const primeiro = caminhoDisponivel(entrada, '.xlsx');
     assert.strictEqual(path.basename(primeiro), 'lote_LIMPO.xlsx');
 
     fs.writeFileSync(primeiro, 'ocupado');
-    const segundo = caminhoDisponivel(entrada);
+    const segundo = caminhoDisponivel(entrada, '.xlsx');
     assert.strictEqual(path.basename(segundo), 'lote_LIMPO_1.xlsx');
+});
+
+test('caminhoDisponivel respeita a extensao de saida', async () => {
+    const entrada = criarFixtureCsv('lista.csv', ['a;b']);
+    assert.strictEqual(path.basename(caminhoDisponivel(entrada, '.csv')), 'lista_LIMPO.csv');
+});
+
+test('CSV com ponto e virgula entra e sai como CSV com ponto e virgula', async () => {
+    const entrada = criarFixtureCsv('base.csv', [
+        'ID;Nome do Negócio;CNPJ;Telefone Celular;Lixo',
+        '1;Padaria Sol;04.252.011/0001-10;5521998364849,00;x',
+        '2;Mercado Lua;12.345.678/0001-99;(21) 99836-4849;y',
+    ]);
+
+    const resultado = await limparArquivo(entrada);
+
+    assert.strictEqual(resultado.ok, true);
+    assert.strictEqual(path.extname(resultado.caminhoSaida), '.csv');
+    assert.strictEqual(resultado.linhas, 2);
+
+    const conteudo = fs.readFileSync(resultado.caminhoSaida, 'utf8').replace(/^﻿/, '');
+    const linhas = conteudo.trim().split(/\r?\n/);
+    assert.strictEqual(linhas[0], 'NOME;CPF;FONE1');
+    assert.strictEqual(linhas[1], 'Padaria Sol;04252011000110;5521998364849');
+    assert.strictEqual(linhas[2], 'Mercado Lua;12345678000199;21998364849');
+});
+
+test('CSV preserva o zero a esquerda do CNPJ como texto', async () => {
+    const entrada = criarFixtureCsv('zero.csv', [
+        'Nome do Negócio;CNPJ;Telefone Celular',
+        'Padaria Sol;04252011000110;5521998364849',
+    ]);
+
+    const resultado = await limparArquivo(entrada);
+    const conteudo = fs.readFileSync(resultado.caminhoSaida, 'utf8').replace(/^﻿/, '');
+
+    assert.match(conteudo, /;04252011000110;/);
+});
+
+test('CSV separado por virgula tambem e lido', async () => {
+    const entrada = criarFixtureCsv('virgula.csv', [
+        'Nome do Negócio,CNPJ,Telefone Celular',
+        'Padaria Sol,12345678000199,5521998364849',
+    ]);
+
+    const resultado = await limparArquivo(entrada);
+
+    assert.strictEqual(resultado.ok, true);
+    assert.strictEqual(resultado.linhas, 1);
+    const conteudo = fs.readFileSync(resultado.caminhoSaida, 'utf8').replace(/^﻿/, '');
+    assert.match(conteudo, /^NOME;CPF;FONE1/);
+});
+
+test('CSV com BOM no cabecalho e lido normalmente', async () => {
+    const entrada = criarFixtureCsv('bom.csv', [
+        'Nome do Negócio;CNPJ;Telefone Celular',
+        'Padaria Sol;12345678000199;5521998364849',
+    ], '﻿');
+
+    const resultado = await limparArquivo(entrada);
+
+    assert.strictEqual(resultado.ok, true);
+    assert.strictEqual(resultado.linhas, 1);
+});
+
+test('CSV mantem as tres colunas mesmo com o telefone vazio', async () => {
+    const entrada = criarFixtureCsv('semfone.csv', [
+        'Nome do Negócio;CNPJ;Telefone Celular',
+        'Loja Vazia;12345678000199;',
+    ]);
+
+    const resultado = await limparArquivo(entrada);
+    const conteudo = fs.readFileSync(resultado.caminhoSaida, 'utf8').replace(/^﻿/, '');
+    const linhas = conteudo.trim().split(/\r?\n/);
+
+    assert.strictEqual(linhas[1], 'Loja Vazia;12345678000199;');
+});
+
+test('XLSX continua saindo como XLSX', async () => {
+    const entrada = await criarFixture(
+        'planilha.xlsx',
+        ['Nome do Negócio', 'CNPJ', 'Telefone Celular'],
+        [['Padaria Sol', '12345678000199', '5521998364849']]
+    );
+
+    const resultado = await limparArquivo(entrada);
+
+    assert.strictEqual(path.extname(resultado.caminhoSaida), '.xlsx');
 });

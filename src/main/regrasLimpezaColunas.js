@@ -26,7 +26,8 @@ function desembrulhar(valor) {
 function textoDe(valor) {
     const bruto = desembrulhar(valor);
     if (bruto === null || bruto === undefined) return '';
-    return String(bruto).trim();
+    // CSV salvo pelo Excel começa com BOM; sem tirar, o cabeçalho não casa por exato.
+    return String(bruto).replace(/^﻿/, '').trim();
 }
 
 function normalizarCabecalho(valor) {

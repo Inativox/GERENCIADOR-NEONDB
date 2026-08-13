@@ -801,7 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         'Limpeza de Colunas': {
             title: 'Limpeza de Colunas',
-            description: 'Reduz suas planilhas a NOME, CPF e FONE1, com os números já normalizados e sem notação científica. Os arquivos originais permanecem intactos.'
+            description: 'Reduz suas planilhas a NOME, CPF e FONE1, com os números já normalizados e sem notação científica. A saída sai no mesmo formato da entrada e os arquivos originais permanecem intactos.'
         }
     };
 

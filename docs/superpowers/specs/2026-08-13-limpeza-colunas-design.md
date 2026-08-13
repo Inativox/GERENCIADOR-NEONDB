@@ -174,6 +174,46 @@ coluna faltando — é validado rodando o app com planilhas reais.
 | Coluna faltando | Pula o arquivo, segue o lote | Um arquivo ruim não deve travar os outros |
 | Posição na HUD | Aba própria na sidebar, após Relacionamento | Ferramenta independente do pipeline de relacionamento |
 
+## Emenda — saída em CSV (2026-08-13)
+
+A saída passa a **espelhar o formato da entrada**: `.csv` gera `.csv`, `.xlsx` gera
+`.xlsx`. As regras de limpeza são as mesmas nos dois casos; muda só como o valor é
+gravado.
+
+### Diferenças do CSV
+
+| Aspecto | XLSX | CSV |
+|---|---|---|
+| CPF e FONE1 | número com `numFmt` | texto de dígitos |
+| Zero à esquerda do CNPJ | preservado pela máscara `00000000000000` | preservado por ser texto |
+| Separador de saída | — | `;` (padrão do Excel em português) |
+| Codificação | — | UTF-8 com BOM, para o Excel não quebrar os acentos |
+
+CSV não tem formatação de célula, então a máscara não existe lá — o zero à esquerda só
+sobrevive se o valor for texto. Consequência conhecida: abrir esse CSV **no Excel** faz
+o Excel reinterpretar a coluna como número e comer o zero de novo. Isso é comportamento
+de importação do Excel, não do arquivo gerado.
+
+### Leitura de CSV
+
+Dois cuidados que o comportamento padrão do ExcelJS obrigou:
+
+- **Delimitador de entrada é detectado**, não assumido. A primeira linha do arquivo é
+  lida (só os primeiros 8 KB) e o delimitador com mais ocorrências vence. Sem isso, um
+  CSV brasileiro separado por `;` seria lido como uma coluna só.
+- **`map` identidade no parser.** Por padrão o ExcelJS converte cada campo do CSV para
+  número quando ele parece número — `04252011000110` viraria `4252011000110` na leitura,
+  perdendo o zero antes das regras rodarem. Com o `map` identidade, todo campo chega
+  como texto cru e a interpretação fica inteiramente com as regras deste projeto.
+- **BOM.** `textoDe` remove o BOM inicial, senão o cabeçalho da primeira coluna nunca
+  casaria pelo match exato.
+
+### Célula vazia no CSV
+
+No CSV, célula vazia é gravada como string vazia, não `null`. O escritor do ExcelJS monta
+a linha a partir de `row.values`, e um `null` no fim encurta o array — a linha sairia com
+duas colunas em vez de três, gerando um CSV irregular.
+
 ## Fora de escopo
 
 - Remoção de linhas duplicadas ou de telefones inválidos — já existe em outras abas
