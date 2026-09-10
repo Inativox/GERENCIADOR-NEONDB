@@ -93,7 +93,7 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     const logBuffer = [];
     const log = (msg) => logBuffer.push(msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
-    const { backup, checkDb, saveToDb, checkBlocklist, removeLandlines, checkNumerosInvalidos } = options; //checkNumerosInvalidos adicionado por Enzo
+    const { backup, checkDb, saveToDb, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, cleaningDate } = options; //checkNumerosInvalidos adicionado por Enzo
 
     const cleanClientName = (name) => {
         if (!name || typeof name !== 'string') return name;
@@ -122,6 +122,7 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     const cpfColIdx = header.findIndex(h => ["cpf", "cnpj"].includes(String(h).trim().toLowerCase()));
     const nomeColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "nome");
     const cnaeColIdx = header.findIndex(h => ["cnae", "livre3"].includes(String(h).trim().toLowerCase()));
+    const livre5ColIdx = header.findIndex(h => String(h).trim().toLowerCase() === "livre5");
     const foneIdxs = header.reduce((acc, cell, i) => {
         if (typeof cell === "string" && /^fone([1-9]|1[0-9])$/.test(cell.trim().toLowerCase())) {
             acc.push(i);
@@ -145,6 +146,12 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
     }
     if (cnaeColIdx === -1) {
         log(`⚠️ AVISO: Nenhuma coluna "cnae" ou "livre3" encontrada em ${path.basename(file)}. A verificação de CNAE será ignorada para este arquivo.`);
+    }
+    const livre5Value = `${path.parse(file).name} | ${cleaningDate}`;
+    if (fillLivre5 && livre5ColIdx === -1) {
+        log(`⚠️ AVISO: ${path.basename(file)} não possui a coluna "livre5". O preenchimento com nome e data foi ignorado.`);
+    } else if (fillLivre5) {
+        log(`🏷️ A coluna "livre5" de ${path.basename(file)} será preenchida com "${livre5Value}".`);
     }
 
     const cleaned = [header];
@@ -202,6 +209,10 @@ async function processFile(fileObj, rootSet, options, event, cnpjsHistory) {
 
         if (nomeColIdx !== -1 && row[nomeColIdx]) {
             row[nomeColIdx] = cleanClientName(row[nomeColIdx]);
+        }
+
+        if (fillLivre5 && livre5ColIdx !== -1) {
+            row[livre5ColIdx] = livre5Value;
         }
 
         cleaned.push(row);
@@ -562,6 +573,10 @@ function register() {
 
         try {
             const batchId = `batch-${Date.now()}`;
+            const cleaningDate = new Intl.DateTimeFormat('pt-BR', {
+                timeZone: 'America/Sao_Paulo'
+            }).format(new Date());
+            const cleaningOptions = { ...args, cleaningDate };
             logSystemAction(state.currentUser.username, 'Limpeza Local', `Iniciou limpeza de ${args.cleanFiles.length} arquivos.`);
             if (args.saveToDb) log(`Este lote de salvamento terá o ID: ${batchId}`);
             const rootSet = new Set();
@@ -602,6 +617,7 @@ function register() {
             if (args.checkDb) log("Opção \"Consultar Banco de Dados\" está ATIVADA.");
             if (args.checkBlocklist) log(`Opção "Verificar Blocklist" está ATIVADA (consulta via BD).`);
             if(args.checkNumerosInvalidos) log(`Opção "Verificar Números Inválidos" está ATIVADA (consulta via BD).`)
+            if (args.fillLivre5) log(`Opção "Preencher Livre5" está ATIVADA. Data da limpeza: ${cleaningDate}.`);
             if (args.saveToDb) log("Opção \"Salvar no Banco de Dados\" está ATIVADA.");
             if (args.autoAdjust) log("Opção \"Ajustar Fones Pós-Limpeza\" está ATIVADA.");
             if (args.removeLandlines) log("Opção \"Remover Fones Fixos\" está ATIVADA.");
@@ -615,7 +631,7 @@ function register() {
                 log(`\n⏳ PROCESSANDO ${names}... aguarde.`);
 
                 const chunkResults = await Promise.all(
-                    chunk.map(fileObj => processFile(fileObj, rootSet, args, event, storedCnpjs))
+                    chunk.map(fileObj => processFile(fileObj, rootSet, cleaningOptions, event, storedCnpjs))
                 );
 
                 for (let j = 0; j < chunkResults.length; j++) {
@@ -1522,4 +1538,4 @@ function register() {
     });
 }
 
-module.exports = { register, runPhoneAdjustment };
+module.exports = { register, runPhoneAdjustment, processFile };
