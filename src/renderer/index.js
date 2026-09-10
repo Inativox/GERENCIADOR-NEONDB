@@ -950,6 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const checkBlocklistCheckbox = document.getElementById('checkBlocklistCheckbox');
     //adiciona captura de numeros inválidos
     const checkNumerosInvalidosCheckbox = document.getElementById('checkNumerosInvalidosCheckbox'); //adicionado por Enzo
+    const fillLivre5Checkbox = document.getElementById('fillLivre5Checkbox');
 
     // --- INÍCIO: LÓGICA ABRANGENTE DE SALVAR/CARREGAR ESTADO DA UI ---
 
@@ -964,6 +965,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveToDb: saveToDbCheckbox.checked,
             checkBlocklist: checkBlocklistCheckbox.checked,
             checkNumerosInvalidos: checkNumerosInvalidosCheckbox.checked, // adicionado por Enzo
+            fillLivre5: fillLivre5Checkbox.checked,
             autoRoot: autoRootBtn.dataset.on === 'true',
             organizeType: document.getElementById('organizeTypeSelect') ? document.getElementById('organizeTypeSelect').value : (document.querySelector('input[name="organizeType"]:checked')?.value || 'bernardo'),
             mergeStrategy: document.querySelector('input[name="mergeStrategy"]:checked')?.value || 'all',
@@ -1024,6 +1026,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setChecked(checkDbCheckbox, settings.checkDb);
         setChecked(saveToDbCheckbox, settings.saveToDb);
         setChecked(checkBlocklistCheckbox, settings.checkBlocklist);
+        setChecked(fillLivre5Checkbox, settings.fillLivre5);
 
         const organizeSelect = document.getElementById('organizeTypeSelect');
         if (organizeSelect && settings.organizeType) {
@@ -1155,12 +1158,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkDb: checkDbEnabled,
                 saveToDb: saveToDbEnabled,
                 autoAdjust: autoAdjustPhones,
-                checkBlocklist: checkBlocklistCheckbox.checked
+                checkBlocklist: checkBlocklistCheckbox.checked,
+                fillLivre5: fillLivre5Checkbox.checked
             });
         });
     }
 
-    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; mergeFiles = []; backupEnabled = false; autoAdjustPhones = false; checkDbEnabled = false; saveToDbEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (selectedMergeFilesDiv) selectedMergeFilesDiv.innerHTML = ''; if (batchIdInput) batchIdInput.value = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.checked = false; if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkDbCheckbox) checkDbCheckbox.checked = false; if (saveToDbCheckbox) saveToDbCheckbox.checked = false; if (checkNumerosInvalidosCheckbox) checkNumerosInvalidosCheckbox.checked = false; if (checkBlocklistCheckbox) checkBlocklistCheckbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } resetUploadProgress(); appendLog('Módulo de Limpeza Local reiniciado.'); });
+    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; mergeFiles = []; backupEnabled = false; autoAdjustPhones = false; checkDbEnabled = false; saveToDbEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (selectedMergeFilesDiv) selectedMergeFilesDiv.innerHTML = ''; if (batchIdInput) batchIdInput.value = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.checked = false; if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkDbCheckbox) checkDbCheckbox.checked = false; if (saveToDbCheckbox) saveToDbCheckbox.checked = false; if (checkNumerosInvalidosCheckbox) checkNumerosInvalidosCheckbox.checked = false; if (checkBlocklistCheckbox) checkBlocklistCheckbox.checked = false; if (fillLivre5Checkbox) fillLivre5Checkbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } resetUploadProgress(); appendLog('Módulo de Limpeza Local reiniciado.'); });
     if (adjustPhonesBtn) adjustPhonesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivo para ajustar fones', multi: false }); if (!files?.length) return appendLog('Nenhum arquivo selecionado.'); window.electronAPI.startAdjustPhones({ filePath: files[0], backup: backupEnabled }); });
     if (selectMergeFilesBtn) selectMergeFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para mesclar', multi: true }); if (!files?.length) return; mergeFiles = files; selectedMergeFilesDiv.innerHTML = ''; files.forEach(f => { addFileToUI(selectedMergeFilesDiv, f, false); }); });
 
