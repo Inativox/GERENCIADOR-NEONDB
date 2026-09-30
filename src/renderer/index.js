@@ -1,3 +1,4 @@
+import { appendBoundedLog } from './boundedLog.mjs';
 console.log('--- RENDERER.JS CARREGADO - VERSÃO NOVA ---');
 document.addEventListener('DOMContentLoaded', () => {
     const getBasename = (p) => p.split(/[\\/]/).pop();
@@ -12,322 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainContent = document.querySelector('.main-content');
     const logoutBtn = document.getElementById('logoutBtn');
     const monitoringTeamTitle = document.getElementById('monitoring-team-title');
-    const organizeDailySheetBtn = document.getElementById('organizeDailySheetBtn');
-
-    if (organizeDailySheetBtn) {
-        organizeDailySheetBtn.addEventListener('click', async () => {
-            appendLog('Selecionando arquivo(s) para organizar...');
-            const files = await window.electronAPI.selectFile({ title: 'Selecione as planilhas para organizar', multi: true });
-            if (files && files.length > 0) {
-                const organizationType = document.getElementById('organizeTypeSelect') ? document.getElementById('organizeTypeSelect').value : document.querySelector('input[name="organizeType"]:checked').value;
-                let options = {};
-
-                if (organizationType === 'whatsapp') {
-                    options = {
-                        removeBlocklist: document.getElementById('whatsapp-remove-blocklist')?.checked || false,
-                        tagMode: document.getElementById('whatsapp-tag-filename')?.checked ? 'filename' : (document.querySelector('input[name="whatsappTagMode"]:checked')?.value || 'manual'),
-                        manualTag: document.getElementById('whatsapp-manual-tag-input')?.value || '',
-                        scheduleDate: document.getElementById('whatsapp-schedule-date')?.value || '',
-                        scheduleTime: document.getElementById('whatsapp-schedule-time')?.value || '',
-                        sector: document.getElementById('whatsapp-schedule-sector')?.value || '',
-                        useApi: document.getElementById('whatsapp-use-api')?.checked || false,
-                        filename: document.getElementById('whatsapp-filename-input')?.value || ''
-                    };
-                    if (options.tagMode === 'manual' && !options.manualTag) {
-                        return appendLog('❌ ERRO: Por favor, preencha a tag manual.');
-                    }
-                    if (options.tagMode === 'scheduled' && (!options.scheduleDate || !options.scheduleTime || !options.sector)) {
-                        return appendLog('❌ ERRO: Por favor, preencha Data, Hora e Setor para o agendamento.');
-                    }
-                }
-
-                appendLog(`Iniciando organização para ${files.length} arquivo(s) usando o formato: ${organizationType}`);
-                
-                // MODIFICADO: Envia todos os arquivos de uma vez para permitir processamento em lote (economia de API)
-                // O main.js já está preparado para receber um array em 'filePaths'
-                window.electronAPI.organizeDailySheet(files, organizationType, options);
-                
-            } else {
-                appendLog('Nenhum arquivo selecionado. Operação cancelada.');
-            }
-        });
-    }
-
-    // --- INJEÇÃO DA OPÇÃO WHATSAPP E REMOÇÃO DE RELACIONAMENTO ---
-    const firstOrganizeRadio = document.querySelector('input[name="organizeType"]');
-    if (firstOrganizeRadio) {
-        // Tenta encontrar o container principal. Se estiver dentro de um label, o pai do label é o container.
-        let container = firstOrganizeRadio.closest('.radio-group');
-        if (!container && firstOrganizeRadio.parentElement.tagName === 'LABEL') {
-            container = firstOrganizeRadio.parentElement.parentElement;
-        } else if (!container) {
-            container = firstOrganizeRadio.parentElement;
-        }
-
-        // --- TRANSFORMAÇÃO PARA SELECT ---
-        const optionsData = [];
-        container.querySelectorAll('input[name="organizeType"]').forEach(inp => {
-            const lbl = inp.closest('label');
-            const text = lbl ? lbl.textContent.trim() : inp.value;
-            optionsData.push({ value: inp.value, text: text, checked: inp.checked });
-        });
-
-        // Adiciona Olos e Whatsapp se não existirem
-        if (!optionsData.find(o => o.value === 'olos')) optionsData.push({ value: 'olos', text: 'Olos', checked: false });
-        if (!optionsData.find(o => o.value === 'whatsapp')) optionsData.push({ value: 'whatsapp', text: 'Whatsapp', checked: false });
-        if (!optionsData.find(o => o.value === 'empresaAqui')) optionsData.push({ value: 'empresaAqui', text: 'Empresa Aqui', checked: false });
-        if (!optionsData.find(o => o.value === 'cadencia')) optionsData.push({ value: 'cadencia', text: 'Separar Cadência', checked: false });
-        if (!optionsData.find(o => o.value === 'relacionamento')) optionsData.push({ value: 'relacionamento', text: 'Relacionamento', checked: false });
-
-        // Limpa container
-        container.innerHTML = '';
-
-        // Estilos para o Select (incluindo correção de cor do dropdown nativo)
-        const style = document.createElement('style');
-        style.textContent = `
-            #organizeTypeSelect {
-                width: 100%;
-                padding: 9px 36px 9px 14px;
-                border-radius: 8px;
-                border: 1px solid var(--border-color);
-                background-color: var(--bg-element);
-                color: var(--text-primary);
-                margin-bottom: 14px;
-                font-size: 13px;
-                font-weight: 500;
-                font-family: inherit;
-                outline: none;
-                cursor: pointer;
-                appearance: none;
-                -webkit-appearance: none;
-                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2380808f' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-                background-repeat: no-repeat;
-                background-position: right 12px center;
-                transition: border-color 0.15s, background-color 0.15s;
-            }
-            #organizeTypeSelect:hover {
-                border-color: var(--border-hover);
-                background-color: var(--bg-element-hover);
-            }
-            #organizeTypeSelect:focus {
-                border-color: var(--accent-color);
-                box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 20%, transparent);
-            }
-            #organizeTypeSelect option {
-                background-color: var(--bg-element);
-                color: var(--text-primary);
-                padding: 8px;
-            }
-            body.dark-theme #organizeTypeSelect option {
-                background-color: #1d1d22 !important;
-                color: #f2f2f6 !important;
-            }
-            body.dark-theme #organizeTypeSelect { color-scheme: dark; }
-            body.light-theme #organizeTypeSelect { color-scheme: light; }
-        `;
-        container.appendChild(style);
-
-        // Cria Select
-        const select = document.createElement('select');
-        select.id = 'organizeTypeSelect';
-
-        optionsData.forEach(opt => {
-            const option = document.createElement('option');
-            option.value = opt.value;
-            option.textContent = opt.text;
-            option.style.backgroundColor = 'var(--bg-input)';
-            option.style.color = 'var(--text-primary)';
-            if (opt.checked) option.selected = true;
-            select.appendChild(option);
-        });
-
-        container.appendChild(select);
-
-        // Listener para Whatsapp
-        select.addEventListener('change', () => {
-            if (select.value === 'whatsapp') {
-                const modal = document.getElementById('whatsapp-config-modal');
-                if (modal) modal.classList.remove('hidden');
-            }
-        });
-
-            // --- CRIAÇÃO DO MODAL WHATSAPP ---
-        if (!document.getElementById('whatsapp-config-modal')) {
-            const whatsappModal = document.createElement('div');
-            whatsappModal.id = 'whatsapp-config-modal';
-            whatsappModal.className = 'modal-overlay hidden';
-            whatsappModal.innerHTML = `
-                <div class="modal-content" style="max-width: 500px;">
-                    <div class="modal-header">
-                        <h3 style="margin:0; display:flex; align-items:center; gap:10px;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="var(--accent-color)" viewBox="0 0 16 16"><path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592z"/></svg>
-                            Configurações Whatsapp
-                        </h3>
-                        <button class="modal-close-btn" id="close-whatsapp-modal">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <style>
-                            .wa-input-group { margin-bottom: 20px; }
-                            .wa-label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary); }
-                            .wa-text-input {
-                                width: 100%; padding: 10px; border-radius: 20px; border: 1px solid var(--border-color);
-                                background: var(--bg-input); color: var(--text-primary); transition: 0.2s;
-                            }
-                            .wa-text-input:focus { border-color: var(--accent-color); outline: none; }
-                            .wa-radio-group { display: flex; gap: 15px; flex-wrap: wrap; }
-                            .wa-radio-label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
-                            .wa-row { display: flex; gap: 10px; }
-                            .wa-tag-filename-row {
-                                display: flex; align-items: center; justify-content: space-between;
-                                padding: 10px 14px; border-radius: 8px;
-                                background: var(--bg-element);
-                                border: 1px solid var(--border-color);
-                                margin-bottom: 20px; cursor: pointer;
-                                transition: border-color 0.15s, background 0.15s;
-                            }
-                            .wa-tag-filename-row:has(#whatsapp-tag-filename:checked) {
-                                border-color: var(--accent-color);
-                                background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-element));
-                            }
-                            .wa-tag-filename-info { display: flex; flex-direction: column; gap: 2px; }
-                            .wa-tag-filename-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-                            .wa-tag-filename-desc { font-size: 11px; color: var(--text-muted); }
-                            .wa-toggle { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
-                            .wa-toggle input { opacity: 0; width: 0; height: 0; }
-                            .wa-toggle-slider {
-                                position: absolute; inset: 0; background: var(--bg-element-hover);
-                                border-radius: 20px; transition: background 0.2s; cursor: pointer;
-                                border: 1px solid var(--border-color);
-                            }
-                            .wa-toggle-slider::before {
-                                content: ''; position: absolute; width: 14px; height: 14px;
-                                border-radius: 50%; background: var(--text-muted);
-                                top: 2px; left: 2px; transition: transform 0.2s, background 0.2s;
-                            }
-                            .wa-toggle input:checked + .wa-toggle-slider { background: var(--accent-color); border-color: var(--accent-color); }
-                            .wa-toggle input:checked + .wa-toggle-slider::before { transform: translateX(16px); background: #fff; }
-                            #whatsapp-tag-manual-section.wa-disabled { opacity: 0.4; pointer-events: none; }
-                        </style>
-
-                        <div class="wa-input-group">
-                            <label class="checkbox-container">
-                                <input type="checkbox" id="whatsapp-remove-blocklist">
-                                <span class="checkmark"></span>
-                                Remover números da Blocklist
-                            </label>
-                        </div>
-
-                        <div class="wa-input-group">
-                            <label class="checkbox-container">
-                                <input type="checkbox" id="whatsapp-use-api">
-                                <span class="checkmark"></span>
-                                Passar na Limpeza API (Remove Clientes)
-                            </label>
-                        </div>
-
-                        <div class="wa-input-group">
-                            <label class="wa-label">Nome do Arquivo de Saída:</label>
-                            <input type="text" id="whatsapp-filename-input" class="wa-text-input" placeholder="Ex: Lista_Whatsapp_28_01">
-                        </div>
-
-                        <label class="wa-tag-filename-row">
-                            <div class="wa-tag-filename-info">
-                                <span class="wa-tag-filename-title">TAG NOME</span>
-                                <span class="wa-tag-filename-desc">Usa o nome de cada arquivo como tag (sem extensão)</span>
-                            </div>
-                            <label class="wa-toggle">
-                                <input type="checkbox" id="whatsapp-tag-filename">
-                                <span class="wa-toggle-slider"></span>
-                            </label>
-                        </label>
-
-                        <div id="whatsapp-tag-manual-section">
-                            <div class="wa-input-group">
-                                <label class="wa-label">Tipo de Tag:</label>
-                                <div class="wa-radio-group">
-                                    <label class="wa-radio-label"><input type="radio" name="whatsappTagMode" value="manual" checked> Manual</label>
-                                    <label class="wa-radio-label"><input type="radio" name="whatsappTagMode" value="scheduled"> Agendamento (Setor)</label>
-                                </div>
-                                <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);" id="whatsapp-tag-preview">
-                                    Digite a tag manualmente.
-                                </div>
-                            </div>
-
-                            <div id="whatsapp-manual-tag-container" class="wa-input-group" style="display: block;">
-                                <input type="text" id="whatsapp-manual-tag-input" class="wa-text-input" placeholder="Digite a tag personalizada...">
-                            </div>
-                        </div>
-
-                        <div id="whatsapp-schedule-container" class="wa-input-group" style="display: none;">
-                            <label class="wa-label">Configurar Agendamento:</label>
-                            <div class="wa-row">
-                                <div style="flex: 2;">
-                                    <label style="font-size: 12px; color: var(--text-muted);">Data (Dia/Mês)</label>
-                                    <input type="text" id="whatsapp-schedule-date" class="wa-text-input" placeholder="Ex: 29/01">
-                                </div>
-                                <div style="flex: 1;">
-                                    <label style="font-size: 12px; color: var(--text-muted);">Hora (HH)</label>
-                                    <input type="number" id="whatsapp-schedule-time" class="wa-text-input" placeholder="Ex: 14">
-                                </div>
-                                <div style="flex: 2;">
-                                    <label style="font-size: 12px; color: var(--text-muted);">Setor</label>
-                                    <input type="text" id="whatsapp-schedule-sector" class="wa-text-input" placeholder="Ex: Resgate">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn-primary" id="confirm-whatsapp-config" style="width: 100%;">Confirmar Configurações</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(whatsappModal);
-
-            // Lógica do Modal
-            const closeWaModal = () => whatsappModal.classList.add('hidden');
-            document.getElementById('close-whatsapp-modal').addEventListener('click', closeWaModal);
-            document.getElementById('confirm-whatsapp-config').addEventListener('click', closeWaModal);
-            whatsappModal.addEventListener('click', (e) => { if (e.target === whatsappModal) closeWaModal(); });
-
-            // Lógica de Tag Manual/Auto/Agendamento
-            const tagRadios = whatsappModal.querySelectorAll('input[name="whatsappTagMode"]');
-            const manualContainer = document.getElementById('whatsapp-manual-tag-container');
-            const scheduleContainer = document.getElementById('whatsapp-schedule-container');
-            const previewText = document.getElementById('whatsapp-tag-preview');
-            const tagFilenameToggle = document.getElementById('whatsapp-tag-filename');
-            const tagManualSection = document.getElementById('whatsapp-tag-manual-section');
-
-            tagFilenameToggle.addEventListener('change', () => {
-                if (tagFilenameToggle.checked) {
-                    tagManualSection.classList.add('wa-disabled');
-                } else {
-                    tagManualSection.classList.remove('wa-disabled');
-                }
-            });
-
-            tagRadios.forEach(r => {
-                r.addEventListener('change', () => {
-                    manualContainer.style.display = 'none';
-                    scheduleContainer.style.display = 'none';
-                    previewText.style.display = 'block';
-
-                    if (r.value === 'manual') {
-                        manualContainer.style.display = 'block';
-                        previewText.style.display = 'none';
-                    } else if (r.value === 'scheduled') {
-                        scheduleContainer.style.display = 'block';
-                        previewText.textContent = "Estrutura: [Data] [Setor] - [Hora]h";
-                    } else {
-                        previewText.textContent = "";
-                    }
-                });
-            });
-
-        }
-    }
-
     let currentUserRole = null;
     let currentUserTeamId = null;
+    let blocklistRequired = true;
+    let preferredBlocklist = false;
 
     // --- VARIÁVEIS GLOBAIS PARA DADOS ---
     let fastwaySummaryData = null;
@@ -339,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.electronAPI.onUserInfo(({ username, role, teamId }) => {
         currentUserRole = role;
         currentUserTeamId = teamId;
+        blocklistRequired = username !== 'Davi';
+        applyBlocklistPolicy();
 
         const currentUserSpan = document.getElementById('currentUser');
         if (currentUserSpan) {
@@ -376,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!allowedFishUsers.includes(username)) {
                 scheduleFishBtn.disabled = true;
                 scheduleFishBtn.title = 'Recurso restrito a administradores específicos.';
-                
+
                 if (scheduleFishModeCheckbox) {
                     scheduleFishModeCheckbox.checked = false;
                     scheduleFishModeCheckbox.disabled = true;
@@ -392,26 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // NOVO: Lógica para forçar a verificação de blocklist para usuários específicos.
-        const checkBlocklistCheckbox = document.getElementById('checkBlocklistCheckbox');
-        if (checkBlocklistCheckbox) {
-            // Se o usuário NÃO for 'Davi', a opção se torna obrigatória.
-            if (username !== 'Davi') {
-                checkBlocklistCheckbox.checked = true;
-                checkBlocklistCheckbox.disabled = true;
-
-                // Adiciona um feedback visual para o usuário.
-                const parentSwitch = checkBlocklistCheckbox.closest('.toggle-switch');
-                if (parentSwitch) {
-                    parentSwitch.style.opacity = '0.7';
-                    parentSwitch.style.cursor = 'not-allowed';
-                    parentSwitch.title = 'Esta opção é obrigatória para o seu perfil de usuário.';
-                }
-            } else {
-                // Garante que para o usuário 'Davi' a opção esteja sempre habilitada.
-                checkBlocklistCheckbox.disabled = false;
-            }
-        }
     });
 
     if (logoutBtn) {
@@ -469,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const applyTheme = (theme) => {
         body.className = `${theme}-theme`;
-        localStorage.setItem('app-theme', theme);
+        localStorage.setItem('workspace-theme', theme);
         lightThemeBtn.classList.toggle('active', theme === 'light');
         darkThemeBtn.classList.toggle('active', theme === 'dark');
     };
@@ -478,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     darkThemeBtn.addEventListener('click', () => applyTheme('dark'));
 
     // Carrega o tema salvo ao iniciar
-    const savedTheme = localStorage.getItem('app-theme') || 'dark';
+    const savedTheme = localStorage.getItem('workspace-theme') || 'light';
     applyTheme(savedTheme);
 
     // Adiciona a classe do tema ao body para que as variáveis CSS funcionem
@@ -524,68 +195,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- Limpeza de Colunas ---
-    const limpezaColunasSelectBtn = document.getElementById('limpezaColunasSelectBtn');
-    const limpezaColunasStartBtn = document.getElementById('limpezaColunasStartBtn');
-    const limpezaColunasFilePaths = document.getElementById('limpezaColunasFilePaths');
-    const limpezaColunasLog = document.getElementById('limpezaColunasLog');
-    let limpezaColunasFiles = [];
-
-    const appendLimpezaColunasLog = (mensagem) => {
-        if (!limpezaColunasLog) return;
-        if (limpezaColunasLog.textContent === 'Aguardando arquivos...') {
-            limpezaColunasLog.textContent = '';
-        }
-        limpezaColunasLog.textContent += `${mensagem}\n`;
-        limpezaColunasLog.scrollTop = limpezaColunasLog.scrollHeight;
-    };
-
-    if (limpezaColunasSelectBtn) {
-        limpezaColunasSelectBtn.addEventListener('click', async () => {
-            const arquivos = await window.electronAPI.selectFile({
-                title: 'Selecione as planilhas para limpar',
-                multi: true
-            });
-            if (!arquivos || arquivos.length === 0) {
-                appendLimpezaColunasLog('Nenhum arquivo selecionado.');
-                return;
-            }
-            limpezaColunasFiles = arquivos;
-            limpezaColunasFilePaths.innerHTML = arquivos.map(p => `<div>${getBasename(p)}</div>`).join('');
-            appendLimpezaColunasLog(`${arquivos.length} arquivo(s) selecionado(s).`);
-        });
-    }
-
-    if (limpezaColunasStartBtn) {
-        limpezaColunasStartBtn.addEventListener('click', () => {
-            if (limpezaColunasFiles.length === 0) {
-                appendLimpezaColunasLog('❌ Selecione pelo menos um arquivo antes de iniciar.');
-                return;
-            }
-            limpezaColunasStartBtn.disabled = true;
-            window.electronAPI.startLimpezaColunas(limpezaColunasFiles);
-        });
-    }
-
-    window.electronAPI.onLimpezaColunasLog(appendLimpezaColunasLog);
-    window.electronAPI.onLimpezaColunasFinished(({ success, processados, pulados }) => {
-        if (limpezaColunasStartBtn) limpezaColunasStartBtn.disabled = false;
-        if (success) {
-            appendLimpezaColunasLog(`✅ Finalizado. ${processados} gerado(s), ${pulados} pulado(s).`);
-        } else {
-            appendLimpezaColunasLog('❌ Processo finalizado com erro.');
-        }
-    });
+    // A aba Limpeza de Colunas é controlada exclusivamente pelo React.
 
     const gridConfigs = {
-        'localGrid': 'local-sections',
         'apiGrid': 'api-sections',
         'enrichmentGrid': 'enrichment-sections',
         // NOVO: Adiciona a grid da nova aba
         'api-tools-panel': 'api-tools-sections',
         'blocklistGrid': 'blocklist-sections',
         'relacionamentoGrid': 'relacionamento-sections', // <-- Adicionado para a nova aba
-        'limpezaColunasGrid': 'limpeza-colunas-sections',
     };
 
     let sortableInstances = {};
@@ -674,7 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const savedState = loadSectionState(storageKey);
         applySectionState(grid, savedState);
 
-        const sortable = Sortable.create(grid, {
+        const sortable = window.Sortable?.create(grid, {
             animation: 300,
             ghostClass: 'sortable-ghost',
             chosenClass: 'sortable-chosen',
@@ -777,7 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabInfo = {
         'Limpeza Local': {
             title: 'Limpeza Local de Bases',
-            description: 'Otimize suas bases de dados localmente, removendo duplicidades e ajustando informações com precisão. Ideal para manter seus registros impecáveis.'
+            description: 'Limpe suas listas com os filtros da raiz e de telefones. Cada arquivo é processado por vez, com seu próprio resumo no log.'
         },
         'Consulta CNPJ (API)': {
             title: 'Consulta CNPJ via API',
@@ -832,12 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
             isTransitioning = false;
         };
 
-        if (activePage && activePage.id !== tabNameId) {
-            activePage.classList.add('fade-out');
-            setTimeout(showNewPage, 230);
-        } else {
-            showNewPage();
-        }
+        showNewPage();
 
         const mainContent = document.querySelector('.main-content');
         // Reseta as classes de tema, mas mantém as classes base
@@ -857,11 +470,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // A nova aba 'relacionamento' não precisa de tema por enquanto
         if (themeClass) mainContent.classList.add(themeClass);
-
-        // Sync HUD rail color to current tab accent
-        const accentVal = getComputedStyle(mainContent).getPropertyValue('--active-accent').trim();
-        document.documentElement.style.setProperty('--hud-accent', accentVal || 'var(--accent-blue)');
-
 
         const tabButtonText = event ? event.currentTarget.querySelector('span').textContent.trim() : '';
         if (tabInfo[tabButtonText]) {
@@ -901,20 +509,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // #################################################################
     let rootFile = null;
     let cleanFiles = [];
-    let mergeFiles = [];
+    let localCleaningBusy = false;
     let backupEnabled = false;
-    let autoAdjustPhones = false;
-    let checkDbEnabled = false;
-    let saveToDbEnabled = false;
     let removeLandlinesEnabled = false; // NOVO
     const selectRootBtn = document.getElementById('selectRootBtn');
     const autoRootBtn = document.getElementById('autoRootBtn');
     const feedRootBtn = document.getElementById('feedRootBtn');
-    const updateBlocklistBtn = document.getElementById('updateBlocklistBtn');
     const addCleanFileBtn = document.getElementById('addCleanFileBtn');
     const startCleaningBtn = document.getElementById('startCleaningBtn');
     const resetLocalBtn = document.getElementById('resetLocalBtn');
-    const adjustPhonesBtn = document.getElementById('adjustPhonesBtn');
     const backupCheckbox = document.getElementById('backupCheckbox').parentElement;
     const removeLandlinesCheckbox = document.getElementById('removeLandlinesCheckbox'); // NOVO
     const autoAdjustPhonesCheckbox = document.getElementById('autoAdjustPhonesCheckbox');
@@ -922,35 +525,54 @@ document.addEventListener('DOMContentLoaded', () => {
     const selectedCleanFilesDiv = document.getElementById('selectedCleanFiles');
     const progressContainer = document.getElementById('progressContainer');
     const logDiv = document.getElementById('log');
-    const selectMergeFilesBtn = document.getElementById('selectMergeFilesBtn');
-    const startMergeBtn = document.getElementById('startMergeBtn');
-    const selectedMergeFilesDiv = document.getElementById('selectedMergeFiles');
-    const saveStoredCnpjsBtn = document.getElementById('saveStoredCnpjsBtn');
-    const checkDbCheckbox = document.getElementById('checkDbCheckbox');
-    const saveToDbCheckbox = document.getElementById('saveToDbCheckbox');
-    const consultDbBtn = document.getElementById('consultDbBtn');
-    const uploadProgressContainer = document.getElementById('uploadProgressContainer');
-    const uploadProgressTitle = document.getElementById('uploadProgressTitle');
-    const uploadProgressBarFill = document.getElementById('uploadProgressBarFill');
-    const uploadProgressText = document.getElementById('uploadProgressText');
-    const batchIdInput = document.getElementById('batchIdInput');
-    const deleteBatchBtn = document.getElementById('deleteBatchBtn');
-    const mergeStrategyRadios = document.querySelectorAll('input[name="mergeStrategy"]');
-    const customMergeInputContainer = document.getElementById('customMergeInputContainer');
-    const customMergeCountInput = document.getElementById('customMergeCount');
-    const removeDuplicatesCheckbox = document.getElementById('removeDuplicatesCheckbox');
-    const selectListToSplitBtn = document.getElementById('selectListToSplitBtn');
-    const listToSplitPathDiv = document.getElementById('listToSplitPath');
-    const linesPerSplitInput = document.getElementById('linesPerSplit');
-    const splitListBtn = document.getElementById('splitListBtn');
-    const shuffleResultCheckbox = document.getElementById('shuffleResultCheckbox');
 
     // NOVO: Captura dos novos elementos da Blocklist
-    const feedBlocklistBtn = document.getElementById('feedBlocklistBtn');
     const checkBlocklistCheckbox = document.getElementById('checkBlocklistCheckbox');
+    function applyBlocklistPolicy() {
+        checkBlocklistCheckbox.checked = blocklistRequired || preferredBlocklist;
+        checkBlocklistCheckbox.disabled = blocklistRequired || localCleaningBusy;
+        checkBlocklistCheckbox.closest('.toggle-switch').title = blocklistRequired
+            ? 'Verificação obrigatória para seu usuário.' : 'Davi pode ativar ou desativar esta verificação.';
+    }
+    applyBlocklistPolicy();
+    checkBlocklistCheckbox.addEventListener('change', () => {
+        preferredBlocklist = checkBlocklistCheckbox.checked;
+        applyBlocklistPolicy();
+    });
     //adiciona captura de numeros inválidos
     const checkNumerosInvalidosCheckbox = document.getElementById('checkNumerosInvalidosCheckbox'); //adicionado por Enzo
     const fillLivre5Checkbox = document.getElementById('fillLivre5Checkbox');
+    const localCleaningStatus = document.getElementById('localCleaningStatus');
+    const cadenceModeFlag = document.getElementById('cadence-mode-flag');
+    function updateRootModeIndicator() {
+        const enabled = autoRootBtn.dataset.on === 'true';
+        cadenceModeFlag.hidden = enabled;
+        autoRootBtn.setAttribute('aria-pressed', String(enabled));
+    }
+    updateRootModeIndicator();
+    const localControlStates = new Map();
+    const cleaningButtonMarkup = startCleaningBtn.innerHTML;
+    function setLocalCleaningBusy(busy) {
+        localCleaningBusy = busy;
+        if (busy) {
+            document.querySelectorAll('#local button, #local input').forEach(control => {
+                localControlStates.set(control, control.disabled);
+                control.disabled = true;
+            });
+            startCleaningBtn.textContent = 'Limpando listas…';
+            localCleaningStatus.textContent = 'Limpeza em andamento';
+        } else {
+            localControlStates.forEach((disabled, control) => { control.disabled = disabled; });
+            localControlStates.clear();
+            startCleaningBtn.innerHTML = cleaningButtonMarkup;
+            applyBlocklistPolicy();
+        }
+    }
+    window.electronAPI.onCleaningFinished(({ success }) => {
+        if (!localCleaningBusy) return;
+        setLocalCleaningBusy(false);
+        localCleaningStatus.textContent = success ? 'Lote concluído' : 'Verifique o log da limpeza';
+    });
 
     // --- INÍCIO: LÓGICA ABRANGENTE DE SALVAR/CARREGAR ESTADO DA UI ---
 
@@ -959,20 +581,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const settings = {
             // Aba Limpeza Local
             backup: backupCheckbox.querySelector('input').checked,
-            autoAdjust: autoAdjustPhonesCheckbox.checked,
+            autoAdjust: true,
             removeLandlines: removeLandlinesCheckbox ? removeLandlinesCheckbox.checked : false, // NOVO: Adicionado verificação para evitar erro se o elemento não existir
-            checkDb: checkDbCheckbox.checked,
-            saveToDb: saveToDbCheckbox.checked,
-            checkBlocklist: checkBlocklistCheckbox.checked,
+            checkBlocklist: blocklistRequired || checkBlocklistCheckbox.checked,
             checkNumerosInvalidos: checkNumerosInvalidosCheckbox.checked, // adicionado por Enzo
             fillLivre5: fillLivre5Checkbox.checked,
             autoRoot: autoRootBtn.dataset.on === 'true',
-            organizeType: document.getElementById('organizeTypeSelect') ? document.getElementById('organizeTypeSelect').value : (document.querySelector('input[name="organizeType"]:checked')?.value || 'bernardo'),
-            mergeStrategy: document.querySelector('input[name="mergeStrategy"]:checked')?.value || 'all',
-            customMergeCount: customMergeCountInput.value,
-            removeDuplicates: removeDuplicatesCheckbox.checked,
-            shuffleResult: shuffleResultCheckbox.checked,
-            linesPerSplit: linesPerSplitInput.value,
 
             // Aba API
             apiKeySelection: apiKeySelection.value,
@@ -1020,27 +634,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Aba Limpeza Local
         setChecked(backupCheckbox.querySelector('input'), settings.backup);
-        setChecked(autoAdjustPhonesCheckbox, settings.autoAdjust);
         setChecked(removeLandlinesCheckbox, settings.removeLandlines); // NOVO
         setChecked(checkNumerosInvalidosCheckbox, settings.checkNumerosInvalidos); // adicionado por Enzo
-        setChecked(checkDbCheckbox, settings.checkDb);
-        setChecked(saveToDbCheckbox, settings.saveToDb);
-        setChecked(checkBlocklistCheckbox, settings.checkBlocklist);
+        if (typeof settings.checkBlocklist === 'boolean') preferredBlocklist = settings.checkBlocklist;
+        applyBlocklistPolicy();
         setChecked(fillLivre5Checkbox, settings.fillLivre5);
-
-        const organizeSelect = document.getElementById('organizeTypeSelect');
-        if (organizeSelect && settings.organizeType) {
-            organizeSelect.value = settings.organizeType;
-            organizeSelect.dispatchEvent(new Event('change'));
-        } else {
-            setRadio('organizeType', settings.organizeType);
-        }
-        
-        setRadio('mergeStrategy', settings.mergeStrategy);
-        setValue(customMergeCountInput, settings.customMergeCount);
-        setChecked(removeDuplicatesCheckbox, settings.removeDuplicates);
-        setChecked(shuffleResultCheckbox, settings.shuffleResult);
-        setValue(linesPerSplitInput, settings.linesPerSplit);
 
         // Aplica a configuração do Auto Raiz
         if (settings.autoRoot && autoRootBtn.dataset.on !== 'true') {
@@ -1103,18 +701,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- FIM: LÓGICA DO MODAL ---
 
     function addFileToUI(container, filePath, isSingle) { if (isSingle) { container.innerHTML = ''; } const fileDiv = document.createElement('div'); fileDiv.className = 'file-item new-item'; fileDiv.textContent = getBasename(filePath); container.appendChild(fileDiv); setTimeout(() => { fileDiv.classList.remove('new-item'); }, 500); }
-    function resetUploadProgress() { if (uploadProgressContainer) uploadProgressContainer.style.display = 'none'; if (uploadProgressBarFill) uploadProgressBarFill.style.width = '0%'; if (uploadProgressText) uploadProgressText.textContent = ''; }
-    if (backupCheckbox) backupCheckbox.addEventListener('change', (e) => { backupEnabled = e.target.querySelector('input').checked; });
+    if (backupCheckbox) backupCheckbox.addEventListener('change', () => { backupEnabled = backupCheckbox.querySelector('input').checked; });
     if (removeLandlinesCheckbox) removeLandlinesCheckbox.addEventListener('change', () => { removeLandlinesEnabled = removeLandlinesCheckbox.checked; }); // NOVO
-    if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.addEventListener('change', () => { autoAdjustPhones = autoAdjustPhonesCheckbox.checked; });
-    if (checkDbCheckbox) checkDbCheckbox.addEventListener('change', () => { checkDbEnabled = checkDbCheckbox.checked; appendLog(`Consulta ao Banco de Dados: ${checkDbEnabled ? 'ATIVADA' : 'DESATIVADA'}`); });
-    if (saveToDbCheckbox) saveToDbCheckbox.addEventListener('change', () => { saveToDbEnabled = saveToDbCheckbox.checked; appendLog(`Salvar no Banco de Dados: ${saveToDbEnabled ? 'ATIVADO' : 'DESATIVADO'}`); });
-    if (saveStoredCnpjsBtn) saveStoredCnpjsBtn.addEventListener('click', async () => { appendLog('Solicitando salvamento do histórico de CNPJs em Excel...'); const result = await window.electronAPI.saveStoredCnpjsToExcel(); appendLog(result.message); });
-    if (deleteBatchBtn) deleteBatchBtn.addEventListener('click', async () => { const batchId = batchIdInput.value.trim(); if (!batchId) { appendLog('❌ ERRO: Por favor, insira um ID de Lote para excluir.'); return; } const confirmation = confirm(`ATENÇÃO!\n\nVocê tem certeza que deseja excluir PERMANENTEMENTE todos os CNPJs do lote "${batchId}" do banco de dados?\n\nEsta ação não pode ser desfeita.`); if (confirmation) { appendLog(`Enviando solicitação para excluir o lote: ${batchId}...`); const result = await window.electronAPI.deleteBatch(batchId); appendLog(result.message); if (result.success) { batchIdInput.value = ''; } } else { appendLog('Operação de exclusão cancelada pelo usuário.'); } });
-    if (consultDbBtn) consultDbBtn.addEventListener('click', async () => { appendLog('Selecionando arquivos para consulta apenas pelo BD...'); const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para limpar apenas pelo BD', multi: true }); if (!files || files.length === 0) { appendLog('Nenhum arquivo selecionado.'); return; } window.electronAPI.startDbOnlyCleaning({ filesToClean: files, saveToDb: saveToDbEnabled }); });
     if (selectRootBtn) selectRootBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione a Lista Raiz', multi: false }); if (files && files.length > 0) { rootFile = files[0]; addFileToUI(rootFilePathSpan, rootFile, true); appendLog(`Arquivo raiz selecionado: ${rootFile}`); } });
-    if (autoRootBtn) autoRootBtn.addEventListener('click', () => { if (autoRootBtn.dataset.on) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = "Auto Raiz: OFF"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">Usará arquivo local selecionado</span>'; selectRootBtn.disabled = false; } else { autoRootBtn.dataset.on = 'true'; autoRootBtn.textContent = "Auto Raiz: ON"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--accent-light); font-weight: 600;">Usará a base de dados Raiz</span>'; selectRootBtn.disabled = true; } appendLog(`Auto Raiz: ${autoRootBtn.dataset.on ? 'ON (usando Banco de Dados)' : 'OFF'}`); });
-    if (updateBlocklistBtn) updateBlocklistBtn.addEventListener('click', async () => { const result = await window.electronAPI.updateBlocklist(backupEnabled); appendLog(result.success ? result.message : `Erro: ${result.message}`); });
+    if (autoRootBtn) autoRootBtn.addEventListener('click', () => { if (autoRootBtn.dataset.on) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = "Auto Raiz: OFF"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">Usará arquivo local selecionado</span>'; selectRootBtn.disabled = false; } else { autoRootBtn.dataset.on = 'true'; autoRootBtn.textContent = "Auto Raiz: ON"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--accent-blue); font-weight: 600;">Usará a base de dados Raiz</span>'; selectRootBtn.disabled = true; } updateRootModeIndicator(); saveCurrentUiSettings(); appendLog(`Auto Raiz: ${autoRootBtn.dataset.on ? 'ON (usando Banco de Dados)' : 'OFF'}`); });
     if (addCleanFileBtn) {
         addCleanFileBtn.addEventListener('click', async () => {
             const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para limpar', multi: true });
@@ -1137,6 +727,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (startCleaningBtn) {
         startCleaningBtn.addEventListener('click', () => {
+            if (localCleaningBusy) return;
             const isAutoRoot = autoRootBtn.dataset.on === 'true';
 
             // MODIFICADO: A verificação de raiz não é mais um erro bloqueante.
@@ -1145,8 +736,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (!cleanFiles.length) { return appendLog('ERRO: Adicione ao menos um arquivo para limpar.'); }
 
-            resetUploadProgress();
-            appendLog('Iniciando limpeza...');
+
+            appendLog('Iniciando limpeza sequencial: uma lista por vez.');
+            setLocalCleaningBusy(true);
 
             window.electronAPI.startCleaning({
                 isAutoRoot,
@@ -1155,121 +747,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 backup: backupEnabled,
                 removeLandlines: removeLandlinesEnabled, // NOVO
                 checkNumerosInvalidos: checkNumerosInvalidosCheckbox.checked,
-                checkDb: checkDbEnabled,
-                saveToDb: saveToDbEnabled,
-                autoAdjust: autoAdjustPhones,
-                checkBlocklist: checkBlocklistCheckbox.checked,
+                autoAdjust: true,
+                checkBlocklist: blocklistRequired || checkBlocklistCheckbox.checked,
                 fillLivre5: fillLivre5Checkbox.checked
             });
         });
     }
 
-    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; mergeFiles = []; backupEnabled = false; autoAdjustPhones = false; checkDbEnabled = false; saveToDbEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (selectedMergeFilesDiv) selectedMergeFilesDiv.innerHTML = ''; if (batchIdInput) batchIdInput.value = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) autoAdjustPhonesCheckbox.checked = false; if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkDbCheckbox) checkDbCheckbox.checked = false; if (saveToDbCheckbox) saveToDbCheckbox.checked = false; if (checkNumerosInvalidosCheckbox) checkNumerosInvalidosCheckbox.checked = false; if (checkBlocklistCheckbox) checkBlocklistCheckbox.checked = false; if (fillLivre5Checkbox) fillLivre5Checkbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } resetUploadProgress(); appendLog('Módulo de Limpeza Local reiniciado.'); });
-    if (adjustPhonesBtn) adjustPhonesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivo para ajustar fones', multi: false }); if (!files?.length) return appendLog('Nenhum arquivo selecionado.'); window.electronAPI.startAdjustPhones({ filePath: files[0], backup: backupEnabled }); });
-    if (selectMergeFilesBtn) selectMergeFilesBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para mesclar', multi: true }); if (!files?.length) return; mergeFiles = files; selectedMergeFilesDiv.innerHTML = ''; files.forEach(f => { addFileToUI(selectedMergeFilesDiv, f, false); }); });
-
-    if (mergeStrategyRadios) {
-        mergeStrategyRadios.forEach(radio => {
-            radio.addEventListener('change', () => {
-                if (radio.value === 'custom' && radio.checked) {
-                    customMergeInputContainer.style.display = 'block';
-                } else {
-                    customMergeInputContainer.style.display = 'none';
-                }
-            });
-        });
-    }
-
-    if (startMergeBtn) {
-        startMergeBtn.addEventListener('click', () => {
-            if (mergeFiles.length < 2) {
-                return appendLog('ERRO: Por favor, selecione pelo menos dois arquivos para mesclar.');
-            }
-            const strategy = document.querySelector('input[name="mergeStrategy"]:checked').value;
-            const customCount = parseInt(customMergeCountInput.value, 10) || 0;
-            if (strategy === 'custom' && (!customCount || customCount <= 0)) {
-                return appendLog('ERRO: Para mesclagem personalizada, insira um número de linhas válido e maior que zero.');
-            }
-            const mergeOptions = {
-                files: mergeFiles,
-                strategy: strategy,
-                customCount: customCount,
-                removeDuplicates: removeDuplicatesCheckbox.checked,
-                shuffle: shuffleResultCheckbox.checked
-            };
-
-            appendLog('Iniciando mesclagem com as opções selecionadas...');
-            window.electronAPI.startMerge(mergeOptions);
-        });
-    }
-
-    // NOVO: Event listener para o botão de alimentar a blocklist
-    if (feedBlocklistBtn) {
-        feedBlocklistBtn.addEventListener('click', async () => {
-            appendLog('Selecionando arquivo(s) para alimentar a Blocklist de Telefones...');
-            const files = await window.electronAPI.selectFile({
-                title: 'Selecione planilhas com telefones para a Blocklist',
-                multi: true
-            });
-            if (!files || files.length === 0) {
-                appendLog('Nenhum arquivo selecionado. Operação cancelada.');
-                return;
-            }
-            feedBlocklistBtn.disabled = true;
-            appendLog(`Iniciando o processo de alimentação da Blocklist com ${files.length} arquivo(s).`);
-            window.electronAPI.feedBlocklist(files);
-            // Re-habilita o botão após um tempo para evitar spam,
-            // idealmente, você teria um evento 'feed-blocklist-finished' do main.js
-            setTimeout(() => {
-                feedBlocklistBtn.disabled = false;
-            }, 5000);
-        });
-    }
-
-    let listToSplitFile = null;
-    if (selectListToSplitBtn) {
-        selectListToSplitBtn.addEventListener('click', async () => {
-            const files = await window.electronAPI.selectFile({ title: 'Selecione a Lista para Dividir', multi: false });
-            if (files && files.length > 0) {
-                listToSplitFile = files[0];
-                addFileToUI(listToSplitPathDiv, listToSplitFile, true);
-                appendLog(`Arquivo para divisão selecionado: ${listToSplitFile}`);
-            }
-        });
-    }
-    if (splitListBtn) {
-        splitListBtn.addEventListener('click', () => {
-            const linesPerSplit = parseInt(linesPerSplitInput.value, 10);
-            if (!listToSplitFile) {
-                appendLog('❌ ERRO: Selecione um arquivo para dividir.');
-                return;
-            }
-            if (!linesPerSplit || linesPerSplit <= 0) {
-                appendLog('❌ ERRO: Insira um número de linhas válido e maior que zero.');
-                return;
-            }
-            window.electronAPI.splitList({ filePath: listToSplitFile, linesPerSplit });
-        });
-    }
-
+    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; backupEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) { autoAdjustPhonesCheckbox.checked = true; autoAdjustPhonesCheckbox.disabled = true; } if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkNumerosInvalidosCheckbox) checkNumerosInvalidosCheckbox.checked = false; preferredBlocklist = false; applyBlocklistPolicy(); if (fillLivre5Checkbox) fillLivre5Checkbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } updateRootModeIndicator(); saveCurrentUiSettings(); appendLog('Módulo de Limpeza Local reiniciado.'); });
     if (feedRootBtn) feedRootBtn.addEventListener('click', async () => { appendLog('Selecionando arquivos para alimentar a base Raiz...'); const files = await window.electronAPI.selectFile({ title: 'Selecione planilhas com CNPJs para a Raiz', multi: true }); if (!files || files.length === 0) { appendLog('Nenhum arquivo selecionado. Operação cancelada.'); return; } feedRootBtn.disabled = true; appendLog(`Iniciando o processo de alimentação da Raiz com ${files.length} arquivo(s).`); window.electronAPI.feedRootDatabase(files); });
     window.electronAPI.onRootFeedFinished(() => { if (feedRootBtn) feedRootBtn.disabled = false; appendLog('✅ Processo de alimentação da Raiz finalizado.'); });
     window.electronAPI.onLog((msg) => appendLog(msg));
     window.electronAPI.onProgress(({ id, progress }) => { const bar = document.getElementById(id); if (bar) bar.style.width = `${progress}%`; });
-    window.electronAPI.onUploadProgress(({ current, total }) => { uploadProgressContainer.style.display = 'block'; uploadProgressTitle.textContent = 'Enviando para o Banco de Dados Compartilhado:'; const percent = Math.round((current / total) * 100); uploadProgressBarFill.style.width = `${percent}%`; uploadProgressText.textContent = `Enviando lote ${current} de ${total}...`; if (current === total) { uploadProgressTitle.textContent = 'Envio para o Banco de Dados Concluído!'; } });
     // MODIFICADO: Função appendLog para melhor formatação
     function appendLog(msg) {
-        if (!logDiv) return;
-        if (logDiv.textContent.trim() === 'Aguardando início do sistema...') {
-            logDiv.innerHTML = '';
-        }
-        const lines = msg.split('\n');
-        lines.forEach(line => {
-            const p = document.createElement('p');
-            p.textContent = `> ${line.trim()}`;
-            logDiv.appendChild(p);
-        });
-        logDiv.scrollTop = logDiv.scrollHeight;
+        appendBoundedLog(logDiv, msg, { placeholder: 'Aguardando início do sistema...' });
     }
     const apiDropzone = document.getElementById('apiDropzone');
     const apiProcessingDiv = document.getElementById('apiProcessing');
@@ -1568,20 +1060,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     // MODIFICADO: Função appendApiLog para melhor formatação
-    window.electronAPI.onApiLog((msg) => {
-        if (!apiLogDiv) return;
-        // apiLogDiv não tem mensagem inicial, apenas anexa
-        const lines = msg.split('\n');
-        lines.forEach(line => {
-            const p = document.createElement('p');
-            p.textContent = `> ${line.trim()}`;
-            apiLogDiv.appendChild(p);
-        });
-        apiLogDiv.scrollTop = apiLogDiv.scrollHeight;
-    });
+    window.electronAPI.onApiLog(appendApiLog);
     window.electronAPI.onApiProgress(({ current, total }) => { const percent = Math.round((current / total) * 100); apiProgressBarFill.style.width = `${percent}%`; apiStatusSpan.textContent = `Processando Lote ${current} de ${total}`; });
-    function appendApiLog(msg) { if (apiLogDiv) { apiLogDiv.innerHTML += `> ${msg.replace(/\n/g, '<br>> ')}\n`; apiLogDiv.scrollTop = apiLogDiv.scrollHeight; } }
-    
+    function appendApiLog(msg) { appendBoundedLog(apiLogDiv, msg); }
+
     // NOVO: Listener para erro de Lock (Concorrência)
     window.electronAPI.onApiLockError((message) => {
         alert(message); // Exibe um popup nativo para chamar atenção
@@ -1609,17 +1091,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let enrichmentEnrichFiles = [];
     // MODIFICADO: Função appendEnrichmentLog para melhor formatação
     function appendEnrichmentLog(msg) {
-        if (!enrichmentLogDiv) return;
-        if (enrichmentLogDiv.textContent.trim() === 'Aguardando início...') {
-            enrichmentLogDiv.innerHTML = '';
-        }
-        const lines = msg.split('\n');
-        lines.forEach(line => {
-            const p = document.createElement('p');
-            p.textContent = `> ${line.trim()}`;
-            enrichmentLogDiv.appendChild(p);
-        });
-        enrichmentLogDiv.scrollTop = enrichmentLogDiv.scrollHeight;
+        appendBoundedLog(enrichmentLogDiv, msg, { placeholder: 'Aguardando início...' });
     }
     async function updateEnrichedCnpjCount() { if (!enrichedCnpjCountSpan) return; try { enrichedCnpjCountSpan.textContent = 'Carregando...'; const count = await window.electronAPI.getEnrichedCnpjCount(); enrichedCnpjCountSpan.textContent = count.toLocaleString('pt-BR'); } catch (error) { enrichedCnpjCountSpan.textContent = 'Erro'; appendEnrichmentLog(`❌ Erro ao carregar contador: ${error.message}`); } }
     if (refreshCountBtn) refreshCountBtn.addEventListener('click', updateEnrichedCnpjCount);
@@ -1691,17 +1163,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // MODIFICADO: Função appendBlocklistLog para melhor formatação
     function appendBlocklistLog(msg) {
-        if (!blocklistLogDiv) return;
-        if (blocklistLogDiv.textContent.trim() === 'Aguardando início...') {
-            blocklistLogDiv.innerHTML = '';
-        }
-        const lines = msg.split('\n');
-        lines.forEach(line => {
-            const p = document.createElement('p');
-            p.textContent = `> ${line.trim()}`;
-            blocklistLogDiv.appendChild(p);
-        });
-        blocklistLogDiv.scrollTop = blocklistLogDiv.scrollHeight;
+        appendBoundedLog(blocklistLogDiv, msg, { placeholder: 'Aguardando início...' });
     }
 
     async function updateBlocklistStats() {
@@ -2605,14 +2067,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Função de Log específica da aba
     function appendRelacionamentoLog(msg) {
-        if (!relacionamentoLog) return;
-        if (relacionamentoLog.textContent.trim() === 'Aguardando o início do processo...') {
-            relacionamentoLog.innerHTML = '';
-        }
-        const p = document.createElement('p');
-        p.textContent = `> ${msg.trim()}`;
-        relacionamentoLog.appendChild(p);
-        relacionamentoLog.scrollTop = relacionamentoLog.scrollHeight;
+        appendBoundedLog(relacionamentoLog, msg, { placeholder: 'Aguardando o início do processo...' });
     }
 
     // Função auxiliar para criar seletores de arquivo
@@ -2686,14 +2141,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const splitByResponsibleFilePathDiv = document.getElementById('splitByResponsibleFilePath');
 
     function appendSplitLog(msg) {
-        if (!splitByResponsibleLog) return;
-        if (splitByResponsibleLog.textContent.trim() === 'Aguardando arquivo...') {
-            splitByResponsibleLog.innerHTML = '';
-        }
-        const p = document.createElement('p');
-        p.textContent = `> ${msg.trim()}`;
-        splitByResponsibleLog.appendChild(p);
-        splitByResponsibleLog.scrollTop = splitByResponsibleLog.scrollHeight;
+        appendBoundedLog(splitByResponsibleLog, msg, { placeholder: 'Aguardando arquivo...' });
     }
 
     if (selectSplitByResponsibleFileBtn) {
@@ -2739,6 +2187,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // SISTEMA DE CHANGELOG / NOTAS DE ATUALIZAÇÃO
     // =========================================================
     const CHANGELOG = [
+        {
+            version: '1.7.0',
+            date: '2026-09-30',
+            highlights: 'Novo visual e limpeza integrada',
+            notes: [
+                'Interface clara, com navegação e controles simplificados.',
+                'Configuração de acesso separada do instalador público, com migração local na atualização e importação para novos computadores.',
+                'Limpeza de uma lista por vez, com cruzamento de CNPJs e telefones entre os arquivos do lote.',
+                'Ajuste obrigatório de telefones: compactação de contatos, remoção de números sujos e exclusão de linhas sem telefone.',
+                'Blocklist obrigatória para todos, exceto Davi; indicação de Modo cadência quando Auto Raiz estiver desligado.',
+                'Limpeza de Colunas migrada para React e TypeScript, com processamento em worker e logs limitados.',
+                'Correções de conexão e encerramento; atualização nova instala no encerramento normal do aplicativo.'
+            ]
+        },
         {
             version: '1.6.0',
             date: '2026-03-10',

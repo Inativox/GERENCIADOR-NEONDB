@@ -1,6 +1,6 @@
 {
   "name": "gerenciador-de-bases",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "App unificado para limpeza, consulta e enriquecimento de bases.",
   "author": "Davi Abraão",
   "main": "main.js",
@@ -8,7 +8,19 @@
     "start": "electron . --max-old-space-size=8192",
     "test": "node --test \"tests/*.test.js\"",
     "dist": "electron-builder",
-    "publish": "electron-builder --publish always"
+    "publish": "npm run build:renderer && electron-builder --publish always",
+    "prestart": "npm run build:renderer",
+    "predist": "npm run build:renderer",
+    "build:renderer": "vite build",
+    "dev:renderer": "vite build --watch",
+    "typecheck": "tsc --noEmit",
+    "test:renderer": "electron scripts/smoke-renderer.cjs",
+    "pretest:renderer": "npm run build:renderer",
+    "test:packaged": "electron scripts/smoke-renderer.cjs dist/win-unpacked/resources/app.asar",
+    "benchmark:columns": "node scripts/benchmark-columns.cjs",
+    "config:export": "node scripts/export-private-config.cjs",
+    "check:package": "node scripts/check-package.cjs",
+    "test:private-config": "electron scripts/smoke-private-config.cjs"
   },
   "repository": {
     "type": "git",
@@ -24,22 +36,30 @@
     "exceljs": "^4.4.0",
     "nodemailer": "^7.0.9",
     "pg": "^8.16.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "electron": "^28.2.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
   },
   "build": {
     "appId": "com.daviabraao.gerenciadordebases",
     "productName": "Gerenciador de Bases",
+    "afterPack": "scripts/check-package.cjs",
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "scripts/installer-private-config.nsh"
     },
     "publish": [
       {
@@ -48,9 +68,47 @@
         "repo": "GERENCIADOR-NEONDB",
         "releaseType": "release"
       }
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "login.html",
+      "package.json",
+      "src/main/**",
+      "src/renderer/*.js",
+      "src/renderer/*.mjs",
+      "src/styles/**",
+      "out/renderer/*.js",
+      "out/renderer/*.css",
+      "!**/.env*",
+      "!**/users.json",
+      "!**/access.json",
+      "!**/*.mbkey",
+      "!**/*.mbconfig",
+      "!**/*.py",
+      "!private-exports/**",
+      "!.claude/**",
+      "!gerenciador-backup/**",
+      "!docs/**",
+      "!tests/**",
+      "!scripts/**",
+      "!.agents/**",
+      "!.codex/**",
+      "!.impeccable/**",
+      "!AGENTS.md",
+      "!CLAUDE*.md",
+      "!vite.config.mjs",
+      "!tsconfig.json",
+      "!src/renderer/react/**",
+      "!out/renderer/*.map",
+      "!out/*.png"
     ]
   },
   "allowScripts": {
     "electron@28.3.3": true
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

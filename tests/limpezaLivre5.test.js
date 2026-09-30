@@ -51,8 +51,7 @@ test('preenche livre5 com nome do arquivo e data da limpeza', async (t) => {
         { path: caminho, id: 'arquivo-1' },
         new Set(),
         opcoes({ fillLivre5: true }),
-        event,
-        new Set()
+        event
     );
 
     const dados = lerDados(caminho);
@@ -71,8 +70,7 @@ test('mantem livre5 intacto quando a opcao esta desligada', async (t) => {
         { path: caminho, id: 'arquivo-2' },
         new Set(),
         opcoes(),
-        event,
-        new Set()
+        event
     );
 
     assert.equal(lerDados(caminho)[1][1], 'valor original');
@@ -88,8 +86,7 @@ test('avisa e continua a limpeza quando livre5 nao existe', async (t) => {
         { path: caminho, id: 'arquivo-3' },
         new Set(),
         opcoes({ fillLivre5: true }),
-        event,
-        new Set()
+        event
     );
 
     assert.equal(lerDados(caminho)[1][1], 'Empresa');

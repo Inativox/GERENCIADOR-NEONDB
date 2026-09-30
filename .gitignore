@@ -19,6 +19,8 @@ users.json
 
 # Arquivo-chave de API (distribuir manualmente, nunca commitar)
 *.mbkey
+*.mbconfig
+private-exports/
 
 # Claude — overrides pessoais (não compartilhar)
 CLAUDE.local.md
@@ -32,7 +34,8 @@ bower_components/
 
 # Build / Distribuição
 dist/
-build/
+build/*
+!build/icon.ico
 out/
 win-unpacked/
 *.exe

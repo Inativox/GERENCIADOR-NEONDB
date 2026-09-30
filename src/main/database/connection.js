@@ -3,8 +3,6 @@
  * retry automático e lista de CNAEs proibidos.
  */
 const { Pool } = require('pg');
-const Store = require('electron-store');
-const store = new Store();
 
 const state = require('../state');
 
@@ -27,20 +25,51 @@ const PROHIBITED_CNAES = new Set([
     '9492800', '9493600', '9499500', '9529106', '9609204',
 ]);
 
-async function initializePool(connectionString, windowToLog) {
-    if (state.pool) {
-        await state.pool.end();
-        console.log("Pool de conexões anterior encerrado.");
+let initialization = Promise.resolve();
+let poolGeneration = 0;
+
+function assertGeneration(generation) {
+    if (generation !== poolGeneration) {
+        const error = new Error('Inicialização do banco cancelada após encerramento da sessão.');
+        error.code = 'DB_INITIALIZATION_CANCELLED';
+        throw error;
     }
+}
+
+function closePool() {
+    // Invalida também candidatos privados e inicializações ainda na fila.
+    poolGeneration++;
+    const previous = state.pool;
+    state.pool = null;
+    return previous ? previous.end().catch(error => console.warn('Falha ao encerrar pool:', error.message)) : Promise.resolve();
+}
+
+function notify(windowToLog, message) {
+    if (!windowToLog || windowToLog.isDestroyed?.() || windowToLog.webContents.isDestroyed?.()) return;
+    windowToLog.webContents.send('log', message);
+}
+
+// Serializa mudanças explícitas de configuração, nunca os retries de queries.
+function initializePool(connectionString, windowToLog) {
+    const generation = poolGeneration;
+    const pending = initialization.then(() => initializePoolNow(connectionString, windowToLog, generation));
+    initialization = pending.catch(() => {});
+    return pending;
+}
+
+async function initializePoolNow(connectionString, windowToLog, generation) {
+    assertGeneration(generation);
 
     if (!connectionString) {
         console.log("Chave de conexão não fornecida. A inicialização do pool foi ignorada.");
-        if (windowToLog) windowToLog.webContents.send("log", "⚠️ Chave de conexão do BD não configurada. Funções do BD desabilitadas.");
+        notify(windowToLog, '⚠️ Chave de conexão do BD não configurada. Funções do BD desabilitadas.');
+        const previous = state.pool;
         state.pool = null;
+        if (previous) await previous.end();
         return;
     }
 
-    state.pool = new Pool({
+    const candidate = new Pool({
         connectionString: connectionString,
         max: 10,
         idleTimeoutMillis: 30000,
@@ -48,12 +77,18 @@ async function initializePool(connectionString, windowToLog) {
         keepAlive: true,
         keepAliveInitialDelayMillis: 10000,
     });
+    // pg remove o cliente quebrado; o pool pode criar outra conexão na próxima query.
+    candidate.on('error', (error) => {
+        console.error('Erro em conexão ociosa do banco:', error.code || error.message);
+        notify(state.mainWindow, '⚠️ Uma conexão do banco foi interrompida. Novas consultas tentarão conectar novamente.');
+    });
 
     try {
-        await state.pool.query('SELECT NOW()');
+        await candidate.query('SELECT NOW()');
+        assertGeneration(generation);
         console.log("✅ Conexão com o banco de dados estabelecida com sucesso.");
 
-        await state.pool.query(`
+        await candidate.query(`
             CREATE TABLE IF NOT EXISTS api_locks (
                 key_name TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
@@ -63,11 +98,12 @@ async function initializePool(connectionString, windowToLog) {
                 lock_mode TEXT
             );
         `);
-        await state.pool.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Livre';`);
-        await state.pool.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS key_label TEXT;`);
-        await state.pool.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS lock_mode TEXT;`);
+        assertGeneration(generation);
+        await candidate.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Livre';`);
+        await candidate.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS key_label TEXT;`);
+        await candidate.query(`ALTER TABLE api_locks ADD COLUMN IF NOT EXISTS lock_mode TEXT;`);
 
-        await state.pool.query(`
+        await candidate.query(`
             CREATE TABLE IF NOT EXISTS system_logs (
                 id SERIAL PRIMARY KEY,
                 username TEXT,
@@ -76,14 +112,18 @@ async function initializePool(connectionString, windowToLog) {
                 created_at TIMESTAMP DEFAULT NOW()
             );
         `);
+        assertGeneration(generation);
 
-        if (windowToLog) windowToLog.webContents.send("log", "✅ Conexão com o Banco de Dados estabelecida com sucesso.");
     } catch (error) {
         console.error("❌ Falha ao estabelecer conexão com o banco de dados:", error.message);
-        if (windowToLog) windowToLog.webContents.send("log", `❌ ERRO DE CONEXÃO BD: ${error.message}. Funções do BD podem não funcionar.`);
-        state.pool = null;
+        await candidate.end().catch(err => console.warn('Falha ao liberar pool inválido:', err.message));
+        notify(windowToLog, '❌ Não foi possível conectar ao banco. Verifique a configuração e a conexão de rede.');
         throw error;
     }
+    const previous = state.pool;
+    state.pool = candidate;
+    if (previous) previous.end().catch(err => console.warn('Falha ao encerrar pool anterior:', err.message));
+    notify(windowToLog, '✅ Conexão com o Banco de Dados estabelecida com sucesso.');
 }
 
 // #################################################################
@@ -111,18 +151,14 @@ async function queryWithRetry(sql, params = [], maxRetries = 3, logFn = null) {
             if (!isRetryable || attempt === maxRetries) throw err;
 
             const delay = 1500 * attempt;
-            const msg = `⚠️ Erro de BD na tentativa ${attempt}/${maxRetries} (${err.code || err.message.slice(0, 60)}). Reconectando em ${delay / 1000}s...`;
+            const msg = `⚠️ Erro de BD na tentativa ${attempt}/${maxRetries} (${err.code || err.message.slice(0, 60)}). Nova tentativa em ${delay / 1000}s...`;
             if (logFn) logFn(msg);
             console.warn(`[queryWithRetry] ${msg}`);
 
             await new Promise(r => setTimeout(r, delay));
 
-            try {
-                const savedCs = store.get('dbConnectionString');
-                if (savedCs) await initializePool(savedCs, null);
-            } catch (reconnErr) {
-                console.warn('[queryWithRetry] Falha ao reconectar pool:', reconnErr.message);
-            }
+            // O próprio pg substitui conexões perdidas. Encerrar o pool aqui
+            // interromperia consultas e transações de outras tarefas.
         }
     }
     throw lastError;
@@ -144,6 +180,7 @@ async function logSystemAction(username, action, details) {
 module.exports = {
     PROHIBITED_CNAES,
     initializePool,
+    closePool,
     queryWithRetry,
     logSystemAction,
 };

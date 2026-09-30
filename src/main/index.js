@@ -2,7 +2,8 @@
  * Ponto de entrada do processo principal do Electron.
  * Registra todos os handlers e configura o ciclo de vida da aplicação.
  */
-require('dotenv').config();
+const privateConfig = require('./runtimeConfig');
+privateConfig.initialize();
 
 const { app } = require('electron');
 const { autoUpdater } = require('electron-updater');
@@ -46,9 +47,8 @@ autoUpdater.on('update-downloaded', (info) => {
     if (state.mainWindow && state.mainWindow.webContents) {
         state.mainWindow.webContents.send('update-ready', { version: info.version });
     }
-    setTimeout(() => {
-        autoUpdater.quitAndInstall(true, true);
-    }, 3000);
+    // Instalar no encerramento normal (autoInstallOnAppQuit), preservando
+    // qualquer processamento que ainda esteja em andamento.
 });
 autoUpdater.on('error', (err) => {
     console.error('Erro no auto-updater:', err);
@@ -68,7 +68,11 @@ cache.register();
 
 // Ciclo de vida do app
 app.whenReady().then(async () => {
-    const keyFilePath = store.get('key_file_path');
+    let keyFilePath = store.get('key_file_path');
+    try {
+        if (!keyFilePath || !require('fs').existsSync(keyFilePath)) keyFilePath = privateConfig.keyFilePath();
+        if (keyFilePath) store.set('key_file_path', keyFilePath);
+    } catch { console.warn('Importe novamente a licença de API na tela de login.'); }
     if (keyFilePath) {
         try {
             loadKeyFile(keyFilePath);

@@ -1,5 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+function subscribe(channel, callback) {
+    const listener = (_event, ...args) => callback(...args);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+}
+
 contextBridge.exposeInMainWorld("electronAPI", {
     // --- NOVO: Funções de Controle da Janela ---
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
@@ -10,6 +16,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     loginAttempt: (username, password, rememberMe) => ipcRenderer.invoke('login-attempt', username, password, rememberMe),
     logout: () => ipcRenderer.send('logout'),
     onUserInfo: (callback) => ipcRenderer.on('user-info', (event, ...args) => callback(...args)),
+    getAccessStatus: () => ipcRenderer.invoke('get-access-status'),
+    importPrivateAccess: () => ipcRenderer.invoke('import-private-access'),
 
     // --- NOVO: Funções de Configuração do BD ---
     getDbConnectionString: () => ipcRenderer.invoke('get-db-connection-string'),
@@ -33,23 +41,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
     selectFile: (options) => ipcRenderer.invoke("select-file", options),
     showSaveDialog: (options) => ipcRenderer.invoke("show-save-dialog", options), // NOVO
     openPath: (path) => ipcRenderer.send("open-path", path),
-    updateBlocklist: (backup) => ipcRenderer.invoke("update-blocklist", backup),
     startCleaning: (args) => ipcRenderer.send("start-cleaning", args),
-    startAdjustPhones: (args) => ipcRenderer.send("start-adjust-phones", args),
-    startMerge: (files) => ipcRenderer.send("start-merge", files),
-    startDbOnlyCleaning: (args) => ipcRenderer.send("start-db-only-cleaning", args),
     feedRootDatabase: (filePaths) => ipcRenderer.send("feed-root-database", filePaths),
     feedBlocklist: (filePaths) => ipcRenderer.send("feed-blocklist", filePaths), // NOVO
     getBlocklistStats: () => ipcRenderer.invoke("get-blocklist-stats"), // NOVO
     checkBlocklistNumbers: (numbers) => ipcRenderer.invoke("check-blocklist-numbers", numbers), // NOVO
     addNumbersToBlocklist: (numbers) => ipcRenderer.invoke("add-numbers-to-blocklist", numbers),
     refreshBlocklistCache: () => ipcRenderer.invoke("refresh-blocklist-cache"),
-    splitList: (args) => ipcRenderer.send("split-list", args),
     splitLargeCsv: (args) => ipcRenderer.send("split-large-csv", args), // NOVO
-    saveStoredCnpjsToExcel: () => ipcRenderer.invoke("save-stored-cnpjs-to-excel"),
-    deleteBatch: (batchId) => ipcRenderer.invoke("delete-batch", batchId),
-    organizeDailySheet: (filePath, organizationType, options) => ipcRenderer.send('organize-daily-sheet', filePath, organizationType, options),
-    organizeDailySheet: (filePaths, organizationType, options) => ipcRenderer.send('organize-daily-sheet', filePaths, organizationType, options),
 
     // --- Funções da API de Consulta (C6) ---
     addFilesToApiQueue: (files) => ipcRenderer.send("add-files-to-api-queue", files),
@@ -85,7 +84,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // --- Listeners de Eventos (Renderer "escuta" o Main) ---
     onLog: (callback) => ipcRenderer.on("log", (event, ...args) => callback(...args)),
     onProgress: (callback) => ipcRenderer.on("progress", (event, ...args) => callback(...args)),
-    onUploadProgress: (callback) => ipcRenderer.on("upload-progress", (event, ...args) => callback(...args)),
+    onCleaningFinished: callback => subscribe('cleaning-finished', callback),
     onApiQueueUpdate: (callback) => ipcRenderer.on("api-queue-update", (event, ...args) => callback(...args)),
     onApiLog: (callback) => ipcRenderer.on("api-log", (event, ...args) => callback(...args)),
     onApiProgress: (callback) => ipcRenderer.on("api-progress", (event, ...args) => callback(...args)),
@@ -110,8 +109,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     // --- FIM DA MODIFICAÇÃO ---
 
     // --- Listeners de Limpeza de Colunas ---
-    onLimpezaColunasLog: (callback) => ipcRenderer.on("limpeza-colunas-log", (event, ...args) => callback(...args)),
-    onLimpezaColunasFinished: (callback) => ipcRenderer.on("limpeza-colunas-finished", (event, ...args) => callback(...args)),
+    onLimpezaColunasLog: (callback) => subscribe('limpeza-colunas-log', callback),
+    onLimpezaColunasProgress: (callback) => subscribe('limpeza-colunas-progress', callback),
+    onLimpezaColunasFinished: (callback) => subscribe('limpeza-colunas-finished', callback),
 
     // Função para remover todos os listeners para evitar memory leaks ao recarregar
     removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),

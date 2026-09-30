@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/styles/index.css"
+        ],
+        "createdAt": "2026-09-29T22:59:17.888Z",
+        "reason": "Codex: after removing four decorative side borders, the remaining finding is the 10px L-shaped section resize grip (.section-resize-handle::after), a functional resizing affordance, not a card accent."
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-09-29T22:59:18.123Z",
+        "reason": "Codex: AGENTS.md provided by the user explicitly requires Inter for the interface; keep the incumbent design system."
+      }
+    ]
+  }
+}

@@ -11,10 +11,13 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <link rel="stylesheet" href="src/styles/index.css">
+    <link rel="stylesheet" href="out/renderer/react.css">
+    <link rel="stylesheet" href="src/styles/workspace.css">
 </head>
 
-<body>
+<body class="light-theme">
     <div class="title-bar">
+        <span class="window-title">MB Finance · Gerenciador de Bases</span>
         <button id="minimize-btn" class="title-bar-button" title="Minimizar">
             <svg width="10" height="10" viewBox="0 0 10 1">
                 <path d="M0,5 H10" stroke="currentColor" stroke-width="1.5" />
@@ -34,9 +37,9 @@
                     <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v.5H1v-.5z"/>
                     <path d="M1 4.5h14v2a.5.5 0 0 1-.5.5h-13A.5.5 0 0 1 1 6.5v-2zm0 3h14v5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-5z"/>
                 </svg>
-                <span class="sidebar-title">Base Manager</span>
+                <span class="sidebar-title">MB Bases</span>
             </header>
-            <nav>
+            <nav aria-label="Funcionalidades">
                 <ul class="sidebar-nav">
                     <li class="nav-item"><a href="#" class="tab-button" data-tab-name="local"><svg
                                 xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
@@ -116,23 +119,20 @@
                     <div class="section" data-section-id="limpeza-lista-raiz">
                         <div class="section-header">
                             <h2>Limpeza por Lista Raiz</h2>
-                            <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
-                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
-                            </div>
                         </div>
-                        <div
-                            style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+                        <p class="local-intro">As listas são cruzadas na ordem exibida. CNPJ repetido exclui a linha; telefone repetido remove só o contato nas próximas listas.</p>
+                        <div class="local-root-actions">
                             <button id="selectRootBtn" style="flex-grow: 1;"><svg xmlns="http://www.w3.org/2000/svg"
                                     width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
                                     <path
                                         d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z" />
                                     <path
                                         d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z" />
-                                </svg>1. Sel. Lista Raiz</button>
+                                </svg>Selecionar raiz</button>
                             <button id="autoRootBtn" style="flex-grow: 1;">Auto Raiz: OFF</button>
                             <button id="feedRootBtn" style="flex-grow: 1;">Alimentar Raiz</button>
                         </div>
+                        <span id="cadence-mode-flag" class="cadence-flag" role="status">Modo cadência</span>
                         <div id="rootFilePath" class="files" style="margin-bottom: 1rem;"></div>
                         <hr>
                         <button id="addCleanFileBtn" style="width: 100%; margin-bottom: 1rem;"><svg
@@ -142,19 +142,19 @@
                                     d="M8 6.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7a.5.5 0 0 1 .5-.5z" />
                                 <path
                                     d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2 2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z" />
-                            </svg>2. Adicionar Arquivos</button>
+                                </svg>Adicionar listas</button>
                         <div id="selectedCleanFiles" class="files"></div>
                         <hr>
                         <div
                             style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
-                            <button id="startCleaningBtn" style="flex-grow: 2;"><svg xmlns="http://www.w3.org/2000/svg"
+                            <button id="startCleaningBtn" class="btn-primary" style="flex-grow: 2;"><svg xmlns="http://www.w3.org/2000/svg"
                                     width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
                                     <path fill-rule="evenodd"
                                         d="M10.854 8.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L7.5 10.793l2.646-2.647a.5.5 0 0 1 .708 0z" />
                                     <path
                                         d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 2a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z" />
                                     <path d="M2.5 4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z" />
-                                </svg>3. Iniciar Limpeza</button>
+                                </svg>Iniciar limpeza</button>
                             <button id="resetLocalBtn" class="btn-danger" style="flex-grow: 1;"><svg
                                     xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
                                     viewBox="0 0 16 16">
@@ -168,27 +168,24 @@
                                     class="slider"></span></label>
                             <span class="toggle-label">Criar Backup</span>
                         </div>
+                        <details class="cleaning-options" open>
+                            <summary>Opções da limpeza</summary>
+                            <div class="cleaning-option-list">
+                                <label class="cleaning-option toggle-switch"><span>Remover telefones fixos<small>Números com 10 dígitos.</small></span><span class="switch"><input type="checkbox" id="removeLandlinesCheckbox"><span class="slider"></span></span></label>
+                                <label class="cleaning-option toggle-switch"><span>Ajustar telefones · obrigatório<small>Remove números sujos, preenche os primeiros fones e exclui linhas sem contato.</small></span><span class="switch"><input type="checkbox" id="autoAdjustPhonesCheckbox" checked disabled><span class="slider"></span></span></label>
+                                <label class="cleaning-option toggle-switch"><span>Verificar blocklist<small>Remove linhas com telefones bloqueados. Obrigatório, exceto para Davi.</small></span><span class="switch"><input type="checkbox" id="checkBlocklistCheckbox" checked disabled><span class="slider"></span></span></label>
+                                <label class="cleaning-option toggle-switch"><span>Verificar números inválidos<small>Consulta o filtro de números do banco.</small></span><span class="switch"><input type="checkbox" id="checkNumerosInvalidosCheckbox"><span class="slider"></span></span></label>
+                                <label class="cleaning-option toggle-switch"><span>Preencher Livre5<small>Nome da lista e data da limpeza.</small></span><span class="switch"><input type="checkbox" id="fillLivre5Checkbox"><span class="slider"></span></span></label>
+                            </div>
+                        </details>
                     </div>
 
                     <div class="section full-width" data-section-id="logs-progresso-limpeza">
                         <div class="section-header">
-                            <h2>Logs e Progresso</h2>
-                            <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
-                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
-                            </div>
+                            <h2>Atividade da limpeza</h2>
                         </div>
-                        <div style="margin-bottom: 1rem;"><button id="toggle-extra-tools-btn"
-                                style="width: auto; min-width: 200px;">Ferramentas Adicionais</button></div>
+                        <div class="local-activity-status"><span id="localCleaningStatus" role="status" aria-live="polite">Pronto para iniciar</span><span>Uma lista por vez</span></div>
                         <div id="progressContainer"></div>
-                        <div id="uploadProgressContainer" style="display: none; margin-top: 20px;">
-                            <strong id="uploadProgressTitle"></strong>
-                            <div class="progress-bar-container" style="height: 14px;">
-                                <div class="progress-bar-fill" id="uploadProgressBarFill"
-                                    style="background: var(--success-color);"></div>
-                            </div>
-                            <span id="uploadProgressText" style="font-size: 13px; color: var(--text-secondary);"></span>
-                        </div>
                         <div id="log" class="logs custom-scrollbar">Aguardando início do sistema...</div>
                     </div>
                 </div>
@@ -699,87 +696,18 @@
             </div>
 
             <div class="page-content" id="limpezaColunas">
-                <div class="grid" id="limpezaColunasGrid" style="gap: 1rem;">
-
-                    <div class="section" data-section-id="config-limpeza-colunas">
-                        <div class="section-header">
-                            <h2>Limpeza de Colunas</h2>
-                            <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
-                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
-                            </div>
-                        </div>
-
-                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 1rem;">
-                            Reduz cada planilha a três colunas — <strong>NOME</strong>, <strong>CPF</strong> e
-                            <strong>FONE1</strong>. Telefone e CNPJ em notação científica viram número inteiro e o
-                            <code>,00</code> do fim é removido. Entra <code>.xlsx</code>, sai <code>.xlsx</code>:
-                            cada arquivo vira um <code>_LIMPO.xlsx</code> na mesma pasta, sem alterar o original.
-                        </p>
-
-                        <div class="callout callout--warning">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor"
-                                viewBox="0 0 16 16">
-                                <path
-                                    d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
-                            </svg>
-                            <div class="callout-body">
-                                <strong class="callout-title">Antes de selecionar: prepare a planilha de
-                                    origem</strong>
-                                As colunas <strong>CNPJ</strong> e <strong>Telefone Celular</strong> precisam estar
-                                como <strong>Número</strong>, sem casas decimais. Se estiverem como Texto exibindo
-                                <code>5,52199E+12</code>, os dígitos que faltam já se perderam no arquivo e não tem
-                                como recuperar — o campo sai em branco.
-                                <ol>
-                                    <li>Selecione as duas colunas no Excel.</li>
-                                    <li>Formatar Células → <strong>Número</strong>.</li>
-                                    <li>Casas decimais: <strong>0</strong> — some o <code>,000</code> do final.</li>
-                                    <li>Salve e só então selecione o arquivo aqui.</li>
-                                </ol>
-                            </div>
-                        </div>
-
-                        <div class="tool-group">
-                            <label>Selecione as planilhas:</label>
-                            <button id="limpezaColunasSelectBtn">Selecionar Arquivos</button>
-                            <div id="limpezaColunasFilePaths" class="files"></div>
-                        </div>
-
-                        <div class="tool-group">
-                            <button id="limpezaColunasStartBtn" style="width: 100%;">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
-                                    viewBox="0 0 16 16">
-                                    <path
-                                        d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z" />
-                                </svg>
-                                Iniciar Limpeza
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="section full-width" data-section-id="logs-limpeza-colunas">
-                        <div class="section-header">
-                            <h2>Logs do Processo</h2>
-                            <div class="section-controls">
-                                <button class="section-control-btn drag-handle" title="Arrastar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg></button>
-                                <button class="section-control-btn hide-section" title="Ocultar"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/></svg></button>
-                            </div>
-                        </div>
-                        <div id="limpezaColunasLog" class="logs custom-scrollbar">Aguardando arquivos...</div>
-                    </div>
-
-                </div>
+                <div id="limpeza-colunas-react-root"></div>
             </div>
             <footer class="app-footer">
                 <div class="footer-controls">
                     <div class="theme-toggle">
-                        <button id="light-theme-btn" title="Tema Claro">
+                        <button id="light-theme-btn" class="active" title="Tema Claro" aria-label="Usar tema claro">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                                 <path
                                     d="M12 18a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm0-2a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M11 1h2v3h-2V1Zm0 19h2v3h-2v-3ZM3.515 4.929l1.414-1.414L7.05 5.636 5.636 7.05 3.515 4.93ZM16.95 18.364l1.414-1.414 2.121 2.121-1.414 1.414-2.121-2.121Zm2.121-14.85 1.414 1.415-2.121 2.121-1.414-1.414 2.121-2.121ZM5.636 16.95l-2.121 2.121 1.414 1.414 2.121-2.121-1.414-1.414ZM23 11v2h-3v-2h3ZM4 11v2H1v-2h3Z" />
                             </svg>
                         </button>
-                        <button id="dark-theme-btn" class="active" title="Tema Escuro">
+                        <button id="dark-theme-btn" title="Tema Escuro" aria-label="Usar tema escuro">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                                 <path
                                     d="M11.38 2.019a7.5 7.5 0 1 0 10.6 10.6C20.66 17.89 16.88 22 12 22 6.477 22 2 17.523 2 12c0-4.882 4.11-8.661 8.999-7.381a.75.75 0 0 1 .38-.6Z" />
@@ -787,159 +715,10 @@
                         </button>
                     </div>
                 </div>
-                <p>Criador: Davi Abraão | Versão: 1.3.0</p>
+                <p>MB Finance · Operações de bases</p>
                 <div id="update-message"></div>
             </footer>
         </main>
-    </div>
-
-    <div id="extra-tools-panel" class="expandable-panel-overlay">
-        <div class="expandable-panel-content custom-scrollbar">
-            <div class="expandable-panel-header">
-                <h3 class="expandable-panel-title">Ferramentas Adicionais</h3>
-                <button class="modal-close-btn" data-close-panel="extra-tools-panel">&times;</button>
-            </div>
-            <div class="two-column-tools">
-                <div class="tool-column">
-                    <div class="tool-group">
-                        <button id="updateBlocklistBtn">Atualizar Raiz com Blocklist</button>
-                    </div>
-
-                    <div class="tool-group">
-                        <div class="toggle-switch">
-                            <label class="switch"><input type="checkbox" id="removeLandlinesCheckbox"><span
-                                    class="slider"></span></label>
-                            <span class="toggle-label">Remover Fones Fixos (10 dígitos)</span>
-                        </div>
-                    </div>
-
-                    <div class="tool-group">
-                        <div class="db-options">
-                            <div class="toggle-switch">
-                                <label class="switch"><input type="checkbox" id="checkDbCheckbox"><span
-                                        class="slider"></span></label>
-                                <span class="toggle-label">Consultar CNPJs no BD</span>
-                            </div>
-                            <div class="toggle-switch">
-                                <label class="switch"><input type="checkbox" id="saveToDbCheckbox"><span
-                                        class="slider"></span></label>
-                                <span class="toggle-label">Salvar novos CNPJs no BD</span>
-                            </div>
-                        </div>
-                        <button id="consultDbBtn">Consulta Apenas pelo BD</button>
-                        <button id="saveStoredCnpjsBtn">Salvar Histórico em Excel</button>
-                    </div>
-
-                    <div class="tool-group">
-                        <label for="batchIdInput">ID do Lote para Exclusão</label>
-                        <input type="text" id="batchIdInput" placeholder="Cole o ID do lote aqui">
-                        <button id="deleteBatchBtn" class="btn-danger">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
-                                class="bi bi-trash" viewBox="0 0 16 16">
-                                <path
-                                    d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
-                                <path fill-rule="evenodd"
-                                    d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z" />
-                            </svg>
-                            Excluir Lote
-                        </button>
-                    </div>
-                    <div class="tool-group">
-                        <label for="splitListFileBtn">Dividir Lista Grande</label>
-                        <button id="selectListToSplitBtn">1. Selecionar Arquivo</button>
-                        <div id="listToSplitPath" class="files"></div>
-                        <label for="linesPerSplit">Linhas por Planilha:</label>
-                        <input type="number" id="linesPerSplit" placeholder="Ex: 25000" value="25000">
-                        <button id="splitListBtn">2. Dividir Lista</button>
-                    </div>
-                </div>
-                <div class="tool-column">
-                    <div class="tool-group">
-                        <div class="toggle-switch">
-                            <label class="switch"><input type="checkbox" id="autoAdjustPhonesCheckbox"><span
-                                    class="slider"></span></label>
-                            <span class="toggle-label">Ajustar Fones Pós-Limpeza</span>
-                        </div>
-                        <button id="adjustPhonesBtn">Ajustar Fones (Manual)</button>
-                    </div>
-
-                    <div class="tool-group">
-                        <label style="margin-bottom: 10px; font-weight: 600;">Blocklist de Telefones</label>
-                        <button id="feedBlocklistBtn">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
-                                class="bi bi-telephone-plus" viewBox="0 0 16 16">
-                                <path
-                                    d="M3.654 1.328a.678.678 0 0 0-1.015-.063L1.605 2.3c-.483.484-.661 1.169-.45 1.77a17.568 17.568 0 0 0 4.168 6.608 17.569 17.569 0 0 0 6.608 4.168c.601.211 1.286.033 1.77-.45l1.034-1.034a.678.678 0 0 0-.063-1.015l-2.307-1.794a.678.678 0 0 0-.58-.122l-2.19.547a1.745 1.745 0 0 1-1.657-.459L5.482 8.062a1.745 1.745 0 0 1-.46-1.657l.548-2.19a.678.678 0 0 0-.122-.58L3.654 1.328zM1.884.511a1.745 1.745 0 0 1 2.612.163L6.29 2.98c.329.423.445.974.315 1.494l-.547 2.19a.678.678 0 0 0 .178.643l2.457 2.457a.678.678 0 0 0 .644.178l2.189-.547a1.745 1.745 0 0 1 1.494.315l2.306 1.794c.829.645.905 1.87.163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.634 18.634 0 0 1-7.01-4.42 18.634 18.634 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877L1.885.511z" />
-                                <path fill-rule="evenodd"
-                                    d="M12.5 1a.5.5 0 0 1 .5.5V3h1.5a.5.5 0 0 1 0 1H13v1.5a.5.5 0 0 1-1 0V4h-1.5a.5.5 0 0 1 0-1H12V1.5a.5.5 0 0 1 .5-.5z" />
-                            </svg>
-                            Alimentar Blocklist
-                        </button>
-                        <div class="toggle-switch" style="margin-top: 15px;">
-                            <label class="switch"><input type="checkbox" id="checkBlocklistCheckbox"><span
-                                    class="slider"></span></label>
-                            <span class="toggle-label">Verificar Blocklist na Limpeza</span>
-                        </div>
-                        <div class="toggle-switch" style="margin-top: 15px;">
-                            <label class="switch"><input type="checkbox" id="checkNumerosInvalidosCheckbox"><span
-                                    class="slider"></span></label>
-                            <span class="toggle-label">Verificar Números Inválidos na Limpeza</span>
-                        </div>
-                        <div class="toggle-switch" style="margin-top: 15px;">
-                            <label class="switch"><input type="checkbox" id="fillLivre5Checkbox"><span
-                                    class="slider"></span></label>
-                            <span class="toggle-label">Preencher Livre5 com Lista e Data</span>
-                        </div>
-                    </div>
-
-                    <div class="tool-group">
-                        <label style="margin-bottom: 10px; font-weight: 600;">Tipo de Organização de Planilha:</label>
-                        <div class="radio-group-container" style="margin-bottom: 15px;"><label><input type="radio"
-                                    name="organizeType" value="bernardo" checked><span
-                                    class="radio-circle"></span>Bernardo (Padrão)</label><label><input type="radio"
-                                    name="organizeType" value="empresaAqui"><span class="radio-circle"></span>Empresa
-                                Aqui</label><label><input type="radio" name="organizeType" value="cadencia"><span
-                                    class="radio-circle"></span>Separar por Equipes (Cadências)</label><label><input
-                                    type="radio" name="organizeType" value="relacionamento"><span
-                                    class="radio-circle"></span>Relacionamento</label></div>
-                        <button id="organizeDailySheetBtn"><svg xmlns="http://www.w3.org/2000/svg" width="16"
-                                height="16" fill="currentColor" class="bi bi-file-earmark-spreadsheet"
-                                viewBox="0 0 16 16">
-                                <path
-                                    d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 1A1.5 1.5 0 0 0 11 2.5V3h-1v1h1v1h1v1h-1v1h1v1h-1v1h1v1h-1v1h-1v-1H9v-1H8v1H7v-1H6v1H5v-1H4v-1H3v-1h1V8H3V7h1V6H3V5h1V4h1V3h1v1h1V3h1v1h1V3h1V2.5A1.5 1.5 0 0 0 9.5 1z" />
-                            </svg>Organizar Planilha Diária</button>
-                    </div>
-
-                    <div class="tool-group">
-                        <button id="selectMergeFilesBtn">Selecionar Arquivos para Mesclar</button>
-                        <div id="selectedMergeFiles" class="files"></div>
-                        <hr>
-                        <div id="mergeOptionsContainer">
-                            <label style="margin-bottom: 10px; font-weight: 600;">Opções de Mesclagem:</label>
-                            <div class="radio-group-container" style="margin-bottom: 10px;"><label><input type="radio"
-                                        name="mergeStrategy" value="all" checked><span
-                                        class="radio-circle"></span>Mesclar Tudo</label><label><input type="radio"
-                                        name="mergeStrategy" value="partial"><span class="radio-circle"></span>Parcial
-                                    (25%)</label><label><input type="radio" name="mergeStrategy" value="custom"><span
-                                        class="radio-circle"></span>Personalizado</label></div>
-                            <div id="customMergeInputContainer"
-                                style="display: none; margin-top: 10px; margin-bottom: 15px;"><label
-                                    for="customMergeCount" style="margin-bottom: 5px;">Nº de linhas por
-                                    arquivo:</label><input type="number" id="customMergeCount" placeholder="Ex: 20000"
-                                    style="width: 180px;"></div>
-                            <div class="toggle-switch"><label class="switch"><input type="checkbox"
-                                        id="removeDuplicatesCheckbox"><span class="slider"></span></label><span
-                                    class="toggle-label">Remover CNPJs duplicados após mesclar</span></div>
-                            <div class="toggle-switch"><label class="switch"><input type="checkbox"
-                                        id="shuffleResultCheckbox"><span class="slider"></span></label><span
-                                    class="toggle-label">Embaralhar resultado final</span></div>
-                        </div>
-                        <hr>
-                        <button id="startMergeBtn">Iniciar Mesclagem</button>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <div id="enrichment-options-panel" class="expandable-panel-overlay">
@@ -1139,6 +918,7 @@
         <span class="upd-sub" id="upd-sub">Por favor, aguarde</span>
     </div>
 
+    <script defer src="out/renderer/react.js"></script>
     <script type="module" src="src/renderer/index.js"></script>
     <script src="src/renderer/hud.js"></script>
 

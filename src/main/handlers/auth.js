@@ -8,17 +8,18 @@ const Store = require('electron-store');
 const store = new Store();
 
 const state = require('../state');
-const { initializePool } = require('../database/connection');
+const { initializePool, closePool } = require('../database/connection');
 const { loadStoredCnpjs } = require('../database/cache');
 const { loadKeyFile, clearCredentials, hasCredentials } = require('../keyfile');
 
-const users = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../users.json'), 'utf8'));
+const privateConfig = require('../runtimeConfig');
+const users = privateConfig.loadUsers();
 
 function createLoginWindow() {
     const { BrowserWindow } = require('electron');
     state.loginWindow = new BrowserWindow({
         width: 480,
-        height: 650,
+        height: 790,
         webPreferences: {
             preload: path.join(__dirname, '../../../preload.js'),
             nodeIntegration: false,
@@ -42,7 +43,7 @@ function createMainWindow() {
     const { autoUpdater } = require('electron-updater');
     const { releaseApiLock, getCurrentLockedKeys, setCurrentLockedKeys } = require('./cnpj');
 
-    state.mainWindow = new BrowserWindow({
+    const mainWindow = new BrowserWindow({
         width: 1400,
         height: 950,
         frame: false,
@@ -52,34 +53,30 @@ function createMainWindow() {
             preload: path.join(__dirname, '../../../preload.js')
         }
     });
+    state.mainWindow = mainWindow;
 
-    state.mainWindow.on('close', async (e) => {
+    mainWindow.on('close', async (e) => {
         const lockedKeys = getCurrentLockedKeys();
         if (lockedKeys.length > 0) {
             e.preventDefault();
             console.log("Liberando chaves de API antes de fechar...");
             await releaseApiLock(lockedKeys);
             setCurrentLockedKeys([]);
-            state.mainWindow.destroy();
+            mainWindow.destroy();
         }
     });
 
-    ipcMain.on('minimize-window', () => state.mainWindow.minimize());
-    ipcMain.on('maximize-window', () => {
-        if (state.mainWindow.isMaximized()) { state.mainWindow.unmaximize(); } else { state.mainWindow.maximize(); }
-    });
-    ipcMain.on('close-window', () => state.mainWindow.close());
+    mainWindow.loadFile(path.join(__dirname, '../../../index.html'));
 
-    state.mainWindow.loadFile(path.join(__dirname, '../../../index.html'));
-
-    state.mainWindow.webContents.on("did-finish-load", async () => {
+    mainWindow.webContents.on("did-finish-load", async () => {
+        if (mainWindow !== state.mainWindow || mainWindow.isDestroyed()) return;
         if (state.currentUser) {
-            state.mainWindow.webContents.send('user-info', state.currentUser);
+            mainWindow.webContents.send('user-info', state.currentUser);
 
             if (state.currentUser.role === 'admin') {
                 const dbConnectionString = store.get('db_connection_string');
                 try {
-                    await initializePool(dbConnectionString, state.mainWindow);
+                    await initializePool(dbConnectionString, mainWindow);
                     if (state.pool) {
                         await loadStoredCnpjs();
                     }
@@ -88,15 +85,47 @@ function createMainWindow() {
                 }
             }
         }
-        autoUpdater.checkForUpdatesAndNotify();
+        if (app.isPackaged) autoUpdater.checkForUpdatesAndNotify().catch(error => {
+            console.warn('Não foi possível verificar atualizações:', error.message);
+        });
     });
 
-    state.mainWindow.on('closed', () => {
-        state.mainWindow = null;
+    mainWindow.on('closed', () => {
+        if (state.mainWindow === mainWindow) state.mainWindow = null;
     });
 }
 
 function register() {
+    ipcMain.handle('get-access-status', () => privateConfig.status());
+    ipcMain.handle('import-private-access', async (event) => {
+        if (!state.loginWindow || event.sender !== state.loginWindow.webContents) return { success: false, message: 'Importe o acesso pela tela de login.' };
+        const result = await dialog.showOpenDialog(state.loginWindow, { title: 'Importar acesso da empresa', properties: ['openFile'], filters: [{ name: 'Acesso MB Finance', extensions: ['mbconfig'] }] });
+        if (result.canceled || !result.filePaths.length) return { cancelled: true };
+        try {
+            const file = result.filePaths[0];
+            if (fs.statSync(file).size > 5 * 1024 * 1024) throw new Error('Arquivo de acesso muito grande.');
+            privateConfig.importBundle(JSON.parse(fs.readFileSync(file, 'utf8')));
+            for (const key of Object.keys(users)) delete users[key];
+            Object.assign(users, privateConfig.loadUsers());
+            const keyPath = privateConfig.keyFilePath();
+            if (keyPath) {
+                try { loadKeyFile(keyPath); store.set('key_file_path', keyPath); }
+                catch { return { success: true, message: 'Acesso importado. Importe novamente a licença de API.' }; }
+            }
+            return { success: true, message: 'Acesso importado. Entre com seu usuário e senha.' };
+        } catch { return { success: false, message: 'Não foi possível importar. Verifique o arquivo de acesso fornecido pela empresa.' }; }
+    });
+    const withMainWindow = (action) => {
+        const window = state.mainWindow;
+        if (window && !window.isDestroyed()) action(window);
+    };
+    ipcMain.on('minimize-window', () => withMainWindow(window => window.minimize()));
+    ipcMain.on('maximize-window', () => withMainWindow(window => {
+        if (window.isMaximized()) window.unmaximize();
+        else window.maximize();
+    }));
+    ipcMain.on('close-window', () => withMainWindow(window => window.close()));
+
     ipcMain.handle('get-db-connection-string', () => {
         return store.get('db_connection_string');
     });
@@ -111,12 +140,12 @@ function register() {
             return { success: true, message: 'Conexão bem-sucedida e salva!' };
         } catch (error) {
             console.error("❌ Falha ao testar/salvar conexão com o BD:", error.message);
-            state.pool = null;
             return { success: false, message: error.message };
         }
     });
 
     ipcMain.handle('login-attempt', async (event, username, password, rememberMe) => {
+        if (!privateConfig.hasAccess()) return { success: false, message: 'Importe o arquivo de acesso fornecido pela empresa antes de entrar.' };
         const user = users[username];
         if (user && user.password === password) {
             state.currentUser = {
@@ -145,10 +174,7 @@ function register() {
         store.delete('credentials');
         clearCredentials();
         state.currentUser = null;
-        if (state.pool) {
-            state.pool.end();
-            state.pool = null;
-        }
+        closePool();
         if (state.mainWindow) {
             state.mainWindow.close();
         }

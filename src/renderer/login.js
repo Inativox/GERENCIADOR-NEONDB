@@ -31,6 +31,25 @@
         const importKeyBtn = document.getElementById('import-key-btn');
         const keyFileBadge = document.getElementById('key-file-badge');
         const keyFileStatusText = document.getElementById('key-file-status-text');
+        const importAccessBtn = document.getElementById('import-access-btn');
+        const accessStatus = document.getElementById('access-status');
+        window.electronAPI.getAccessStatus().then(status => {
+            accessStatus.textContent = status.configured ? 'Acesso configurado neste computador.' : (status.message || 'Importe o arquivo de acesso fornecido pela empresa.');
+        }).catch(() => { accessStatus.textContent = 'Não foi possível verificar o acesso local.'; });
+        importAccessBtn.addEventListener('click', async () => {
+            importAccessBtn.disabled = true;
+            try {
+                const result = await window.electronAPI.importPrivateAccess();
+                if (!result.cancelled) {
+                    accessStatus.textContent = result.message;
+                    if (result.success) {
+                        const status = await window.electronAPI.getKeyFileStatus();
+                        setKeyFileStatus(status.loaded);
+                    }
+                }
+            } catch { accessStatus.textContent = 'Não foi possível importar o acesso.'; }
+            finally { importAccessBtn.disabled = false; }
+        });
 
         // --- Helper Functions ---
         const showMessage = (text, type = 'error') => {
