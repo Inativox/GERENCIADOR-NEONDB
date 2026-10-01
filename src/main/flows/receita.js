@@ -19,7 +19,8 @@ const FIELD_ALIASES = Object.freeze({
     ].map(field => [field, [field]]))
 });
 const REQUIRED_FIELDS = ['cnpj', 'razao_social', 'situacao_cadastral_cod'];
-const TEXT_TYPES = new Set(['text', 'character varying', 'character', 'varchar', 'bpchar', 'citext']);
+const TEXT_SQL_TYPES = Object.freeze({ text: 'text', 'character varying': 'varchar', character: 'bpchar', varchar: 'varchar', bpchar: 'bpchar', citext: 'citext' });
+const TEXT_TYPES = new Set(Object.keys(TEXT_SQL_TYPES));
 const quote = value => `"${value.replace(/"/g, '""')}"`;
 
 function fail(message) { throw Object.assign(new Error(message), { code: 'FLOW_VALIDATION' }); }
@@ -94,8 +95,12 @@ function buildQuery(metadata, filters, cursor, limit) {
     };
     const normalized = name => `translate(upper(COALESCE(${field(name, true)}::text, '')), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')`;
     const situationField = field('situacao_cadastral_cod', true);
-    const situation = TEXT_TYPES.has(metadata.types[metadata.fields.situacao_cadastral_cod]) ? `${situationField}::text` : `lpad(${situationField}::text, 2, '0')`;
-    const where = [`${field('cnpj', true)} > ${bind(cursor)}::text`, `${situation} = ANY(${bind(filters.situacoes)}::text[])`];
+    const cnpjType = TEXT_SQL_TYPES[metadata.types[metadata.fields.cnpj]];
+    const situationType = TEXT_SQL_TYPES[metadata.types[metadata.fields.situacao_cadastral_cod]];
+    const situation = situationType ? situationField : `lpad(${situationField}::text, 2, '0')`;
+    // Cast the parameters to the stored types. Casting CHAR columns to TEXT
+    // prevents PostgreSQL from using their indexes for filtering and pagination.
+    const where = [`${field('cnpj', true)} > ${bind(cursor)}::${cnpjType}`, `${situation} = ANY(${bind(filters.situacoes)}::${situationType || 'text'}[])`];
     for (const [name, input] of [['estado', filters.uf], ['cidade', filters.cidade]]) {
         if (input.length) where.push(`${normalized(name)} = ANY(${bind(input)}::text[])`);
     }
@@ -144,7 +149,11 @@ async function* iterateReceita({ pool, filters = {}, batchSize = 2000, afterCnpj
         const query = buildQuery(metadata, selected, cursor, size);
         let result;
         try { result = await pool.query(query.text, query.values); }
-        catch { checkCancelled(signal); fail('Não foi possível ler a base Receita. Verifique a conexão e tente retomar o fluxo.'); }
+        catch (error) {
+            checkCancelled(signal);
+            if (error.code === '57014') fail('A consulta à Receita excedeu o tempo limite do banco. Refine os filtros e retome o fluxo.');
+            fail('Não foi possível ler a base Receita. Verifique a conexão e tente retomar o fluxo.');
+        }
         checkCancelled(signal);
         if (!Array.isArray(result.rows) || result.rows.length > size) fail('Resposta Receita inválida: o lote excede o limite solicitado.');
         if (!result.rows.length) return;
