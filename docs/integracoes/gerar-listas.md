@@ -4,8 +4,8 @@ A aba **Gerar listas** consulta a mesma base PostgreSQL/Receita do PortalDados d
 
 ## Configurar e executar
 
-1. Entre com um perfil administrativo e abra **Gerar listas**.
-2. Em **Acessos às fontes**, configure a conexão PostgreSQL da Receita. O aplicativo valida `public.empresas` antes de salvar. A conexão fica no armazenamento local privado; não vai para o Git nem para o instalador.
+1. Na tela de login, configure **Neon · Banco do Gerenciador** e **Receita · Banco do PortalDados** com os botões **Salvar e testar**. São bancos diferentes: Neon fornece enriquecimento/filtros/raiz comercial; Receita fornece geração e situação cadastral. A Receita valida `public.empresas` antes de salvar. Cada conexão fica no armazenamento local privado e não vai para o Git ou instalador. Falhas preservam a configuração anterior.
+2. Entre com um perfil administrativo e abra **Gerar listas**. Os acessos salvos são reutilizados automaticamente; conexões antigas continuam válidas, sem preencher novamente as credenciais.
 3. Para raiz Bitrix, use uma credencial Google local/ADC/login gcloud, ou **Importar chave BQ**. **Testar BQ** valida metadados e faz dry run da consulta, sem exportar documentos.
 4. Crie um fluxo, escolha a operação e salve seus filtros, etapas e layout.
 5. Escolha a pasta de saída e clique **Gerar lista**. O resultado aparece no **Histórico**.
@@ -36,7 +36,7 @@ O leitor, a limpeza, o cruzamento da raiz e a exportação do fluxo preservam CN
 
 ## Consulta independente da situação
 
-A aba **Situação Receita** usa o mesmo acesso PostgreSQL configurado em **Gerar listas → Acessos às fontes**. Consulte um CNPJ avulso ou selecione uma lista XLSX/CSV própria. As consultas por lote usam `CNPJ = ANY(...)` e não aplicam filtros de geração, raiz, telefones, enriquecimento ou blocklist.
+A aba **Situação Receita** usa o mesmo acesso PostgreSQL da Receita configurado na tela de login. Consulte um CNPJ avulso ou selecione uma lista XLSX/CSV própria. As consultas por lote usam `CNPJ = ANY(...)` e não aplicam filtros de geração, raiz, telefones, enriquecimento ou blocklist.
 
 O resultado preserva todas as linhas e as colunas originais; acrescenta código, descrição, data e motivo da situação, atualização da base, resultado da consulta e horário da consulta. Documentos inválidos e CNPJs não encontrados são sinalizados, sem excluir linhas. Uma nova cópia XLSX é gravada na mesma pasta; o original é preservado. No XLSX de entrada, a primeira aba é usada. CPF de pessoa física não é consultado na tabela de empresas.
 

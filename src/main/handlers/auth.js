@@ -11,6 +11,9 @@ const state = require('../state');
 const { initializePool, closePool } = require('../database/connection');
 const { loadStoredCnpjs } = require('../database/cache');
 const { loadKeyFile, clearCredentials, hasCredentials } = require('../keyfile');
+const { Pool } = require('pg');
+const { getReceitaMetadata } = require('../flows/receita');
+const { readOnlyPoolOptions } = require('../flows/postgres');
 
 const privateConfig = require('../runtimeConfig');
 const users = privateConfig.loadUsers();
@@ -126,21 +129,37 @@ function register() {
     }));
     ipcMain.on('close-window', () => withMainWindow(window => window.close()));
 
-    ipcMain.handle('get-db-connection-string', () => {
-        return store.get('db_connection_string');
+    const isLoginSender = event => state.loginWindow && event.sender === state.loginWindow.webContents;
+    ipcMain.handle('get-login-database-status', event => {
+        if (!isLoginSender(event)) return { success: false, message: 'Configure os bancos pela tela de login.' };
+        return { success: true, neonConfigured: Boolean(store.get('db_connection_string')), receitaConfigured: Boolean(store.get('receita_connection_string') || process.env.RECEITA_DATABASE_URL) };
+    });
+
+    ipcMain.handle('save-and-test-receita-connection', async (event, connectionString) => {
+        if (!isLoginSender(event)) return { success: false, message: 'Configure a Receita pela tela de login.' };
+        if (state.flowManager?.isBusy()) return { success: false, message: 'Aguarde o fluxo terminar antes de mudar o acesso à Receita.' };
+        if (typeof connectionString !== 'string' || connectionString.length > 4096 || !/^postgres(ql)?:\/\//i.test(connectionString)) return { success: false, message: 'Informe uma conexão PostgreSQL válida da base Receita.' };
+        let pool;
+        try {
+            pool = new Pool(readOnlyPoolOptions(connectionString, { max: 1, timeout: 15000, connectionTimeout: 10000 }));
+            await getReceitaMetadata(pool);
+            store.set('receita_connection_string', connectionString);
+            return { success: true, message: 'Base da Receita verificada e salva neste computador.' };
+        } catch (error) {
+            return { success: false, message: error.code === 'FLOW_VALIDATION' ? error.message : 'Não foi possível validar a base da Receita. Confira o acesso e tente novamente.' };
+        } finally { if (pool) await pool.end().catch(() => {}); }
     });
 
     ipcMain.handle('save-and-test-db-connection', async (event, connectionString) => {
-        if (!connectionString) {
-            return { success: false, message: 'A chave de conexão não pode estar vazia.' };
-        }
+        if (!isLoginSender(event)) return { success: false, message: 'Configure o Neon pela tela de login.' };
+        if (typeof connectionString !== 'string' || connectionString.length > 4096 || !/^postgres(ql)?:\/\//i.test(connectionString)) return { success: false, message: 'Informe uma conexão PostgreSQL válida do Neon.' };
         try {
             await initializePool(connectionString);
             store.set('db_connection_string', connectionString);
             return { success: true, message: 'Conexão bem-sucedida e salva!' };
         } catch (error) {
             console.error("❌ Falha ao testar/salvar conexão com o BD:", error.message);
-            return { success: false, message: error.message };
+            return { success: false, message: 'Não foi possível conectar ao Neon. Confira o acesso e tente novamente.' };
         }
     });
 

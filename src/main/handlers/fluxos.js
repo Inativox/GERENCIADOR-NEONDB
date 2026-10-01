@@ -47,7 +47,7 @@ async function readRootFile(filename, signal) {
 function register() {
     const store = new Store();
     const selectedDirectories = new Map();
-    const config = () => ({ receita: store.get('receita_connection_string') || process.env.RECEITA_DATABASE_URL, enrichment: process.env.DATABASE_URL || store.get('db_connection_string') });
+    const config = () => ({ receita: store.get('receita_connection_string') || process.env.RECEITA_DATABASE_URL, enrichment: state.pool?.options?.connectionString || store.get('db_connection_string') || process.env.DATABASE_URL });
     const receitaOptions = createReceitaOptions({ getConnection: () => config().receita, cacheDirectory: path.join(app.getPath('userData'), 'receita-options'), poolFactory: connection => new Pool(readOnlyPoolOptions(connection, { max: 1, timeout: 180000, connectionTimeout: 10000 })) });
     const bq = () => createBqClient({ keyFile: store.get('flow_bq_key_file'), project: process.env.BQ_PROJECT || 'mbtech-bronze' });
     const login = createBqLogin({
@@ -72,7 +72,7 @@ function register() {
         baseDirectory: path.join(app.getPath('userData'), 'flows'), getUser: () => state.currentUser,
         resolveConnections(flow) {
             const connections = config();
-            if (!connections.receita) throw new Error('Configure o acesso à base Receita na aba Gerar listas.');
+            if (!connections.receita) throw new Error('Configure a base da Receita na tela de login.');
             if ((flow.enrichment.enabled || flow.cleaning.blocklist || (flow.cleaning.enabled && flow.cleaning.invalidPhones)) && !connections.enrichment) throw new Error('Configure o banco do Gerenciador para enriquecimento e filtros de telefone.');
             return connections;
         },
@@ -127,7 +127,7 @@ function register() {
         let bqLoginMode = 'unavailable';
         try { bqLoginMode = loginModeFor(store.get('flow_bq_key_file')); } catch { /* Invalid private file offers import instead. */ }
         const bootstrap = manager.bootstrap();
-        return { ...bootstrap, defaults: defaults(), operations: OPERATIONS, formats: bootstrap.formats || listFormats(), layoutFields: listLayoutFields(), access: { receitaConfigured: Boolean(config().receita), apiConfigured: Boolean(require('../keyfile').getApiCredentials()?.c6?.clientId && require('../keyfile').getApiCredentials()?.im?.clientId), bqConfigured, bqLoginMode, bqAutoLogin: store.get('flow_bq_auto_login') !== false, bqAuth: login.status(state.currentUser.username) }, limits: { maxRows: MAX_ROWS } };
+        return { ...bootstrap, defaults: defaults(), operations: OPERATIONS, formats: bootstrap.formats || listFormats(), layoutFields: listLayoutFields(), access: { neonConfigured: Boolean(config().enrichment), receitaConfigured: Boolean(config().receita), apiConfigured: Boolean(require('../keyfile').getApiCredentials()?.c6?.clientId && require('../keyfile').getApiCredentials()?.im?.clientId), bqConfigured, bqLoginMode, bqAutoLogin: store.get('flow_bq_auto_login') !== false, bqAuth: login.status(state.currentUser.username) }, limits: { maxRows: MAX_ROWS } };
     }));
     ipcMain.handle('flows-save-layout', protect(input => ({ layout: manager.saveLayout(input) })));
     ipcMain.handle('flows-receita-options', protect(async input => {

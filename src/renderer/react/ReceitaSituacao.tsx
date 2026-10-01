@@ -31,7 +31,7 @@ export function ReceitaSituacao() {
     return <div className="flows-app receita-situacao-app" aria-busy={busy}>
         <header className="flows-heading"><div><h1>Situação Receita</h1><p>Consulte CNPJs ou uma lista própria no banco da Receita, sem depender de um fluxo de geração.</p></div></header>
         <p className="flow-explanation">A situação corresponde à versão da base configurada. A consulta não atualiza a Receita em tempo real.</p>
-        {!configured && <p role="status" className="flow-notice">Configure a fonte Receita em Gerar listas → Acessos às fontes.</p>}
+        {!configured && <p role="status" className="flow-notice">Configure o banco da Receita na tela de login. O acesso salvo será usado automaticamente nesta consulta.</p>}
         {message && <p role="alert" className="flow-notice flow-notice--error">{message}</p>}
         <div className="receita-situacao-grid">
             <section className="flow-editor"><header className="flow-editor-heading"><div><h2>Consultar um CNPJ</h2></div></header><div className="flow-section">

@@ -33,19 +33,35 @@
                 <button type="button" id="import-access-btn" class="test-connection-btn">Importar acesso</button>
                 <p id="access-status" role="status" class="login-subtitle">Verificando configuração local…</p>
             </div>
+            <details id="database-settings" class="database-settings">
+                <summary>Bancos do aplicativo <span id="database-status-summary" role="status">Verificando acessos…</span></summary>
             <div class="form-group">
-                <label for="db-connection-string" class="form-label">Chave de Conexão do Banco de Dados
-                    (Opcional)</label>
+                <label for="db-connection-string" class="form-label">Neon · Banco do Gerenciador</label>
+                <p class="database-hint" id="neon-purpose">Enriquecimento, blocklist, API e raiz comercial.</p>
                 <div class="db-connection-group">
                     <div class="form-group">
                         <input type="password" id="db-connection-string" class="form-input"
-                            placeholder="postgresql://user:pass@host..." data-testid="db-connection-input">
+                            placeholder="Cole a conexão do Neon" autocomplete="off" spellcheck="false" aria-describedby="neon-purpose db-status-message" data-testid="db-connection-input">
                     </div>
                     <button type="button" id="test-db-btn" class="test-connection-btn"
-                        data-testid="test-db-btn">Testar</button>
+                        data-testid="test-db-btn">Salvar e testar</button>
                 </div>
-                <div id="db-status-message" data-testid="db-status-message"></div>
+                <div id="db-status-message" role="status" aria-live="polite" data-testid="db-status-message"></div>
             </div>
+
+            <div class="form-group">
+                <label for="receita-connection-string" class="form-label">Receita · Banco do PortalDados</label>
+                <p class="database-hint" id="receita-purpose">Geração de listas e consulta da situação cadastral.</p>
+                <div class="db-connection-group">
+                    <div class="form-group">
+                        <input type="password" id="receita-connection-string" class="form-input" placeholder="Cole a conexão da Receita"
+                            autocomplete="off" spellcheck="false" aria-describedby="receita-purpose receita-status-message" data-testid="receita-connection-input">
+                    </div>
+                    <button type="button" id="test-receita-btn" class="test-connection-btn" data-testid="test-receita-btn">Salvar e testar</button>
+                </div>
+                <div id="receita-status-message" role="status" aria-live="polite" data-testid="receita-status-message"></div>
+            </div>
+            </details>
 
             <div class="form-group">
                 <label class="form-label">Licença de API</label>

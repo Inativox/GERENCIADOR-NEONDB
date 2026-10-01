@@ -20,6 +20,7 @@ test('reabrir janela não duplica controles IPC e janela fechada é ignorada', (
         'electron-store': class {}, '../state': state,
         '../runtimeConfig': { loadUsers: () => ({}) },
         '../database/connection': {}, '../database/cache': {}, '../keyfile': {},
+        pg: {}, '../flows/receita': {}, '../flows/postgres': {},
         'electron-updater': { autoUpdater: {} },
         './cnpj': { getCurrentLockedKeys: () => [] },
     });

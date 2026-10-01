@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { createRequire } = require('node:module');
 const ExcelJS = require('exceljs');
-function fixture(t) {
+function fixture(t, environment = {}) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-handler-'));
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
     const handlers = new Map(), events = new Map(), settings = new Map(), pools = [], dialogPaths = [];
@@ -25,7 +25,7 @@ function fixture(t) {
         '../flows/receitaOptions': { createReceitaOptions: () => ({ load: input => loadOptions(input), close: async () => {} }) },
         '../flows/bqAuth': { ...actual('../flows/bqAuth'), loginModeFor: () => 'gcloud', createBqLogin: options => actual('../flows/bqAuth').createBqLogin({ ...options, runner: async () => { renewals++; bqError = null; } }) },
         '../flows/bq': { ...actual('../flows/bq'), existingCredentials: () => null, createBqClient: () => ({ test: async () => { if (bqError) throw bqError; return { success: true }; }, loadRoot: async () => { if (bqError) throw bqError; return { documents: [], info: { source: 'bq' } }; } }) } };
-    vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { require: name => Object.hasOwn(mocks, name) ? mocks[name] : actual(name), module, exports: module.exports, process: { platform: process.platform, env: { RECEITA_DATABASE_URL: 'postgresql://synthetic/environment' } }, Buffer }, { filename });
+    vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { require: name => Object.hasOwn(mocks, name) ? mocks[name] : actual(name), module, exports: module.exports, process: { platform: process.platform, env: { RECEITA_DATABASE_URL: 'postgresql://synthetic/environment', ...environment } }, Buffer }, { filename });
     module.exports.register();
     return { directory, handlers, settings, pools, sender, state, dialogPaths, exported: module.exports, options: () => options,
         invoke: (name, value, from = sender) => handlers.get(name)({ sender: from }, value), setCleaning: value => { cleaning = value; },
@@ -53,6 +53,19 @@ test('Receita access validates before saving, replaces environment fallback and 
     assert.equal(result.success, true); assert.equal(f.settings.get('receita_connection_string'), uri); assert.equal(f.pools[0].ended, true);
     assert.equal(f.options().resolveConnections({ enrichment: { enabled: false }, cleaning: { blocklist: false, enabled: false } }).receita, uri);
     const boot = await f.invoke('flows-bootstrap'); assert.equal(boot.access.receitaConfigured, true); assert.ok(!JSON.stringify(boot).includes(uri));
+});
+
+test('flows use the Neon login connection before environment defaults while Receita stays separate', async t => {
+    const f = fixture(t, { DATABASE_URL: 'postgresql://synthetic/environment-neon' });
+    f.settings.set('db_connection_string', 'postgresql://synthetic/login-neon');
+    const flow = { enrichment: { enabled: true }, cleaning: { blocklist: true, enabled: true, invalidPhones: true } };
+    assert.equal(f.options().resolveConnections(flow).enrichment, 'postgresql://synthetic/login-neon');
+    assert.equal(f.options().resolveConnections(flow).receita, 'postgresql://synthetic/environment');
+    f.state.pool = { options: { connectionString: 'postgresql://synthetic/active-login' } };
+    assert.equal(f.options().resolveConnections(flow).enrichment, 'postgresql://synthetic/active-login');
+    const bootstrap = await f.invoke('flows-bootstrap');
+    assert.equal(bootstrap.access.neonConfigured, true);
+    assert.ok(!JSON.stringify(bootstrap).includes('postgresql://'));
 });
 
 test('Receita options IPC returns bounded selections and discards results after the session changes', async t => {

@@ -202,10 +202,8 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     assert.equal(await evaluate(`document.querySelector('.flow-history').textContent.includes('NÃO EXPOR')`), false);
     await click('Fluxos');
     await evaluate(`document.querySelector('.flow-access').open=true`);
-    await input('Conexão PostgreSQL da Receita', 'postgresql://fake:synthetic@localhost/fixture');
-    await click('Configurar Receita');
-    await waitFor(`window.electronAPI.inspect().calls.some(item=>item[0]==='receita')`);
-    assert.equal(await evaluate(`document.querySelector('.flow-access input[type=password]').value`), '');
+    assert.equal(await evaluate(`document.querySelectorAll('.flow-access input[type=password]').length`), 0);
+    assert.equal(await evaluate(`document.querySelector('.flow-access').textContent.includes('tela de login')`), true);
     await click('Importar chave BQ');
     await waitFor(`window.electronAPI.inspect().calls.some(item=>item[0]==='bq')`);
     await click('Testar BQ');

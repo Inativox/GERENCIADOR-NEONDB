@@ -38,7 +38,7 @@ export interface BqAuthStatus { owner?: string; state: 'idle' | 'renewing' | 're
 export interface FlowBootstrap {
     success: boolean; message?: string; user?: { username: string; role: string }; flows?: Flow[];
     jobs?: FlowJob[]; formats?: FlowFormat[]; layoutFields?: LayoutField[]; operations?: FlowOperation[]; defaults?: Partial<Flow>;
-    access?: { receitaConfigured: boolean; apiConfigured?: boolean; bqConfigured: boolean; bqLoginMode?: string; bqAutoLogin?: boolean; bqAuth?: BqAuthStatus }; limits?: { maxRows: number };
+    access?: { receitaConfigured: boolean; neonConfigured?: boolean; apiConfigured?: boolean; bqConfigured: boolean; bqLoginMode?: string; bqAutoLogin?: boolean; bqAuth?: BqAuthStatus }; limits?: { maxRows: number };
 }
 export interface FlowResult { success: boolean; message?: string; flow?: Flow; job?: FlowJob }
 export interface ReceitaOption { value: string; label: string }

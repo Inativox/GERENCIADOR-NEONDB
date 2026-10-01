@@ -28,6 +28,17 @@
         const dbConnectionStringInput = document.getElementById('db-connection-string');
         const testDbBtn = document.getElementById('test-db-btn');
         const dbStatusMessage = document.getElementById('db-status-message');
+        const receitaConnectionStringInput = document.getElementById('receita-connection-string');
+        const testReceitaBtn = document.getElementById('test-receita-btn');
+        const receitaStatusMessage = document.getElementById('receita-status-message');
+        const databaseSettings = document.getElementById('database-settings');
+        const databaseSummary = document.getElementById('database-status-summary');
+        let databaseAccess = { neonConfigured: false, receitaConfigured: false };
+        const updateDatabaseSummary = () => {
+            databaseSummary.textContent = `Neon: ${databaseAccess.neonConfigured ? 'salvo' : 'pendente'} · Receita: ${databaseAccess.receitaConfigured ? 'salva' : 'pendente'}`;
+        };
+        let pendingDatabaseTests = 0;
+        let loginInProgress = false;
         const importKeyBtn = document.getElementById('import-key-btn');
         const keyFileBadge = document.getElementById('key-file-badge');
         const keyFileStatusText = document.getElementById('key-file-status-text');
@@ -67,16 +78,17 @@
             }
         };
 
-        const setDbStatus = (text, type = 'info') => {
-            dbStatusMessage.textContent = text;
-            dbStatusMessage.className = 'db-status-message';
-            if (type === 'success') dbStatusMessage.style.color = 'var(--accent-green)';
-            else if (type === 'error') dbStatusMessage.style.color = 'var(--accent-red)';
-            else dbStatusMessage.style.color = 'var(--text-secondary)';
+        const setDatabaseStatus = (element, text, type = 'info') => {
+            element.textContent = text;
+            element.className = 'db-status-message';
+            element.style.color = type === 'success' ? 'var(--accent-green)' : type === 'error' ? 'var(--accent-red)' : 'var(--text-secondary)';
         };
+        const setDbStatus = (text, type) => setDatabaseStatus(dbStatusMessage, text, type);
+        const setReceitaStatus = (text, type) => setDatabaseStatus(receitaStatusMessage, text, type);
 
         const setLoadingState = (loading) => {
-            loginBtn.disabled = loading;
+            loginInProgress = loading;
+            checkFormValidity();
             spinner.style.display = loading ? 'inline-block' : 'none';
             buttonText.textContent = loading ? 'Entrando...' : 'Entrar';
         };
@@ -84,37 +96,48 @@
         const checkFormValidity = () => {
             const user = usernameInput.value.trim();
             const pass = passwordInput.value.trim();
-            loginBtn.disabled = !user || !pass;
+            loginBtn.disabled = !user || !pass || pendingDatabaseTests > 0 || loginInProgress;
         };
 
         // --- Event Handlers ---
-        const handleTestDbConnection = async () => {
-            const connectionString = dbConnectionStringInput.value.trim();
+        const testDatabase = async (input, button, setStatus, save, label) => {
+            const connectionString = input.value.trim();
             if (!connectionString) {
-                setDbStatus('Por favor, insira a chave de conexão para testar.', 'error');
+                setStatus('Cole a conexão para salvar e testar.', 'error');
                 return;
             }
-
-            testDbBtn.disabled = true;
-            testDbBtn.textContent = 'Testando...';
-            setDbStatus('Conectando ao banco de dados...', 'info');
+            pendingDatabaseTests++;
+            checkFormValidity();
+            input.disabled = true;
+            button.disabled = true;
+            button.textContent = 'Testando…';
+            setStatus(`Verificando ${label}…`);
 
             try {
-                const result = await window.electronAPI.saveAndTestDbConnection(connectionString);
+                const result = await save(connectionString);
                 if (result.success) {
-                    setDbStatus('Conexão bem-sucedida e chave salva!', 'success');
-                    dbConnectionStringInput.style.borderColor = 'var(--accent-green)';
+                    databaseAccess[button === testDbBtn ? 'neonConfigured' : 'receitaConfigured'] = true;
+                    updateDatabaseSummary();
+                    input.value = '';
+                    input.placeholder = 'Conexão salva. Cole outra para substituir';
+                    setStatus(`${label} configurado neste computador.`, 'success');
+                    input.style.borderColor = 'var(--accent-green)';
                 } else {
                     throw new Error(result.message);
                 }
             } catch (error) {
-                setDbStatus(`Falha na conexão: ${error.message}`, 'error');
-                dbConnectionStringInput.style.borderColor = 'var(--danger)';
+                setStatus(error.message || 'Não foi possível salvar o acesso. Tente novamente.', 'error');
+                input.style.borderColor = 'var(--accent-red)';
             } finally {
-                testDbBtn.disabled = false;
-                testDbBtn.textContent = 'Testar';
+                pendingDatabaseTests--;
+                input.disabled = false;
+                button.disabled = false;
+                button.textContent = 'Salvar e testar';
+                checkFormValidity();
             }
         };
+        const handleTestDbConnection = () => testDatabase(dbConnectionStringInput, testDbBtn, setDbStatus, uri => window.electronAPI.saveAndTestDbConnection(uri), 'Neon');
+        const handleTestReceitaConnection = () => testDatabase(receitaConnectionStringInput, testReceitaBtn, setReceitaStatus, uri => window.electronAPI.saveAndTestReceitaConnection(uri), 'Banco da Receita');
 
         const handleLogin = async (event) => {
             event.preventDefault();
@@ -124,6 +147,11 @@
 
             if (!username || !password) {
                 showMessage('Preencha usuário e senha.');
+                return;
+            }
+            if (pendingDatabaseTests || dbConnectionStringInput.value.trim() || receitaConnectionStringInput.value.trim()) {
+                databaseSettings.open = true;
+                showMessage('Use “Salvar e testar” para confirmar os acessos preenchidos antes de entrar.');
                 return;
             }
 
@@ -165,11 +193,16 @@
         // --- Event Listeners ---
         loginForm.addEventListener('submit', handleLogin);
         testDbBtn.addEventListener('click', handleTestDbConnection);
+        testReceitaBtn.addEventListener('click', handleTestReceitaConnection);
         importKeyBtn.addEventListener('click', handleImportKeyFile);
 
         dbConnectionStringInput.addEventListener('input', () => {
             dbConnectionStringInput.style.borderColor = 'var(--border-color)';
             setDbStatus('');
+        });
+        receitaConnectionStringInput.addEventListener('input', () => {
+            receitaConnectionStringInput.style.borderColor = 'var(--border-color)';
+            setReceitaStatus('');
         });
 
         [usernameInput, passwordInput].forEach(input => {
@@ -185,14 +218,19 @@
 
         // --- Initialization ---
         document.addEventListener('DOMContentLoaded', async () => {
-            if (window.electronAPI?.getDbConnectionString) {
-                const savedConnectionString = await window.electronAPI.getDbConnectionString();
-                if (savedConnectionString) {
-                    dbConnectionStringInput.value = savedConnectionString;
-                    setDbStatus('Chave de conexão carregada.', 'info');
-                } else {
-                    setDbStatus('Insira a chave de conexão se for administrador.', 'info');
-                }
+            try {
+                const status = await window.electronAPI.getLoginDatabaseStatus();
+                if (!status.success) throw new Error();
+                databaseAccess = status;
+                updateDatabaseSummary();
+                setDbStatus(status.neonConfigured ? 'Neon salvo. Usado automaticamente pelo Gerenciador.' : 'Neon ainda não configurado.');
+                setReceitaStatus(status.receitaConfigured ? 'Receita salva. Usada automaticamente nos fluxos e consultas.' : 'Receita ainda não configurada.');
+                if (status.neonConfigured) dbConnectionStringInput.placeholder = 'Conexão salva. Cole outra para substituir';
+                if (status.receitaConfigured) receitaConnectionStringInput.placeholder = 'Conexão salva. Cole outra para substituir';
+            } catch {
+                databaseSummary.textContent = 'Não foi possível verificar os bancos salvos.';
+                setDbStatus('Não foi possível verificar o acesso salvo.');
+                setReceitaStatus('Não foi possível verificar o acesso salvo.');
             }
 
             checkFormValidity();

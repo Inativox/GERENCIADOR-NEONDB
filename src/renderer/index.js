@@ -2196,6 +2196,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.2',
+            date: '2026-10-01',
+            highlights: 'Neon e Receita na tela de login',
+            notes: [
+                'Dois acessos independentes em Bancos do aplicativo no login: Neon do Gerenciador e Receita do PortalDados.',
+                'Salvar e testar cada banco separadamente. Falhas preservam o acesso anterior.',
+                'Fluxos e consulta de situação reutilizam os acessos salvos sem pedir as conexões novamente.',
+                'A conexão Neon do login tem prioridade sobre configurações padrão do ambiente.',
+                'Status dos acessos sem exibir credenciais salvas; verificação adicional de credenciais antes da publicação.'
+            ]
+        },
+        {
             version: '1.8.1',
             date: '2026-10-01',
             highlights: 'Retomada por lote e processamento de bases grandes',

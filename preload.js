@@ -20,8 +20,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     importPrivateAccess: () => ipcRenderer.invoke('import-private-access'),
 
     // --- NOVO: Funções de Configuração do BD ---
-    getDbConnectionString: () => ipcRenderer.invoke('get-db-connection-string'),
+    getLoginDatabaseStatus: () => ipcRenderer.invoke('get-login-database-status'),
     saveAndTestDbConnection: (connectionString) => ipcRenderer.invoke('save-and-test-db-connection', connectionString),
+    saveAndTestReceitaConnection: (connectionString) => ipcRenderer.invoke('save-and-test-receita-connection', connectionString),
 
     // --- Licença de API (arquivo-chave .mbkey) ---
     selectAndLoadKeyFile: () => ipcRenderer.invoke('load-key-file'),
