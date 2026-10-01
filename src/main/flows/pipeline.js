@@ -9,7 +9,8 @@ const { once } = require('node:events');
 const { finished } = require('node:stream/promises');
 const ExcelJS = require('exceljs');
 const { readOnlyPoolOptions } = require('./postgres');
-const { normalizarTelefone, normalizarDocumento } = require('../limpezaTelefones');
+const { normalizarDocumento } = require('../limpezaTelefones');
+const { normalizarTelefoneFluxo, variantesTelefoneFluxo } = require('./telefones');
 const { PROHIBITED_CNAES } = require('../database/connection');
 
 const BATCH_SIZE = 2000;
@@ -76,7 +77,7 @@ function canonical(row) {
     return { ...row, cnpj: normalizarDocumento(row.cnpj || row.cpf), phones: [...new Set(phones.filter(Boolean).map(String))] };
 }
 function normalizedPhones(values) {
-    return [...new Set((values || []).map(value => normalizarTelefone(value).phone).filter(Boolean))];
+    return [...new Set((values || []).map(value => normalizarTelefoneFluxo(value).phone).filter(Boolean))];
 }
 function generationFilters(generation) {
     // The editor persists single city/neighborhood strings; Receita supports lists.
@@ -256,7 +257,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         if (!checkpoint.stages.cleaning) {
             stage = 'cleaning';
             // Counts from a failed attempt are reset; retained stages stay immutable.
-            for (const key of ['kept', 'removedRoot', 'removedCnae', 'removedBlocklist', 'invalidPhones', 'landlines', 'dirtyPhones', 'ddiRemoved', 'repeatedDocuments', 'repeatedPhones', 'withoutPhones', 'truncatedPhones']) checkpoint.counts[key] = 0;
+            for (const key of ['kept', 'removedRoot', 'removedCnae', 'removedBlocklist', 'invalidPhones', 'landlines', 'dirtyPhones', 'ddiRemoved', 'ninthDigitAdded', 'repeatedDocuments', 'repeatedPhones', 'withoutPhones', 'withoutPhonesBeforeFilters', 'withoutPhonesAfterFilters', 'withoutPhonesRepeatedOnly', 'truncatedPhones']) checkpoint.counts[key] = 0;
             update({ log: 'Aplicando limpeza e cruzamento obrigatório.' });
             const options = flow.cleaning || {};
             const enabled = options.enabled !== false;
@@ -277,14 +278,15 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                 for await (const batch of batches(checkpoint.stages.enrichment.file, signal)) {
                     for (const row of batch) {
                         row.phones = row.phones.map(value => {
-                            const result = normalizarTelefone(value);
+                            const result = normalizarTelefoneFluxo(value);
                             if (!result.phone && value) checkpoint.counts.dirtyPhones++;
                             if (result.ddiRemoved) checkpoint.counts.ddiRemoved++;
+                            if (result.ninthDigitAdded) checkpoint.counts.ninthDigitAdded++;
                             return result.phone;
                         }).filter(Boolean);
                     }
                     const phones = [...new Set(batch.flatMap(row => row.phones))];
-                    const variants = [...new Set(phones.flatMap(phone => [phone, `55${phone}`]))];
+                    const variants = [...new Set(phones.flatMap(variantesTelefoneFluxo))];
                     const lookup = async kind => {
                         if (!variants.length) return new Set();
                         const values = providers.queryPhones ? await providers.queryPhones(kind, variants, signal) : await queryPhones(await poolFor('enrichment'), kind, variants);
@@ -299,9 +301,10 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                         if (enabled && cnae && prohibited.has(cnae.padStart(7, '0'))) { checkpoint.counts.removedCnae++; continue; }
                         // Blocked contacts remove the row before any optional contact filter.
                         if (row.phones.some(phone => blocked.has(phone))) { checkpoint.counts.removedBlocklist++; continue; }
+                        const hadPhonesBeforeFilters = row.phones.length > 0;
                         row.phones = row.phones.filter(phone => {
                             if (invalid.has(phone)) { checkpoint.counts.invalidPhones++; return false; }
-                            if (enabled && options.removeLandlines && phone.length === 10) { checkpoint.counts.landlines++; return false; }
+                            if (enabled && options.removeLandlines && normalizarTelefoneFluxo(phone).landline) { checkpoint.counts.landlines++; return false; }
                             return true;
                         });
                         if (row.cnpj && seenDocuments.has(row.cnpj)) { checkpoint.counts.repeatedDocuments++; continue; }
@@ -310,7 +313,12 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                             if (seenPhones.has(phone) || unique.includes(phone)) checkpoint.counts.repeatedPhones++;
                             else unique.push(phone);
                         }
-                        if (!unique.length) { checkpoint.counts.withoutPhones++; continue; }
+                        if (!unique.length) {
+                            checkpoint.counts.withoutPhones++;
+                            const reason = !hadPhonesBeforeFilters ? 'withoutPhonesBeforeFilters' : !row.phones.length ? 'withoutPhonesAfterFilters' : 'withoutPhonesRepeatedOnly';
+                            checkpoint.counts[reason]++;
+                            continue;
+                        }
                         // Only contacts that fit the selected final layout are reserved.
                         // Excess contacts remain available to later surviving companies.
                         const retained = unique.slice(0, phoneCapacity);
