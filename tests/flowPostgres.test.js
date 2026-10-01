@@ -2,7 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readOnlyPoolOptions } = require('../src/main/flows/postgres');
 test('Neon pooled flow connection uses same direct endpoint and retains credentials, database and TLS', () => {
-    const uri = 'postgresql://fixture:p%40ss@ep-synthetic-pooler.sa-east-1.aws.neon.tech/receita?sslmode=require&channel_binding=require';
+    // Synthetic URL for a pure transformation test; no database is contacted.
+    const endpoint = new URL('postgresql://ep-synthetic-pooler.sa-east-1.aws.neon.tech/receita');
+    endpoint.username = 'fixture'; endpoint.password = 'p@ss';
+    endpoint.searchParams.set('sslmode', 'require'); endpoint.searchParams.set('channel_binding', 'require');
+    const uri = endpoint.toString();
     const result = readOnlyPoolOptions(uri), url = new URL(result.connectionString);
     assert.equal(url.hostname, 'ep-synthetic.sa-east-1.aws.neon.tech');
     assert.equal(url.username, 'fixture'); assert.equal(url.password, 'p%40ss'); assert.equal(url.pathname, '/receita');
