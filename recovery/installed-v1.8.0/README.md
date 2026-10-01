@@ -1,5 +1,17 @@
 # Recuperação da instalação 1.8.0
 
+## Atualização de 01/10/2026: progresso, blocklist por contato e cache por lote
+
+O painel preservado chama um componente legível em `src/renderer/flowProgress.js`, com etapas, percentual e barra por registros processados; geração sem total confirmado permanece indeterminada. A blocklist passou a remover somente o contato bloqueado. Telefones permitidos são compactados e preservados; a empresa só é descartada por falta de telefone se nenhum contato sobreviver aos filtros finais.
+
+O cache privado de cada etapa salva cursor/offset, contadores e deduplicação em transações LMDB, depois de sincronizar a saída JSONL. Retomadas truncam apenas a cauda não confirmada. A exportação conserva arquivos completos e refaz somente a parte incompleta. As etapas concluídas anteriormente continuam válidas, exceto limpeza/exportação com a regra antiga da blocklist. Elas precisam ser recalculadas a partir do enriquecimento/API preservado. O código e os testes estão descritos também no README principal.
+
+Verificação: 104 testes de regressão, tipos TypeScript e interface Electron aprovados. Testes provocam falhas em todas as etapas e encerramento abrupto do worker. Um teste Electron, executado também contra o pacote ASAR, processou 100.000 registros, incluindo falha e retomada, com heap limitado a 64 MiB e uso final entre 11 e 17 MiB. O empacotamento local passou com edição/assinatura do executável desativada apenas nessa verificação, para contornar a falta de privilégio Windows para criar os links do utilitário de assinatura.
+
+A cópia local corrigida recebeu o pacote SHA-256 `5eba2e8a7cb03c91f2809b77368cb5034d2e2cd1a98648b8167016ff97285f3b`, incluindo os módulos nativos em `app.asar.unpacked`. No fluxo C6 ABERTURA, geração de 13.582.365 registros e enriquecimento de 2.191.431 empresas foram preservados. Antes do desligamento solicitado, a execução foi cancelada normalmente e o cache confirmou 672.000 registros processados na limpeza, com 93.287 mantidos e 129.707 contatos removidos pela blocklist. O histórico oferece **Retomar execução** para continuar desse lote; a lista completa ainda não foi concluída.
+
+## Histórico da recuperação
+
 Os arquivos de execução nesta branch foram extraídos de `C:\Program Files\Gerenciador de Bases\resources\app.asar`, instalado em 30/09/2026 às 19:38 (horário de Brasília). SHA-256 do `app.asar`: `EB8AC8F6808D20710DA55ED69BE322DA6F82382A5C2845E37381ADFD4D24C143`.
 
 O repositório remoto aponta a tag `v1.8.0` para o commit `fab5b72` de 30/09/2026 às 12:42. Nesse commit, `package.json` ainda declara `1.7.0`. No commit inicial de recuperação `3f65c2e`, os 55 arquivos do aplicativo extraídos do pacote e copiados para esta branch correspondem byte a byte aos arquivos instalados; `package.json` foi mantido com seus scripts de desenvolvimento e atualizado para `1.8.0`. Correções posteriores nesta branch podem modificar esse código recuperado.

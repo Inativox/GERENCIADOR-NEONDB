@@ -74,15 +74,15 @@ async function read(file) {
 }
 
 /** Per-key durable results allow the successful half to survive a failed round. */
-async function runApiStage({ jobDir, source, batches, emit, signal, counts, update, acquire,
+async function runApiStage({ jobDir, source, batches, emit, signal, counts, update, acquire, cache,
     now = Date.now, sleep = (ms, signal) => wait(ms, undefined, { signal }), batchSize = BATCH_SIZE }) {
     if (!Number.isInteger(batchSize) || batchSize < 2 || batchSize > BATCH_SIZE) throw failure('Tamanho de lote API inválido.');
     const directory = path.join(jobDir, 'api-results');
     await fs.mkdir(directory, { recursive: true });
     const pacingFile = path.join(directory, 'pacing.json');
     let pacing = await read(pacingFile), lease;
-    let nextAllowedAt = Number(pacing?.nextAllowedAt || 0), round = 0;
-    for (const key of ['apiConsulted', 'apiAvailable', 'apiClients', 'apiBatches']) counts[key] = 0;
+    let nextAllowedAt = Number(pacing?.nextAllowedAt || 0), round = cache?.state.round || 0;
+    if (!cache?.state.processed) for (const key of ['apiConsulted', 'apiAvailable', 'apiClients', 'apiBatches']) counts[key] = 0;
     async function pause() {
         cancelled(signal);
         const remaining = nextAllowedAt - now();
@@ -93,7 +93,7 @@ async function runApiStage({ jobDir, source, batches, emit, signal, counts, upda
         cancelled(signal);
     }
     try {
-        for await (const rows of batches(source, signal, batchSize)) {
+        for await (const rows of batches(source, signal, batchSize, cache?.state.inputOffset || 0)) {
             cancelled(signal);
             const middle = Math.ceil(rows.length / 2);
             const parts = [rows.slice(0, middle), rows.slice(middle)].map((records, index) => ({ records, key: index === 0 ? 'c6' : 'im',
@@ -151,6 +151,7 @@ async function runApiStage({ jobDir, source, batches, emit, signal, counts, upda
             }
             counts.apiBatches++;
             round++;
+            if (cache) await cache.confirm({ processed: cache.state.processed + rows.length, inputOffset: rows.inputOffset, round });
             update({ log: `API: lote ${round} confirmado. Disponíveis: ${counts.apiAvailable}; clientes: ${counts.apiClients}.` });
         }
     } finally { if (lease) await lease.release(); }

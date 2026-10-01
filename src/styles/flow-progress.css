@@ -1,0 +1,15 @@
+.flow-progress { margin: 18px 0; padding: 16px; border: 1px solid var(--border-color, #41414b); border-radius: 10px; }
+.flow-progress-stages { display: flex; flex-wrap: wrap; gap: 8px 18px; list-style: none; padding: 0; margin: 0 0 16px; }
+.flow-progress-stages li { font-size: 12px; opacity: .55; }
+.flow-progress-stages li.is-current { font-weight: 700; opacity: 1; }
+.flow-progress-stages li.is-complete { opacity: 1; }
+.flow-progress-stages li.is-complete::before { content: '✓ '; color: var(--accent-color, #4895ef); }
+.flow-progress-heading { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.flow-progress progress { display: block; width: 100%; height: 14px; accent-color: var(--accent-color, #4895ef); border: 0; border-radius: 7px; overflow: hidden; }
+.flow-progress progress::-webkit-progress-bar { background: rgba(128,128,128,.2); border-radius: 7px; }
+.flow-progress progress::-webkit-progress-value { background: var(--accent-color, #4895ef); border-radius: 7px; transition: width .2s ease; }
+.flow-progress progress:not([value])::-webkit-progress-bar { background: linear-gradient(90deg, transparent, var(--accent-color, #4895ef), transparent); background-size: 200% 100%; animation: flow-progress-running 1.8s linear infinite; }
+.flow-progress-detail { margin: 8px 0 4px; font-size: 13px; }
+.flow-progress small { opacity: .7; }
+@keyframes flow-progress-running { from { background-position: 200% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .flow-progress progress:not([value])::-webkit-progress-bar { animation: none; } }

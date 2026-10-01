@@ -112,12 +112,13 @@ test('limpeza preserva celular antigo, bloqueia grafia antiga e separa motivos d
     assert.equal(result.counts.kept,2);
     assert.equal(result.counts.landlines,1);
     assert.equal(result.counts.ninthDigitAdded,undefined);
-    assert.equal(result.counts.removedBlocklist,1);
+    assert.equal(result.counts.removedBlocklist,0);
+    assert.equal(result.counts.blockedPhones,1);
     assert.equal(result.counts.invalidPhones,1);
     assert.equal(result.counts.withoutPhonesBeforeFilters,2);
-    assert.equal(result.counts.withoutPhonesAfterFilters,2);
+    assert.equal(result.counts.withoutPhonesAfterFilters,3);
     assert.equal(result.counts.withoutPhonesRepeatedOnly,1);
-    assert.equal(result.counts.withoutPhones,5);
+    assert.equal(result.counts.withoutPhones,6);
     assert.equal(result.counts.withoutPhones, result.counts.withoutPhonesBeforeFilters + result.counts.withoutPhonesAfterFilters + result.counts.withoutPhonesRepeatedOnly);
     assert.ok(calls.every(c=>c.phones.includes('552181234567') && c.phones.includes('21981234567')));
     const kept = fs.readFileSync(path.join(directory,'cleaning.jsonl'),'utf8').trim().split('\n').map(JSON.parse);

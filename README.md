@@ -70,6 +70,16 @@ Crie um arquivo `.env` na raiz do projeto com base no [`.env.example`](.env.exam
 
 O acesso ao app é controlado por `users.json` (não versionado). Cada usuário possui papel (`role`) que define quais abas ficam visíveis.
 
+## Progresso e retomada de Gerar listas
+
+A execução mostra as etapas e uma barra com o percentual dos registros processados na etapa atual. Na geração Receita, o total filtrado ainda é desconhecido: a barra fica em movimento e mostra a quantidade lida. Depois da geração, enriquecimento, API, filtros finais e exportação usam o total confirmado da respectiva entrada.
+
+A blocklist remove cada telefone bloqueado e compacta os próximos contatos permitidos nas colunas do layout. A empresa permanece quando há contato restante; se todos os contatos forem removidos, ela entra em **Linhas sem telefone após filtros**. **Telefones removidos pela blocklist** conta contatos. Históricos antigos preservam seu contador de empresas excluídas pela regra anterior.
+
+Os fluxos salvam um cache privado por lote no diretório da execução dentro do userData. Geração retoma pelo cursor CNPJ; enriquecimento, API e filtros retomam pelo offset do arquivo de entrada. O arquivo parcial é sincronizado antes de confirmar contadores, cursor e reservas de deduplicação em uma transação LMDB. CNPJs e telefones já mantidos ficam em disco, sem um Set crescente no heap do worker. Ao retomar, qualquer cauda não confirmada é truncada. A API conserva também os resultados de cada chave. Na exportação, arquivos completos são preservados e só o arquivo incompleto é refeito.
+
+Use **Retomar execução** no histórico após erro, cancelamento ou interrupção. Configuração, usuário e raiz precisam corresponder à execução original. Uma execução antiga não ganha retroativamente checkpoints por lote: suas etapas concluídas são preservadas, e a etapa interrompida precisa começar novamente uma vez. Resultados de limpeza feitos com a antiga regra de exclusão da empresa pela blocklist são recalculados a partir do enriquecimento/API já salvo.
+
 ## Build / Distribuição
 
 ```bash

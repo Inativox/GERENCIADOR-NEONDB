@@ -3,9 +3,9 @@
 const fs = require('node:fs');
 
 /** Read one bounded chunk at a time, including while a consumer awaits a query. */
-async function* records(file, signal) {
-    const stream = fs.createReadStream(file, { encoding: 'utf8' });
-    let pending = '';
+async function* entries(file, signal, startOffset = 0) {
+    const stream = fs.createReadStream(file, { start: startOffset });
+    let pending = Buffer.alloc(0), offset = startOffset;
     function checkCancelled() {
         if (!signal?.aborted) return;
         throw Object.assign(new Error('Execução cancelada.'), { code: 'FLOW_CANCELLED' });
@@ -13,19 +13,24 @@ async function* records(file, signal) {
     try {
         for await (const chunk of stream) {
             checkCancelled();
-            pending += chunk;
+            pending = pending.length ? Buffer.concat([pending, chunk]) : chunk;
             let start = 0, end;
-            while ((end = pending.indexOf('\n', start)) !== -1) {
+            while ((end = pending.indexOf(10, start)) !== -1) {
                 checkCancelled();
-                const line = pending.slice(start, end);
+                const line = pending.subarray(start, end).toString('utf8');
                 start = end + 1;
-                if (line.trim()) yield JSON.parse(line);
+                if (line.trim()) yield { row: JSON.parse(line), offset: offset + end + 1 };
             }
-            pending = pending.slice(start);
+            offset += start;
+            pending = pending.subarray(start);
         }
         checkCancelled();
-        if (pending.trim()) yield JSON.parse(pending);
+        const last = pending.toString('utf8');
+        if (last.trim()) yield { row: JSON.parse(last), offset: offset + pending.length };
     } finally { stream.destroy(); }
 }
 
-module.exports = { records };
+async function* records(file, signal, startOffset = 0) {
+    for await (const entry of entries(file, signal, startOffset)) yield entry.row;
+}
+module.exports = { records, entries };

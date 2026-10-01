@@ -56,6 +56,12 @@ app.whenReady().then(async () => {
     ipcMain.handle('get-enriched-cnpj-count', () => 0);
     ipcMain.handle('get-blocklist-stats', () => ({ success: true, total: 0 }));
     ipcMain.handle('get-key-file-status', () => ({ loaded: false }));
+    const { defaults, OPERATIONS, MAX_ROWS } = require(path.join(appRoot, 'src/main/flows/config'));
+    const flowFormats = require(path.join(appRoot, 'src/main/flows/formats'));
+    const syntheticJob = { id: 'smoke-job', flowId: 'smoke-flow', flowName: 'Fluxo de teste', owner: 'Davi', status: 'running', stage: 'cleaning', counts: { generated: 1000, kept: 100 }, progress: { stage: 'cleaning', processed: 250, total: 1000 }, flowSnapshot: { ...defaults(), api: { enabled: false } }, logs: [], outputs: [] };
+    ipcMain.handle('flows-bootstrap', () => ({ success: true, user: { username: 'Davi', role: 'admin' }, flows: [], jobs: [syntheticJob], defaults: defaults(), operations: OPERATIONS, formats: flowFormats.listFormats(), layoutFields: [], access: {}, limits: { maxRows: MAX_ROWS } }));
+    ipcMain.handle('flows-receita-options', () => ({ success: true, options: [] }));
+    ipcMain.handle('receita-situacao-state', () => ({ success: true, job: null, templates: [], configured: false }));
     ipcMain.handle('select-file', () => selectedPaths);
     ipcMain.on('start-limpeza-colunas', (_event, paths) => { startCount++; pathsReceived = paths; });
     window = new BrowserWindow({
@@ -186,6 +192,15 @@ app.whenReady().then(async () => {
     await delay(100);
     assert.equal(await evaluate(`document.getElementById('localGrid').scrollWidth <= document.getElementById('localGrid').clientWidth + 1`), true);
     await fs.writeFile(path.resolve(__dirname, '../out/workspace-compact.png'), (await window.webContents.capturePage()).toPNG());
+    await evaluate(`document.querySelector('[data-tab-name="fluxos"]').click(); Array.from(document.querySelectorAll('#fluxos-react-root button')).find(button => /Histórico/.test(button.textContent))?.click()`);
+    await waitFor(`!!document.querySelector('#fluxos-react-root .flow-progress progress')`);
+    assert.equal(await evaluate(`document.querySelector('#fluxos-react-root .flow-progress progress').value`), 25);
+    window.webContents.send('flow-update', { ...syntheticJob, progress: { stage: 'cleaning', processed: 750, total: 1000 }, counts: { generated: 1000, kept: 300, blockedPhones: 450 } });
+    await waitFor(`document.querySelector('#fluxos-react-root .flow-progress progress').value === 75`);
+    await delay(250);
+    assert.equal(await evaluate(`document.getElementById('fluxos-react-root').textContent.includes('Telefones removidos pela blocklist')`), true);
+    assert.equal(await evaluate(`document.getElementById('fluxos-react-root').scrollWidth <= document.getElementById('fluxos-react-root').clientWidth + 1`), true);
+    await fs.writeFile(path.resolve(__dirname, '../out/flow-progress-smoke.png'), (await window.webContents.capturePage()).toPNG());
     assert.deepEqual(errors, []);
     console.log('Smoke aprovado: React/worker, limpeza local sequencial, controles removidos, preferências, bloqueio de lote, temas e layout compacto, sem banco de produção.');
 }).catch(error => {

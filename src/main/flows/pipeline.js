@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { records } = require('./jsonl');
+const { records, entries } = require('./jsonl');
+const { openStageCache } = require('./stageCache');
 const { once } = require('node:events');
 const { finished } = require('node:stream/promises');
 const ExcelJS = require('exceljs');
@@ -47,7 +48,9 @@ function validation(message) {
 }
 async function atomicJson(file, data) {
     const temporary = `${file}.tmp`;
-    await fsp.writeFile(temporary, JSON.stringify(data), { mode: 0o600 });
+    const handle = await fsp.open(temporary, 'w', 0o600);
+    try { await handle.writeFile(JSON.stringify(data)); await handle.sync(); }
+    finally { await handle.close(); }
     await fsp.rename(temporary, file);
 }
 async function readJson(file) {
@@ -58,10 +61,11 @@ async function write(stream, data) {
     if (!stream.write(data)) await once(stream, 'drain');
 }
 async function close(stream) { stream.end(); await finished(stream); }
-async function* batches(file, signal, batchSize = BATCH_SIZE) {
+async function* batches(file, signal, batchSize = BATCH_SIZE, startOffset = 0) {
     let batch = [];
-    for await (const row of records(file, signal)) {
+    for await (const { row, offset } of entries(file, signal, startOffset)) {
         batch.push(row);
+        batch.inputOffset = offset;
         if (batch.length === batchSize) { yield batch; batch = []; }
     }
     if (batch.length) yield batch;
@@ -131,6 +135,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
     const pools = {};
     let stage = 'generation';
     let checkpoint;
+    let stageProgress = null;
     const checkpointPath = path.join(jobDir, 'checkpoint.json');
     async function poolFor(name) {
         if (pools[name]) return pools[name];
@@ -146,7 +151,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
     function update(data = {}) {
         // Notifications are advisory: an observer must never roll back a confirmed file.
         try {
-            const pending = onUpdate({ stage, counts: { ...checkpoint.counts }, replaceCounts: true, ...data });
+            const pending = onUpdate({ stage, counts: { ...checkpoint.counts }, replaceCounts: true, progress: stageProgress, ...data });
             pending?.catch?.(() => {});
         } catch { /* The next update or main checkpoint reconciliation can recover. */ }
     }
@@ -157,28 +162,40 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         const next = { ...checkpoint, stages: { ...checkpoint.stages, [name]: extra }, counts: { ...checkpoint.counts } };
         await atomicJson(checkpointPath, next);
         checkpoint = next;
+        if (stageProgress?.stage === name) stageProgress = { ...stageProgress, complete: true, total: stageProgress.processed };
         update({ log: `Etapa ${name} concluída.` });
     }
     async function jsonlStage(name, produce) {
         const target = path.join(jobDir, `${name}.jsonl`);
         const temporary = `${target}.tmp`;
-        await fsp.rm(temporary, { force: true });
-        const output = fs.createWriteStream(temporary, { flags: 'wx', mode: 0o600 });
+        const cache = await openStageCache({ jobDir, stage: name, fingerprint: checkpoint.fingerprint, version: name === 'cleaning' ? 2 : 1, temporary, target });
+        const total = name === 'generation' ? null : checkpoint.stages[name === 'enrichment' ? 'generation' : name === 'api' || !flow.api?.enabled ? 'enrichment' : 'api'].rows;
+        if (cache.state.processed) checkpoint.counts = { ...cache.state.counts };
+        stageProgress = { stage: name, processed: cache.state.processed, total, complete: false };
+        update({ log: cache.state.processed ? `Retomando ${name} do último lote salvo (${cache.state.processed.toLocaleString('pt-BR')} registros).` : undefined });
+        const output = fs.createWriteStream(temporary, { flags: 'a', mode: 0o600 });
         const completion = finished(output);
         completion.catch(() => {});
-        let count = 0;
+        let count = cache.state.rows, outputBytes = cache.state.outputBytes;
+        cache.confirm = async position => {
+            abort(signal);
+            await new Promise((resolve, reject) => output.write('', error => error ? reject(error) : resolve()));
+            await cache.save({ ...position, rows: count, outputBytes, counts: { ...checkpoint.counts } });
+            stageProgress = { stage: name, processed: cache.state.processed, total, complete: false };
+            update();
+        };
         try {
-            await produce(async row => { abort(signal); await write(output, JSON.stringify(row) + '\n'); count++; });
+            await produce(async row => { abort(signal); const line = JSON.stringify(row) + '\n'; await write(output, line); outputBytes += Buffer.byteLength(line); count++; }, cache);
+            await cache.confirm({ processed: cache.state.processed });
             await close(output);
             abort(signal);
             await fsp.rename(temporary, target);
-            await commit(name, { file: target, rows: count, ...(name === 'generation' ? { phoneFormatVersion: 1 } : {}), ...(name === 'api' ? { sourceStage: 'enrichment' } : {}), ...(name === 'cleaning' ? { sourceStage: flow.api?.enabled ? 'api' : 'enrichment' } : {}) });
+            await commit(name, { file: target, rows: count, cacheId: cache.state.id, ...(name === 'generation' ? { phoneFormatVersion: 1 } : {}), ...(name === 'api' ? { sourceStage: 'enrichment' } : {}), ...(name === 'cleaning' ? { sourceStage: flow.api?.enabled ? 'api' : 'enrichment', contactFilterVersion: 2 } : {}) });
         } catch (error) {
             output.destroy();
             await completion.catch(() => {});
-            await fsp.rm(temporary, { force: true }).catch(() => {});
             throw error;
-        }
+        } finally { await cache.close(); }
     }
     try {
         if (!flow || !user?.username) throw validation('Fluxo e sessão autenticada são obrigatórios.');
@@ -195,6 +212,14 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             checkpoint = { version: 1, id: crypto.randomUUID(), fingerprint, createdAt: new Date().toISOString(), stages: {}, counts: {} };
             await atomicJson(checkpointPath, checkpoint);
         }
+        if (checkpoint.stages.cleaning && checkpoint.stages.cleaning.contactFilterVersion !== 2) {
+            // Keep the expensive source stages; the new blocklist rule needs a new final pass.
+            delete checkpoint.stages.cleaning;
+            delete checkpoint.stages.export;
+            delete checkpoint.counts.cleaned;
+            delete checkpoint.counts.exported;
+            await atomicJson(checkpointPath, checkpoint);
+        }
         abort(signal);
         // Every retained checkpoint points to a stage file confirmed by atomic rename.
         for (const name of STAGES.slice(0, -1)) {
@@ -206,12 +231,15 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             update({ status: 'running', log: 'Gerando base da Receita.' });
             const iterate = providers.iterateReceita || require('./receita').iterateReceita;
             const pool = providers.iterateReceita && !connections.receita ? undefined : await poolFor('receita');
-            await jsonlStage(stage, async emit => {
-                for await (const batch of iterate({ pool, filters: generationFilters(flow.generation), batchSize: BATCH_SIZE, signal })) {
+            await jsonlStage(stage, async (emit, cache) => {
+                const filters = generationFilters(flow.generation);
+                if (filters.limit != null && cache.state.processed >= filters.limit) return;
+                if (filters.limit != null) filters.limit -= cache.state.processed;
+                for await (const batch of iterate({ pool, filters, afterCnpj: cache.state.cursor, batchSize: BATCH_SIZE, signal })) {
                     abort(signal);
                     for (const row of batch.rows) await emit(canonical(row));
                     checkpoint.counts.generated = (checkpoint.counts.generated || 0) + batch.rows.length;
-                    update();
+                    await cache.confirm({ processed: cache.state.processed + batch.rows.length, cursor: batch.cursor || batch.rows.at(-1)?.cnpj || cache.state.cursor });
                 }
             });
         }
@@ -220,8 +248,8 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             checkpoint.counts.enriched = 0;
             const { phoneCapacity } = outputFormat(flow, providers, checkpoint);
             update({ log: flow.enrichment?.enabled ? 'Enriquecendo contatos.' : 'Enriquecimento desativado.' });
-            await jsonlStage(stage, async emit => {
-                for await (const batch of batches(checkpoint.stages.generation.file, signal)) {
+            await jsonlStage(stage, async (emit, cache) => {
+                for await (const batch of batches(checkpoint.stages.generation.file, signal, BATCH_SIZE, cache.state.inputOffset)) {
                     let found = new Map();
                     if (flow.enrichment?.enabled) {
                         const documents = [...new Set(batch.map(row => row.cnpj).filter(Boolean))];
@@ -253,7 +281,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                         if (changed) checkpoint.counts.enriched++;
                         await emit(row);
                     }
-                    update();
+                    await cache.confirm({ processed: cache.state.processed + batch.length, inputOffset: batch.inputOffset });
                 }
             });
         }
@@ -261,7 +289,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             stage = 'api';
             update({ log: 'Validando disponibilidade C6 com chave dupla após enriquecimento e antes dos filtros finais.' });
             const { runApiStage } = require('./disponibilidadeApi');
-            await jsonlStage(stage, emit => runApiStage({ jobDir, source: checkpoint.stages.enrichment.file, batches, emit, signal,
+            await jsonlStage(stage, (emit, cache) => runApiStage({ jobDir, source: checkpoint.stages.enrichment.file, batches, emit, signal, cache,
                 counts: checkpoint.counts, update, acquire: providers.acquireApi,
                 ...providers.apiTiming }));
         }
@@ -269,7 +297,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             stage = 'cleaning';
             // Counts from a failed attempt are reset; retained stages stay immutable.
             delete checkpoint.counts.ninthDigitAdded;
-            for (const key of ['kept', 'removedRoot', 'removedCnae', 'removedBlocklist', 'invalidPhones', 'landlines', 'dirtyPhones', 'ddiRemoved', 'repeatedDocuments', 'repeatedPhones', 'withoutPhones', 'withoutPhonesBeforeFilters', 'withoutPhonesAfterFilters', 'withoutPhonesRepeatedOnly', 'truncatedPhones']) checkpoint.counts[key] = 0;
+            for (const key of ['kept', 'removedRoot', 'removedCnae', 'removedBlocklist', 'blockedPhones', 'invalidPhones', 'landlines', 'dirtyPhones', 'ddiRemoved', 'repeatedDocuments', 'repeatedPhones', 'withoutPhones', 'withoutPhonesBeforeFilters', 'withoutPhonesAfterFilters', 'withoutPhonesRepeatedOnly', 'truncatedPhones']) checkpoint.counts[key] = 0;
             update({ log: 'Aplicando filtros finais, limpeza e cruzamento após enriquecimento e API quando ativada.' });
             const options = flow.cleaning || {};
             const enabled = options.enabled !== false;
@@ -284,11 +312,9 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                 .map(value => String(value).replace(/\D/g, '')).filter(Boolean).map(value => value.padStart(7, '0')));
             const blocklist = user.username !== 'Davi' || options.blocklist !== false;
             const { phoneCapacity } = outputFormat(flow, providers, checkpoint);
-            const seenDocuments = new Set();
-            const seenPhones = new Set();
-            await jsonlStage(stage, async emit => {
+            await jsonlStage(stage, async (emit, cache) => {
                 const input = flow.api?.enabled ? checkpoint.stages.api.file : checkpoint.stages.enrichment.file;
-                for await (const batch of batches(input, signal)) {
+                for await (const batch of batches(input, signal, BATCH_SIZE, cache.state.inputOffset)) {
                     for (const row of batch) {
                         row.phones = row.phones.map(value => {
                             const result = normalizarTelefoneFluxo(value, { ajustarNonoDigito: false });
@@ -311,18 +337,17 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                         if (root.has(row.cnpj)) { checkpoint.counts.removedRoot++; continue; }
                         const cnae = String(row.cnae || row.atividade_principal_cod || row.cnae_fiscal_principal || row.livre3 || '').replace(/\D/g, '');
                         if (enabled && cnae && prohibited.has(cnae.padStart(7, '0'))) { checkpoint.counts.removedCnae++; continue; }
-                        // Blocked contacts remove the row before any optional contact filter.
-                        if (row.phones.some(phone => blocked.has(phone))) { checkpoint.counts.removedBlocklist++; continue; }
                         const hadPhonesBeforeFilters = row.phones.length > 0;
                         row.phones = row.phones.filter(phone => {
+                            if (blocked.has(phone)) { checkpoint.counts.blockedPhones++; return false; }
                             if (invalid.has(phone)) { checkpoint.counts.invalidPhones++; return false; }
                             if (enabled && options.removeLandlines && normalizarTelefoneFluxo(phone, { ajustarNonoDigito: false }).landline) { checkpoint.counts.landlines++; return false; }
                             return true;
                         });
-                        if (row.cnpj && seenDocuments.has(row.cnpj)) { checkpoint.counts.repeatedDocuments++; continue; }
+                        if (row.cnpj && cache.has('document', row.cnpj)) { checkpoint.counts.repeatedDocuments++; continue; }
                         const unique = [];
                         for (const phone of row.phones) {
-                            if (seenPhones.has(phone) || unique.includes(phone)) checkpoint.counts.repeatedPhones++;
+                            if (cache.has('phone', phone) || unique.includes(phone)) checkpoint.counts.repeatedPhones++;
                             else unique.push(phone);
                         }
                         if (!unique.length) {
@@ -339,18 +364,19 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                         if (typeof row.nome === 'string') row.nome = row.nome.replace(/^[\d.\- ]+|[\d.\- ]+$/g, '').trim();
                         if (typeof row.razao_social === 'string') row.razao_social = row.razao_social.replace(/^[\d.\- ]+|[\d.\- ]+$/g, '').trim();
                         await emit(row);
-                        if (row.cnpj) seenDocuments.add(row.cnpj);
-                        retained.forEach(phone => seenPhones.add(phone));
+                        if (row.cnpj) cache.remember('document', row.cnpj);
+                        retained.forEach(phone => cache.remember('phone', phone));
                         checkpoint.counts.kept++;
                     }
-                    update();
+                    await cache.confirm({ processed: cache.state.processed + batch.length, inputOffset: batch.inputOffset });
                 }
             });
         }
         stage = 'export';
+        stageProgress = { stage, processed: checkpoint.stages.export ? checkpoint.stages.cleaning.rows : 0, total: checkpoint.stages.cleaning.rows, complete: Boolean(checkpoint.stages.export) };
         if (!checkpoint.stages.export) {
             update({ log: 'Salvando arquivos finais.' });
-            await exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPerFile, commit, update });
+            await exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPerFile, commit, update, onProgress: processed => { stageProgress = { ...stageProgress, processed }; update(); } });
         }
         for (const output of checkpoint.stages.export.outputs) await fsp.access(output.path);
         const result = { status: checkpoint.stages.cleaning.rows ? 'completed' : 'empty', counts: checkpoint.counts, outputs: checkpoint.stages.export.outputs };
@@ -362,21 +388,29 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
     } finally { await Promise.allSettled(ownedPools.map(pool => pool.end())); }
 }
 
-async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPerFile, commit, update }) {
+async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPerFile, commit, update, onProgress }) {
     const directory = path.resolve(flow.output?.directory || path.join(jobDir, 'outputs'));
     await fsp.mkdir(directory, { recursive: true });
     const pendingPath = path.join(jobDir, 'export-pending.json');
+    const cachePath = path.join(jobDir, 'export-cache.json');
+    const identity = `${checkpoint.fingerprint}:${checkpoint.stages.cleaning.cacheId}`;
+    let saved = await readJson(cachePath);
+    if (saved?.identity !== identity) saved = { identity, inputOffset: 0, processed: 0, outputs: [] };
+    const confirmedPaths = new Set(saved.outputs.map(output => output.path));
+    for (const output of saved.outputs) await fsp.access(output.path);
     const previous = await readJson(pendingPath);
     // Delete only our own pending files inside the chosen destination.
     for (const file of previous?.files || []) {
-        if (path.dirname(path.resolve(file)) === directory && path.basename(file).startsWith(`fluxo_${checkpoint.id}_`)) await fsp.rm(file, { force: true });
+        if (!confirmedPaths.has(file) && path.dirname(path.resolve(file)) === directory && path.basename(file).startsWith(`fluxo_${checkpoint.id}_`)) await fsp.rm(file, { force: true });
     }
     const { context, format, map, headers } = outputFormat(flow, providers, checkpoint);
     const attempt = crypto.randomBytes(6).toString('hex');
     const files = [];
-    const outputs = [];
+    const outputs = [...saved.outputs];
     let active;
-    let part = 0;
+    let part = saved.outputs.filter(output => output.kind === 'xlsx').length;
+    let processed = saved.processed, inputOffset = saved.inputOffset;
+    onProgress?.(processed);
     const remember = async file => { files.push(file); await atomicJson(pendingPath, { files }); };
     async function start() {
         const base = path.join(directory, `fluxo_${checkpoint.id}_${attempt}_${String(++part).padStart(3, '0')}`);
@@ -406,26 +440,37 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
         await Promise.race([active.workbook.commit(), active.streamDone, active.zipFailure]);
         await active.streamDone;
         if (active.csvStream) await close(active.csvStream);
+        for (const file of [active.xlsx, active.csv].filter(Boolean)) {
+            const handle = await fsp.open(`${file}.tmp`, 'r+');
+            try { await handle.sync(); } finally { await handle.close(); }
+            await fsp.rename(`${file}.tmp`, file);
+        }
         abort(signal);
         outputs.push({ path: active.xlsx, kind: 'xlsx', rows: active.rows });
         if (active.csv) outputs.push({ path: active.csv, kind: 'csv', rows: active.rows });
+        await atomicJson(cachePath, { identity, inputOffset, processed, outputs });
+        for (const output of outputs) confirmedPaths.add(output.path);
         active = null;
     }
     try {
         const input = checkpoint.stages.cleaning.file;
-        for await (const record of records(input, signal)) {
+        for await (const entry of entries(input, signal, saved.inputOffset)) {
+            const record = entry.row;
             if (!active) await start();
             const values = map(record, format, context).map(safeCell);
             active.worksheet.addRow(values).commit();
             if (active.csvStream) await write(active.csvStream, csvRow(values));
             active.rows++;
+            processed++;
+            inputOffset = entry.offset;
             if (active.rows >= rowsPerFile) { await finishPart(); update(); }
+            if (processed % 1000 === 0) onProgress?.(processed);
             // Give cancellation and zip/output streams a turn even without CSV.
             if (active?.rows % 1000 === 0) await new Promise(resolve => setImmediate(resolve));
         }
         await finishPart();
+        onProgress?.(processed);
         abort(signal);
-        for (const output of outputs) await fsp.rename(`${output.path}.tmp`, output.path);
         await commit('export', { outputs });
         // Once the final checkpoint is confirmed, a manifest cleanup failure must
         // not delete those now-final outputs. A remaining manifest is harmless.
@@ -436,7 +481,7 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
             active.stream.destroy(); active.csvStream?.destroy();
             await Promise.allSettled([active.streamDone, active.csvDone].filter(Boolean));
         }
-        for (const file of files) await fsp.rm(file, { force: true }).catch(() => {});
+        for (const file of files) if (!confirmedPaths.has(file)) await fsp.rm(file, { force: true }).catch(() => {});
         throw error;
     }
 }

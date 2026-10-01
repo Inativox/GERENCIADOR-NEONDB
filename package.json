@@ -22,6 +22,7 @@
     "config:export": "node scripts/export-private-config.cjs",
     "check:package": "node scripts/check-package.cjs",
     "test:private-config": "electron scripts/smoke-private-config.cjs",
+    "test:flow-cache": "electron scripts/smoke-flow-cache.cjs",
     "start:installed": "electron . --max-old-space-size=8192",
     "prestart:installed": "node scripts/restore-installed-renderer.cjs"
   },
@@ -37,6 +38,7 @@
     "electron-store": "^7.0.3",
     "electron-updater": "^6.1.1",
     "exceljs": "^4.4.0",
+    "lmdb": "^3.5.6",
     "nodemailer": "^7.0.9",
     "pg": "^8.16.3",
     "react": "^19.3.0",
@@ -55,6 +57,7 @@
     "appId": "com.daviabraao.gerenciadordebases",
     "productName": "Gerenciador de Bases",
     "afterPack": "scripts/check-package.cjs",
+    "asarUnpack": ["**/*.node"],
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"

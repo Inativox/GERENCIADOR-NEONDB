@@ -39,9 +39,10 @@ test('API recebe os CNPJs enriquecidos antes de raiz, CNAE, blocklist, fixos e d
     assert.equal(result.counts.apiClients,1);
     assert.equal(result.counts.removedRoot,1);
     assert.equal(result.counts.removedCnae,1);
-    assert.equal(result.counts.removedBlocklist,1);
+    assert.equal(result.counts.removedBlocklist,0);
+    assert.equal(result.counts.blockedPhones,1);
     assert.equal(result.counts.landlines,1);
-    assert.equal(result.counts.withoutPhones,2);
+    assert.equal(result.counts.withoutPhones,3);
     assert.equal(result.counts.kept,1);
     assert.equal(result.counts.exported,1);
     assert.equal(result.outputs[0].rows,1);

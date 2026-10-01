@@ -29,8 +29,8 @@ function checkPackage(archive) {
 module.exports = async context => {
     const archive = path.join(context.appOutDir, 'resources', 'app.asar');
     checkPackage(archive);
-    for (const script of ['smoke-renderer.cjs', 'smoke-private-config.cjs']) {
-        const { stdout } = await execFile(require('electron'), [path.join(__dirname, script), archive], { windowsHide: true, timeout: 40000 });
+    for (const script of ['smoke-renderer.cjs', 'smoke-private-config.cjs', 'smoke-flow-cache.cjs']) {
+        const { stdout } = await execFile(require('electron'), [path.join(__dirname, script), archive], { windowsHide: true, timeout: 60000, env: { ...process.env, NODE_OPTIONS: '' } });
         console.log(stdout.trim());
     }
 };
