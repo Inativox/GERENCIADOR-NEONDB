@@ -22,6 +22,36 @@ test('fluxo aplica a mesma regra de nono dígito do exportador anterior e preser
     assert.equal(normalizarTelefoneFluxo('5598765432').phone, '55998765432');
     assert.equal(normalizarTelefoneFluxo('98123456').phone, '');
     assert.equal(normalizarTelefoneFluxo('2199999999').phone, '');
+    assert.equal(normalizarTelefoneFluxo('2198765432',{ajustarNonoDigito:false}).phone,'2198765432');
+    assert.equal(normalizarTelefoneFluxo('2198765432',{ajustarNonoDigito:false}).ninthDigitAdded,false);
+});
+
+test('arquivo da geração está normalizado antes da primeira consulta de enriquecimento', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-generation-phone-test-'));
+    t.after(() => fs.rmSync(directory,{recursive:true,force:true}));
+    const flow = {name:'Synthetic',operation:'c6',generation:{},enrichment:{enabled:true,strategy:'append'},cleaning:{enabled:false,rootSource:'none',blocklist:false},output:{formatId:'padrao',rowsPerFile:100,directory}};
+    let enrichmentCalls=0;
+    const providers = {
+        async *iterateReceita(){yield {rows:[{cnpj:'00000000000001',razao_social:'Synthetic',telefone_principal:'2198765432',telefone_secundario:'2181234567'}]};},
+        async queryEnrichment(){
+            enrichmentCalls++;
+            const first=JSON.parse(fs.readFileSync(path.join(directory,'generation.jsonl'),'utf8').trim());
+            assert.equal(first.telefone_principal,'21998765432');
+            assert.equal(first.telefone_secundario,'21981234567');
+            assert.deepEqual(first.phones,['21998765432','21981234567']);
+            return [];
+        },
+    };
+    const result = await runFlow({flow,user:{username:'Davi'},jobDir:directory,providers});
+    assert.equal(result.status,'completed');
+    assert.equal(enrichmentCalls,1);
+    // Resuming a historical unnormalized generation must not reach later stages.
+    const checkpointFile=path.join(directory,'checkpoint.json');
+    const checkpoint=JSON.parse(fs.readFileSync(checkpointFile,'utf8'));
+    delete checkpoint.stages.generation.phoneFormatVersion;
+    fs.writeFileSync(checkpointFile,JSON.stringify(checkpoint));
+    await assert.rejects(runFlow({flow,user:{username:'Davi'},jobDir:directory,providers}), /Reinicie a geração/);
+    assert.equal(enrichmentCalls,1);
 });
 
 test('variantes consultam o número antigo e o normalizado com e sem DDI', () => {
@@ -43,7 +73,7 @@ test('limpeza preserva celular antigo, bloqueia grafia antiga e separa motivos d
     assert.equal(result.status,'completed');
     assert.equal(result.counts.kept,2);
     assert.equal(result.counts.landlines,1);
-    assert.equal(result.counts.ninthDigitAdded,3);
+    assert.equal(result.counts.ninthDigitAdded,undefined);
     assert.equal(result.counts.removedBlocklist,1);
     assert.equal(result.counts.invalidPhones,1);
     assert.equal(result.counts.withoutPhonesBeforeFilters,2);
@@ -54,4 +84,8 @@ test('limpeza preserva celular antigo, bloqueia grafia antiga e separa motivos d
     assert.ok(calls.every(c=>c.phones.includes('552181234567') && c.phones.includes('21981234567')));
     const kept = fs.readFileSync(path.join(directory,'cleaning.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
     assert.deepEqual(kept.map(r=>r.phones), [['21998765432'], ['21981230000']]);
+    const generated = fs.readFileSync(path.join(directory,'generation.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+    assert.equal(generated[0].phones[0], '21998765432');
+    assert.equal(generated[3].phones[0], '21981234567');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(directory,'checkpoint.json'),'utf8')).stages.generation.phoneFormatVersion,1);
 });

@@ -4,12 +4,18 @@ const { normalizarTelefone } = require('../limpezaTelefones');
 
 // Match inserir9 in the existing D:/BASES/exportar_leads.py exporter.
 // Only complete legacy numbers (DDD + 8 digits, starting 6–9) receive the 9.
-function normalizarTelefoneFluxo(value) {
+function normalizarTelefoneFluxo(value, { ajustarNonoDigito = true } = {}) {
     const normalized = normalizarTelefone(value);
     const usable = normalized.phone.length === 10 && !/^[2-9]$/.test(normalized.phone[2]) ? '' : normalized.phone;
-    const ninthDigitAdded = usable.length === 10 && /^[6-9]$/.test(usable[2]);
+    const ninthDigitAdded = ajustarNonoDigito && usable.length === 10 && /^[6-9]$/.test(usable[2]);
     const phone = ninthDigitAdded ? usable.slice(0, 2) + '9' + usable.slice(2) : usable;
     return { ...normalized, phone, ninthDigitAdded, landline: phone.length === 10 && /^[2-5]$/.test(phone[2]) };
+}
+
+function telefoneParaGeracao(value) {
+    // Preserve malformed source values for the existing dirty-phone filter.
+    // Complete mobiles are normalized as they enter the generation stage.
+    return normalizarTelefoneFluxo(value).phone || String(value ?? '');
 }
 
 function variantesTelefoneFluxo(phone) {
@@ -25,4 +31,4 @@ function variantesTelefoneFluxo(phone) {
     return variants;
 }
 
-module.exports = { normalizarTelefoneFluxo, variantesTelefoneFluxo };
+module.exports = { normalizarTelefoneFluxo, variantesTelefoneFluxo, telefoneParaGeracao };

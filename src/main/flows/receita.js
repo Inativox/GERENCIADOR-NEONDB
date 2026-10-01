@@ -1,5 +1,6 @@
 'use strict';
 const { CNPJ_FORMAT } = require('../documentos');
+const { telefoneParaGeracao } = require('./telefones');
 
 const MAX_ROWS = Number.MAX_SAFE_INTEGER;
 const MAX_BATCH_SIZE = 10000;
@@ -159,6 +160,8 @@ async function* iterateReceita({ pool, filters = {}, batchSize = 2000, afterCnpj
         if (!result.rows.length) return;
         const rows = result.rows.map(source => {
             const row = Object.fromEntries(Object.keys(FIELD_ALIASES).map(name => [name, source[name] == null ? '' : String(source[name])]));
+            row.telefone_principal = telefoneParaGeracao(row.telefone_principal);
+            row.telefone_secundario = telefoneParaGeracao(row.telefone_secundario);
             if (!CNPJ_FORMAT.test(row.cnpj) || row.cnpj <= cursor) fail('Base Receita incompatível: CNPJs inválidos ou fora da ordem de paginação.');
             cursor = row.cnpj;
             row.situacao_cadastral_cod = row.situacao_cadastral_cod.padStart(2, '0');

@@ -10,7 +10,7 @@ const { finished } = require('node:stream/promises');
 const ExcelJS = require('exceljs');
 const { readOnlyPoolOptions } = require('./postgres');
 const { normalizarDocumento } = require('../limpezaTelefones');
-const { normalizarTelefoneFluxo, variantesTelefoneFluxo } = require('./telefones');
+const { normalizarTelefoneFluxo, variantesTelefoneFluxo, telefoneParaGeracao } = require('./telefones');
 const { PROHIBITED_CNAES } = require('../database/connection');
 
 const BATCH_SIZE = 2000;
@@ -67,14 +67,15 @@ async function* batches(file, signal, batchSize = BATCH_SIZE) {
     if (batch.length) yield batch;
 }
 function canonical(row) {
+    row = { ...row };
     const phones = Array.isArray(row.phones) ? [...row.phones] : [];
     for (const key of ['telefone_principal', 'telefone_secundario', 'telefone1', 'telefone2']) {
-        if (row[key]) phones.push(String(row[key]));
+        if (row[key]) { row[key] = telefoneParaGeracao(row[key]); phones.push(row[key]); }
     }
     for (const key of Object.keys(row).filter(key => /^fone\d+$/.test(key)).sort((a, b) => Number(a.slice(4)) - Number(b.slice(4)))) {
-        if (row[key]) phones.push(String(row[key]));
+        if (row[key]) { row[key] = telefoneParaGeracao(row[key]); phones.push(row[key]); }
     }
-    return { ...row, cnpj: normalizarDocumento(row.cnpj || row.cpf), phones: [...new Set(phones.filter(Boolean).map(String))] };
+    return { ...row, cnpj: normalizarDocumento(row.cnpj || row.cpf), phones: [...new Set(phones.filter(Boolean).map(telefoneParaGeracao))] };
 }
 function normalizedPhones(values) {
     return [...new Set((values || []).map(value => normalizarTelefoneFluxo(value).phone).filter(Boolean))];
@@ -171,7 +172,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             await close(output);
             abort(signal);
             await fsp.rename(temporary, target);
-            await commit(name, { file: target, rows: count });
+            await commit(name, { file: target, rows: count, ...(name === 'generation' ? { phoneFormatVersion: 1 } : {}) });
         } catch (error) {
             output.destroy();
             await completion.catch(() => {});
@@ -188,6 +189,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         const fingerprint = crypto.createHash('sha256').update(JSON.stringify({ flow, owner: user.username, rootFile: rootFile || null })).digest('hex');
         checkpoint = await readJson(checkpointPath);
         if (checkpoint && checkpoint.fingerprint !== fingerprint) throw validation('A configuração do fluxo mudou. Inicie uma nova execução.');
+        if (checkpoint?.stages.generation && checkpoint.stages.generation.phoneFormatVersion !== 1) throw validation('Esta execução foi gerada antes do ajuste de celulares na origem. Reinicie a geração para usar os telefones completos desde a primeira etapa.');
         if (!checkpoint) {
             checkpoint = { version: 1, id: crypto.randomUUID(), fingerprint, createdAt: new Date().toISOString(), stages: {}, counts: {} };
             await atomicJson(checkpointPath, checkpoint);
@@ -257,7 +259,8 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         if (!checkpoint.stages.cleaning) {
             stage = 'cleaning';
             // Counts from a failed attempt are reset; retained stages stay immutable.
-            for (const key of ['kept', 'removedRoot', 'removedCnae', 'removedBlocklist', 'invalidPhones', 'landlines', 'dirtyPhones', 'ddiRemoved', 'ninthDigitAdded', 'repeatedDocuments', 'repeatedPhones', 'withoutPhones', 'withoutPhonesBeforeFilters', 'withoutPhonesAfterFilters', 'withoutPhonesRepeatedOnly', 'truncatedPhones']) checkpoint.counts[key] = 0;
+            delete checkpoint.counts.ninthDigitAdded;
+            for (const key of ['kept', 'removedRoot', 'removedCnae', 'removedBlocklist', 'invalidPhones', 'landlines', 'dirtyPhones', 'ddiRemoved', 'repeatedDocuments', 'repeatedPhones', 'withoutPhones', 'withoutPhonesBeforeFilters', 'withoutPhonesAfterFilters', 'withoutPhonesRepeatedOnly', 'truncatedPhones']) checkpoint.counts[key] = 0;
             update({ log: 'Aplicando limpeza e cruzamento obrigatório.' });
             const options = flow.cleaning || {};
             const enabled = options.enabled !== false;
@@ -278,10 +281,9 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                 for await (const batch of batches(checkpoint.stages.enrichment.file, signal)) {
                     for (const row of batch) {
                         row.phones = row.phones.map(value => {
-                            const result = normalizarTelefoneFluxo(value);
+                            const result = normalizarTelefoneFluxo(value, { ajustarNonoDigito: false });
                             if (!result.phone && value) checkpoint.counts.dirtyPhones++;
                             if (result.ddiRemoved) checkpoint.counts.ddiRemoved++;
-                            if (result.ninthDigitAdded) checkpoint.counts.ninthDigitAdded++;
                             return result.phone;
                         }).filter(Boolean);
                     }
@@ -304,7 +306,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                         const hadPhonesBeforeFilters = row.phones.length > 0;
                         row.phones = row.phones.filter(phone => {
                             if (invalid.has(phone)) { checkpoint.counts.invalidPhones++; return false; }
-                            if (enabled && options.removeLandlines && normalizarTelefoneFluxo(phone).landline) { checkpoint.counts.landlines++; return false; }
+                            if (enabled && options.removeLandlines && normalizarTelefoneFluxo(phone, { ajustarNonoDigito: false }).landline) { checkpoint.counts.landlines++; return false; }
                             return true;
                         });
                         if (row.cnpj && seenDocuments.has(row.cnpj)) { checkpoint.counts.repeatedDocuments++; continue; }
