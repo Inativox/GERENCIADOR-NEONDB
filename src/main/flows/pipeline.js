@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
 const crypto = require('node:crypto');
-const readline = require('node:readline');
+const { records } = require('./jsonl');
 const { once } = require('node:events');
 const { finished } = require('node:stream/promises');
 const ExcelJS = require('exceljs');
@@ -57,22 +57,6 @@ async function write(stream, data) {
     if (!stream.write(data)) await once(stream, 'drain');
 }
 async function close(stream) { stream.end(); await finished(stream); }
-async function* records(file, signal) {
-    const stream = fs.createReadStream(file, { encoding: 'utf8' });
-    const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    const failed = new Promise((_, reject) => stream.once('error', reject));
-    // A missing/corrupt stage must fail, never become an empty successful stage.
-    failed.catch(() => {});
-    try {
-        const iterator = lines[Symbol.asyncIterator]();
-        for (;;) {
-            const next = await Promise.race([iterator.next(), failed]);
-            if (next.done) break;
-            abort(signal);
-            if (next.value.trim()) yield JSON.parse(next.value);
-        }
-    } finally { lines.close(); stream.destroy(); }
-}
 async function* batches(file, signal, batchSize = BATCH_SIZE) {
     let batch = [];
     for await (const row of records(file, signal)) {

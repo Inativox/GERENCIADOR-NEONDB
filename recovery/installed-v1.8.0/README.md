@@ -15,3 +15,11 @@ Em 30/09/2026, a consulta de paginação e situação passou a converter os par�
 A aplicação corrigida foi empacotada a partir do app.asar instalado, sobrepondo apenas src/main/flows/receita.js e src/main/handlers/fluxos.js, e aberta em C:\Users\dabra\AppData\Local\Programs\Gerenciador de Bases - Receita corrigida. O atalho Gerenciador de Bases - Receita corrigida está na Área de Trabalho. Essa cópia conserva o nome do aplicativo e usa as configurações e o histórico existentes em AppData/Roaming/gerenciador-de-bases. A instalação em Program Files permanece na versão anterior porque sua alteração exige administrador.
 
 SHA-256 do pacote corrigido: 67b33fb78d996958b512fa1f7defc24fd3d4e22c2fd449771f1daec8660e3fa3. O fluxo completo ainda precisa ser retomado no aplicativo; a verificação no banco cobriu o lote inicial.
+
+## Correção da leitura JSONL no enriquecimento
+
+A execução C6 ABERTURA concluiu a geração de 13.582.365 registros, com arquivo de 13,36 GB, mas o worker excedeu o limite de memória no enriquecimento. A leitura anterior anexava a cada linha novas reações a uma promessa de erro que permanecia pendente. Foi substituída por leitura assíncrona direta de chunks, que propaga erros do stream e respeita cancelamento sem manter uma promessa pendente por registro.
+
+A reprodução da leitura anterior falhou por `ERR_WORKER_OUT_OF_MEMORY` com heap de 128 MB. A leitura corrigida processou 500 mil registros do arquivo real com heap limitado a 64 MB, com amostras de uso entre 9 e 23 MB. A suíte passou com 87 testes, incluindo leitura UTF-8 entre chunks, arquivo ausente, JSON inválido, cancelamento e leitura de volume sob limite de memória.
+
+O novo pacote mantém as correções de conexão e paginação, e acrescenta `src/main/flows/jsonl.js` e a atualização de `src/main/flows/pipeline.js`. SHA-256: `91c2749ba441a05abef2a99ba14e2041e7f5362bf4ff3f9f67145d2ed004eb93`. O checkpoint da geração e o arquivo confirmado permanecem preservados para retomar o enriquecimento. A conclusão das etapas posteriores deve ser conferida no histórico do aplicativo.
