@@ -21,7 +21,7 @@ function createFlowManager({ baseDirectory, getUser, resolveConnections, resolve
     function saveUpdate(context, update) {
         const job = context.job;
         if (update.stage) job.stage = String(update.stage).slice(0, 60);
-        if (update.counts && typeof update.counts === 'object') job.counts = { ...job.counts, ...Object.fromEntries(Object.entries(update.counts).filter(([key, value]) => /^\w{1,60}$/.test(key) && Number.isFinite(value) && value >= 0)) };
+        if (update.counts && typeof update.counts === 'object') job.counts = { ...(update.replaceCounts === true ? {} : job.counts), ...Object.fromEntries(Object.entries(update.counts).filter(([key, value]) => /^\w{1,60}$/.test(key) && Number.isFinite(value) && value >= 0)) };
         if (update.log) job.logs = [...job.logs, String(update.log).slice(0, 1500)].slice(-300);
         if (Array.isArray(update.outputs)) job.outputs = update.outputs.map(item => ({ path: String(item.path), kind: String(item.kind), rows: Number(item.rows) || 0 }));
         if (update.status) job.status = update.status;

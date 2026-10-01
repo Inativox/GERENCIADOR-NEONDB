@@ -146,7 +146,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
     function update(data = {}) {
         // Notifications are advisory: an observer must never roll back a confirmed file.
         try {
-            const pending = onUpdate({ stage, counts: { ...checkpoint.counts }, ...data });
+            const pending = onUpdate({ stage, counts: { ...checkpoint.counts }, replaceCounts: true, ...data });
             pending?.catch?.(() => {});
         } catch { /* The next update or main checkpoint reconciliation can recover. */ }
     }
