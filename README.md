@@ -89,19 +89,19 @@ npm run dist
 
 O instalador é gerado na pasta `dist/`.
 
-`npm start`, `npm run dist` e `npm run publish` restauram o painel compilado da instalação 1.8.0 em `out/renderer/` antes de iniciar ou empacotar. O painel preservado está versionado em `recovery/installed-v1.8.0/renderer/`; a pasta `out/` continua ignorada.
+`npm start`, `npm run dist` e `npm run publish` compilam os fontes React + TypeScript em `out/renderer/` antes de iniciar ou empacotar. A pasta `out/` continua ignorada.
 
-Os fontes React originais da interface 1.8.0 não estavam no instalador e ainda não foram recuperados. Os arquivos em `src/renderer/react/` são da revisão anterior. `npm run build:renderer:source` e `npm run dev:renderer` compilam esses fontes antigos e substituem temporariamente o painel em `out/renderer/`; `npm start` restaura o painel recuperado. Antes de alterar a interface em TypeScript, recupere os fontes correspondentes ou reconstrua os componentes. Veja a [origem dos arquivos e as correções](recovery/installed-v1.8.0/README.md).
+Os fontes originais de Gerar listas, layouts e Consulta Situação Receita foram recuperados do checkout local e integrados às melhorias da main. `npm run start:installed` continua disponível para conferir o painel de recuperação da 1.8.0. Veja a [origem dos arquivos e as correções](recovery/installed-v1.8.0/README.md).
 
 ### Desenvolvimento e verificações
 
 ```bash
 npm test                 # Regras e regressões de backend/preload/logs
 npm run typecheck        # Tipos do frontend React
-npm run build:renderer   # Restaura o painel recuperado 1.8.0
+npm run build:renderer   # Compila o frontend React + TypeScript
 npm run test:renderer    # Integração no Electron, sem usuários ou banco reais
-npm run build:renderer:source # Compila os fontes React antigos (ver limitação acima)
-npm run dev:renderer     # Observa os fontes React antigos
+npm run build:renderer:source # Compila os mesmos fontes React
+npm run dev:renderer     # Observa os fontes React
 npm run benchmark:columns # Base sintética de 50 mil linhas
 ```
 
@@ -111,9 +111,9 @@ O smoke também percorre a Limpeza Local com dois arquivos temporários, verific
 
 Para verificar os mesmos fluxos usando os arquivos do pacote ASAR, gere `npm run dist -- --dir` e execute `npm run test:packaged`.
 
-### Interface recuperada e fontes da primeira migração
+### Interface React + TypeScript
 
-Os fontes da primeira migração cobrem **Limpeza de Colunas**. O painel compilado recuperado da instalação 1.8.0 também inclui **Gerar listas** e **Consulta Situação Receita**. Banco e arquivos permanecem no backend, acessados por IPC nomeado, sem Node no renderer.
+Os fontes React cobrem **Limpeza de Colunas**, **Gerar listas**, layouts e **Consulta Situação Receita**. Banco e arquivos permanecem no backend, acessados por IPC nomeado, sem Node no renderer.
 
 A limpeza de colunas executa um lote por vez em worker, com limite de 512 MiB para o heap JavaScript. Os workbooks ainda são carregados inteiros nesse worker: arquivos que excedam o limite precisam ser divididos. Esse limite não limita todo o uso de memória nativa do processo. Streaming dos fluxos maiores de Limpeza Local e Enriquecimento é uma etapa seguinte.
 

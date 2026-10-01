@@ -78,6 +78,9 @@ app.whenReady().then(async () => {
     });
     await window.loadFile(path.join(appRoot, 'index.html'));
     await waitFor(`!!document.getElementById('columns-select')`);
+    await waitFor(`!!document.querySelector('#fluxos-react-root .flows-app')`);
+    await evaluate(`document.querySelector('[data-tab-name="fluxos"]').click()`);
+    assert.equal(await evaluate(`document.getElementById('fluxos').classList.contains('active')`), true);
     window.webContents.send('user-info', { username: 'Outro', role: 'admin' });
     await waitFor(`document.getElementById('checkBlocklistCheckbox').disabled`);
     releaseUiSettings();

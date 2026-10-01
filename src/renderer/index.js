@@ -2196,6 +2196,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.1',
+            date: '2026-10-01',
+            highlights: 'Retomada por lote e processamento de bases grandes',
+            notes: [
+                'Progresso por etapa com contagem de registros e retomada dos lotes já confirmados.',
+                'Deduplicação em disco e correções de memória no processamento de listas grandes.',
+                'Celulares da Receita normalizados com o nono dígito antes do enriquecimento.',
+                'API opcional após o enriquecimento; raiz, blocklist e demais filtros aplicados na limpeza final.',
+                'Blocklist nos fluxos remove apenas os contatos bloqueados; empresas com outros contatos válidos são preservadas.',
+                'Exportação retoma os arquivos confirmados sem duplicar registros. Consultas da Receita preservam os índices do banco.',
+                'Fontes React e TypeScript recuperados e integrados às melhorias da main.'
+            ]
+        },
+        {
             version: '1.8.0',
             date: '2026-09-30',
             highlights: 'Geração de listas e fluxos por operação',

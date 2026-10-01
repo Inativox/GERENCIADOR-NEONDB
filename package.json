@@ -1,6 +1,6 @@
 {
   "name": "gerenciador-de-bases",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "App unificado para limpeza, consulta e enriquecimento de bases.",
   "author": "Davi Abraão",
   "main": "main.js",
@@ -11,7 +11,7 @@
     "publish": "npm run build:renderer && electron-builder --publish always",
     "prestart": "npm run build:renderer",
     "predist": "npm run build:renderer",
-    "build:renderer": "node scripts/restore-installed-renderer.cjs",
+    "build:renderer": "vite build",
     "build:renderer:source": "vite build",
     "dev:renderer": "vite build --watch",
     "typecheck": "tsc --noEmit",
@@ -57,7 +57,9 @@
     "appId": "com.daviabraao.gerenciadordebases",
     "productName": "Gerenciador de Bases",
     "afterPack": "scripts/check-package.cjs",
-    "asarUnpack": ["**/*.node"],
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico"
