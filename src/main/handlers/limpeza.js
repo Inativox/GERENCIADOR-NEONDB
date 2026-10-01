@@ -229,6 +229,11 @@ function register() {
             if (!event.sender.isDestroyed?.()) event.sender.send(channel, payload);
         };
         const log = message => send('log', message);
+        if (state.flowManager?.isBusy()) {
+            send('cleaning-finished', { success: false, message: 'Aguarde o fluxo em execução terminar.' });
+            log('Aguarde o fluxo em execução terminar antes da limpeza local.');
+            return;
+        }
         if (!isAdmin()) {
             log('Acesso negado. Permissão de administrador necessária.');
             send('cleaning-finished', { success: false });
@@ -401,4 +406,4 @@ function register() {
     });
 }
 
-module.exports = { register, processFile };
+module.exports = { register, processFile, isCleaning: () => Boolean(cleaningSender) };

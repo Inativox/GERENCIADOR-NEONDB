@@ -1,0 +1,282 @@
+{
+  "bernardo": {
+    "nome": "FORMATO C6",
+    "colunas": [
+      {
+        "header": "nome",
+        "campo": "razao_social"
+      },
+      {
+        "header": "cpf",
+        "campo": "cnpj_numerico"
+      },
+      {
+        "header": "livre1",
+        "campo": "data_abertura"
+      },
+      {
+        "header": "chave",
+        "campo": "email"
+      },
+      {
+        "header": "livre3",
+        "campo": "atividade_principal_cod_num"
+      },
+      {
+        "header": "livre5",
+        "campo": "fixo_vazio"
+      },
+      {
+        "header": "livre7",
+        "campo": "fixo_c6"
+      },
+      {
+        "header": "fone1",
+        "campo": "telefone_principal_num"
+      },
+      {
+        "header": "fone2",
+        "campo": "telefone_secundario_num"
+      },
+      {
+        "header": "fone3",
+        "campo": "fixo_vazio"
+      }
+    ]
+  },
+  "olos": {
+    "nome": "OLOS",
+    "colunas": [
+      {
+        "header": "nome",
+        "campo": "razao_social"
+      },
+      {
+        "header": "CNPJ",
+        "campo": "cnpj_numerico"
+      },
+      {
+        "header": "livre1",
+        "campo": "ano_abertura"
+      },
+      {
+        "header": "EMAIL",
+        "campo": "email"
+      },
+      {
+        "header": "livre3",
+        "campo": "atividade_principal_cod_num"
+      },
+      {
+        "header": "livre5",
+        "campo": "manual",
+        "valor_manual": "OLOS MB"
+      },
+      {
+        "header": "livre7",
+        "campo": "fixo_c6"
+      },
+      {
+        "header": "fone1",
+        "campo": "telefone_principal_num"
+      },
+      {
+        "header": "fone2",
+        "campo": "telefone_secundario_num"
+      },
+      {
+        "header": "fone3",
+        "campo": "manual",
+        "valor_manual": ""
+      },
+      {
+        "header": "fone4",
+        "campo": "manual",
+        "valor_manual": ""
+      },
+      {
+        "header": "fone5",
+        "campo": "manual",
+        "valor_manual": ""
+      },
+      {
+        "header": "fone6",
+        "campo": "manual",
+        "valor_manual": ""
+      },
+      {
+        "header": "fone7",
+        "campo": "manual",
+        "valor_manual": ""
+      },
+      {
+        "header": "fone8",
+        "campo": "manual",
+        "valor_manual": ""
+      },
+      {
+        "header": "fone9",
+        "campo": "manual",
+        "valor_manual": ""
+      },
+      {
+        "header": "fone10",
+        "campo": "manual",
+        "valor_manual": ""
+      }
+    ]
+  },
+  "empresaaqui": {
+    "nome": "EmpresaAqui",
+    "colunas": [
+      {
+        "header": "razao",
+        "campo": "razao_social"
+      },
+      {
+        "header": "cnpj",
+        "campo": "cnpj_numerico"
+      },
+      {
+        "header": "data inicio ativ.",
+        "campo": "data_abertura"
+      },
+      {
+        "header": "e-mail",
+        "campo": "email"
+      },
+      {
+        "header": "cnae principal",
+        "campo": "atividade_principal_cod_num"
+      },
+      {
+        "header": "livre5",
+        "campo": "fixo_vazio"
+      },
+      {
+        "header": "livre7",
+        "campo": "fixo_c6"
+      },
+      {
+        "header": "telefone 1",
+        "campo": "telefone_principal_num"
+      },
+      {
+        "header": "telefone 2",
+        "campo": "telefone_secundario_num"
+      }
+    ]
+  },
+  "plano_porto": {
+    "nome": "PLANO DE SAUDE",
+    "colunas": [
+      {
+        "header": "nome",
+        "campo": "razao_social"
+      },
+      {
+        "header": "CNPJ",
+        "campo": "cnpj_numerico"
+      },
+      {
+        "header": "ANO EMPRESA",
+        "campo": "ano_abertura"
+      },
+      {
+        "header": "EMAIL",
+        "campo": "email"
+      },
+      {
+        "header": "CNAE",
+        "campo": "atividade_principal_cod_num"
+      },
+      {
+        "header": "ESTADO",
+        "campo": "estado"
+      },
+      {
+        "header": "CIDADE",
+        "campo": "cidade"
+      },
+      {
+        "header": "BAIRRO",
+        "campo": "bairro"
+      },
+      {
+        "header": "fone1",
+        "campo": "telefone_principal_num"
+      },
+      {
+        "header": "fone2",
+        "campo": "telefone_secundario_num"
+      },
+      {
+        "header": "LOGRADOURO",
+        "campo": "logradouro"
+      },
+      {
+        "header": "CEP",
+        "campo": "cep"
+      }
+    ]
+  },
+  "padrao": {
+    "nome": "LAYOUT PADRÃO",
+    "colunas": [
+      {
+        "header": "nome",
+        "campo": "razao_social"
+      },
+      {
+        "header": "cpf",
+        "campo": "cnpj_numerico"
+      },
+      {
+        "header": "livre1",
+        "campo": "data_abertura"
+      },
+      {
+        "header": "chave",
+        "campo": "email"
+      },
+      {
+        "header": "livre3",
+        "campo": "composto",
+        "partes": [
+          "atividade_principal_cod_num",
+          "atividade_principal"
+        ],
+        "sep": " - "
+      },
+      {
+        "header": "livre4",
+        "campo": "composto",
+        "partes": [
+          "estado",
+          "cidade"
+        ],
+        "sep": " - "
+      },
+      {
+        "header": "livre5",
+        "campo": "fixo_vazio"
+      },
+      {
+        "header": "livre7",
+        "campo": "fixo_c6"
+      },
+      {
+        "header": "fone1",
+        "campo": "telefone_principal_num"
+      },
+      {
+        "header": "fone2",
+        "campo": "telefone_secundario_num"
+      },
+      {
+        "header": "fone3",
+        "campo": "fixo_vazio"
+      }
+    ]
+  }
+}

@@ -38,6 +38,36 @@ contextBridge.exposeInMainWorld("electronAPI", {
     downloadRecording: (url, fileName) => ipcRenderer.invoke('download-recording', url, fileName),
 
     // --- Funções da Limpeza Local ---
+    flowsBootstrap: () => ipcRenderer.invoke('flows-bootstrap'),
+    flowsSave: (flow) => ipcRenderer.invoke('flows-save', flow),
+      flowsReceitaOptions: (input) => ipcRenderer.invoke('flows-receita-options', input),
+      receitaSituacaoState: () => ipcRenderer.invoke('receita-situacao-state'),
+      receitaSituacaoFile: () => ipcRenderer.invoke('receita-situacao-file'),
+      receitaSituacaoOne: (cnpj) => ipcRenderer.invoke('receita-situacao-one', { cnpj }),
+      receitaSituacaoStart: (fileId) => ipcRenderer.invoke('receita-situacao-start', { fileId }),
+      receitaSituacaoCancel: () => ipcRenderer.invoke('receita-situacao-cancel'),
+      receitaSituacaoOpen: () => ipcRenderer.invoke('receita-situacao-open'),
+      onReceitaSituacaoUpdate: (callback) => {
+          const listener = (_event, update) => callback(update);
+          ipcRenderer.on('receita-situacao-update', listener);
+          return () => ipcRenderer.removeListener('receita-situacao-update', listener);
+      },
+    flowsSaveLayout: (layout) => ipcRenderer.invoke('flows-save-layout', layout),
+    flowsDeleteLayout: (id) => ipcRenderer.invoke('flows-delete-layout', id),
+    flowsPreviewLayout: (input) => ipcRenderer.invoke('flows-preview-layout', input),
+    flowsDelete: (id) => ipcRenderer.invoke('flows-delete', id),
+    flowsSelectFolder: () => ipcRenderer.invoke('flows-select-folder'),
+    flowsStart: (input) => ipcRenderer.invoke('flows-start', input),
+    flowsCancel: (id) => ipcRenderer.invoke('flows-cancel', id),
+    flowsResume: (id) => ipcRenderer.invoke('flows-resume', id),
+    flowsOpenOutput: (input) => ipcRenderer.invoke('flows-open-output', input),
+    flowsConfigureReceita: (input) => ipcRenderer.invoke('flows-configure-receita', input),
+    flowsConfigureBq: () => ipcRenderer.invoke('flows-configure-bq'),
+    flowsTestBq: () => ipcRenderer.invoke('flows-test-bq'),
+    flowsRenewBq: () => ipcRenderer.invoke('flows-renew-bq'),
+    flowsBqAutoLogin: (enabled) => ipcRenderer.invoke('flows-bq-auto-login', { enabled }),
+    onFlowBqAuthUpdate: (callback) => subscribe('flow-bq-auth-update', callback),
+    onFlowUpdate: (callback) => subscribe('flow-update', callback),
     selectFile: (options) => ipcRenderer.invoke("select-file", options),
     showSaveDialog: (options) => ipcRenderer.invoke("show-save-dialog", options), // NOVO
     openPath: (path) => ipcRenderer.send("open-path", path),

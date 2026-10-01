@@ -1,4 +1,5 @@
 const { normalizarDigitos, removerDdi } = require('./regrasLimpezaColunas');
+const { cnpjText } = require('./documentos');
 
 function digitsOf(value) {
     if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0 ? String(value) : '';
@@ -7,6 +8,9 @@ function digitsOf(value) {
 }
 
 function normalizarDocumento(value, header = 'cnpj') {
+    const alphanumeric = cnpjText(value);
+    if (alphanumeric && /[A-Z]/.test(alphanumeric)) return alphanumeric;
+    if (typeof value === 'string' && /[A-Z]/i.test(value) && !/^\s*\d+(?:[.,]\d+)?E[+-]?\d+\s*$/i.test(value)) return '';
     const digits = digitsOf(value);
     if (!digits) return '';
     const length = String(header).trim().toLowerCase() === 'cpf' && digits.length <= 11 ? 11 : 14;

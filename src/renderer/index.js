@@ -393,6 +393,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const tabInfo = {
+        'Gerar listas': {
+            title: 'Geração e fluxos de listas',
+            description: 'Defina os filtros da Receita, a raiz da operação e as etapas para gerar uma lista pronta para uso.'
+        },
         'Limpeza Local': {
             title: 'Limpeza Local de Bases',
             description: 'Limpe suas listas com os filtros da raiz e de telefones. Cada arquivo é processado por vez, com seu próprio resumo no log.'
@@ -400,6 +404,10 @@ document.addEventListener('DOMContentLoaded', () => {
         'Consulta CNPJ (API)': {
             title: 'Consulta CNPJ via API',
             description: 'Realize consultas de CNPJ diretamente via API para obter a situação da empresa.'
+        },
+        'Situação Receita': {
+            title: 'Consulta de situação cadastral',
+            description: 'Consulte um CNPJ ou uma lista própria no banco da Receita.'
         },
         'Enriquecimento': {
             title: 'Enriquecimento de Dados',
@@ -2187,6 +2195,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // SISTEMA DE CHANGELOG / NOTAS DE ATUALIZAÇÃO
     // =========================================================
     const CHANGELOG = [
+        {
+            version: '1.8.0',
+            date: '2026-09-30',
+            highlights: 'Geração de listas e fluxos por operação',
+            notes: [
+                'Geração de listas pela base da Receita, com filtros em multiseleção e limite opcional de empresas.',
+                'Fluxos salvos por operação: geração, enriquecimento, raiz histórica, limpeza e exportação, com histórico e retomada.',
+                'Raiz por histórico Bitrix no BigQuery, com opção de renovar o login Google pelo aplicativo.',
+                'Layouts personalizáveis e exportação XLSX com CSV adicional opcional.',
+                'Consulta independente da situação cadastral da Receita para CNPJ avulso ou listas XLSX/CSV.',
+                'Preservação de CNPJs alfanuméricos na geração e nos arquivos exportados.',
+                'Validação opcional antes da exportação nos fluxos C6: chave dupla C6/IM, intervalo de um minuto e saída apenas de disponíveis.',
+                'Retomada dos lotes API confirmados e controle compartilhado de uso das chaves com a fila manual.'
+            ]
+        },
         {
             version: '1.7.0',
             date: '2026-09-30',

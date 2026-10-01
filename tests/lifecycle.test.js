@@ -53,7 +53,7 @@ test('atualização pronta avisa sem forçar encerramento durante tarefa', () =>
         './keyfile': {}, './state': { mainWindow: { webContents: { send: (...args) => messages.push(args) } } },
         './database/cache': noopHandler,
     };
-    for (const name of ['auth', 'files', 'limpeza', 'cnpj', 'enriquecimento', 'blocklist', 'monitoramento', 'relacionamento', 'limpezaColunas']) dependencies[`./handlers/${name}`] = noopHandler;
+    for (const name of ['auth', 'files', 'limpeza', 'cnpj', 'enriquecimento', 'blocklist', 'monitoramento', 'relacionamento', 'limpezaColunas', 'fluxos', 'receitaSituacao']) dependencies[`./handlers/${name}`] = noopHandler;
     loadModule('src/main/index.js', dependencies);
     autoUpdater.emit('update-downloaded', { version: '2.0.0' });
     assert.equal(forcedQuit, 0);

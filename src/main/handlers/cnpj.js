@@ -43,65 +43,30 @@ const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
 // #           FUNÇÕES DE CONTROLE DE LOCKS                       #
 // #################################################################
 
+let currentApiLease = null;
 async function acquireApiLock(keysNeeded, username, mode) {
-    if (!state.pool) return { success: true };
-
     try {
-        const checkQuery = `
-            SELECT key_name, username, status
-            FROM api_locks
-            WHERE key_name = ANY($1::text[])
-            AND status = 'Em uso'
-            AND last_heartbeat > NOW() - INTERVAL '2 minutes'
-        `;
-        const checkResult = await state.pool.query(checkQuery, [keysNeeded]);
-
-        if (checkResult.rows.length > 0) {
-            const lock = checkResult.rows[0];
-            if (lock.username !== username) {
-                return { success: false, lockedBy: lock.username, key: lock.key_name };
-            }
-        }
-
-        const upsertQuery = `
-            INSERT INTO api_locks (key_name, username, status, last_heartbeat, key_label, lock_mode)
-            VALUES ($1, $2, 'Em uso', NOW(), $3, $4)
-            ON CONFLICT (key_name)
-            DO UPDATE SET
-                username = EXCLUDED.username,
-                status = 'Em uso',
-                last_heartbeat = NOW(),
-                key_label = EXCLUDED.key_label,
-                lock_mode = EXCLUDED.lock_mode;
-        `;
-
-        for (const key of keysNeeded) {
-            const label = key === 'c6' ? 'Chave 1 (C6)' : 'Chave 2 (IM)';
-            await state.pool.query(upsertQuery, [key, username, label, mode]);
-        }
-
+        currentApiLease = await require('../apiSessions').locks.acquire(keysNeeded, username, mode);
         return { success: true };
-    } catch (err) {
-        console.error("Erro ao adquirir lock de API:", err);
-        return { success: true, warning: err.message };
+    } catch (error) {
+        return { success: false, lockedBy: error.lockedBy, key: error.key, message: error.message };
     }
 }
-
 async function releaseApiLock(keysToRelease) {
-    if (!state.pool || !keysToRelease || keysToRelease.length === 0) return;
-    try {
-        await state.pool.query("UPDATE api_locks SET status = 'Livre' WHERE key_name = ANY($1::text[])", [keysToRelease]);
-    } catch (err) {
-        console.error("Erro ao liberar lock de API:", err);
-    }
+    const lease = currentApiLease;
+    if (!lease || !keysToRelease?.some(key => lease.keys.includes(key))) return;
+    currentApiLease = null;
+    await lease.release();
 }
-
-async function heartbeatApiLock(keysToMaintain) {
-    if (!state.pool || !keysToMaintain || keysToMaintain.length === 0) return;
-    try {
-        await state.pool.query("UPDATE api_locks SET last_heartbeat = NOW(), status = 'Em uso' WHERE key_name = ANY($1::text[])", [keysToMaintain]);
-    } catch (err) {
-        console.error("Erro no heartbeat do lock:", err);
+async function heartbeatApiLock() {
+    try { await currentApiLease?.heartbeat(); }
+    catch {
+        cancelCurrentApiTask = true;
+        isApiQueueRunning = false;
+        if (apiHeartbeatInterval) clearInterval(apiHeartbeatInterval);
+        void releaseApiLock(currentLockedKeys);
+        currentLockedKeys = [];
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) state.mainWindow.webContents.send('api-log', 'A reserva das chaves foi perdida. Interrompa e reinicie a fila API.');
     }
 }
 
@@ -271,12 +236,14 @@ async function runApiConsultation(filePath, options, log, progress, fishPath) {
     };
 
     const performApiCall = async (cnpjArray, creds) => {
+        await currentApiLease?.assert();
         log(`Consultando ${cnpjArray.length} CNPJs com a chave: ${creds.name}`);
         const tokenParams = new URLSearchParams({ grant_type: "client_credentials", client_id: creds.CLIENT_ID, client_secret: creds.CLIENT_SECRET });
         const tokenResp = await axios.post(TOKEN_URL, tokenParams.toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 30000 });
         const token = tokenResp.data.access_token;
 
         const consultaResp = await axios.post(CONSULTA_URL, { CNPJ: cnpjArray }, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, timeout: 30000 });
+        await currentApiLease?.assert();
         const key = Object.keys(consultaResp.data).find(k => k.toLowerCase().includes("cnpj") && Array.isArray(consultaResp.data[k]));
         return key ? new Set(consultaResp.data[key].map(normalizeCnpj)) : new Set();
     };
@@ -609,6 +576,12 @@ async function runScheduledFishCleanup(schedule) {
     };
 
     try {
+        if (isApiQueueRunning) { log('A fila API já está em execução. Reagende após a conclusão.'); return; }
+        isApiQueueRunning = true;
+        const keys = schedule.apiOptions.keyMode === 'chave1' ? ['c6'] : schedule.apiOptions.keyMode === 'chave2' ? ['im'] : ['c6', 'im'];
+        const reservation = await acquireApiLock(keys, state.currentUser?.username, schedule.apiOptions.keyMode);
+        if (!reservation.success) { isApiQueueRunning = false; log(reservation.message); return; }
+        currentLockedKeys = keys;
         apiQueue.pending.push(...schedule.files);
         apiQueue.pending = [...new Set(apiQueue.pending)];
         if (state.mainWindow) state.mainWindow.webContents.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
@@ -673,6 +646,10 @@ function register() {
 
     ipcMain.on("set-api-key-mode", (event, keyMode) => {
         if (!isAdmin()) return;
+        if (isApiQueueRunning) {
+            event.sender.send('api-log', 'Aguarde a fila terminar ou reinicie antes de trocar as chaves reservadas.');
+            return;
+        }
         currentApiOptions.keyMode = keyMode;
         event.sender.send("api-log", `⚙️ Modo de chave alterado para: ${keyMode} (aplicado no próximo lote)`);
     });
@@ -698,7 +675,7 @@ function register() {
         if (!lockResult.success) {
             isApiQueueRunning = false;
             event.sender.send("api-queue-update", { ...apiQueue, isPaused: isApiQueuePaused });
-            const msg = `⚠️ A chave '${lockResult.key}' está com status "Em uso" pelo usuário: ${lockResult.lockedBy}.`;
+            const msg = lockResult.message || 'As chaves estão em uso. Aguarde a outra execução terminar.';
             event.sender.send("api-log", msg);
             event.sender.send("api-lock-error", msg);
             return;

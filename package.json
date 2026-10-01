@@ -1,6 +1,6 @@
 {
   "name": "gerenciador-de-bases",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "App unificado para limpeza, consulta e enriquecimento de bases.",
   "author": "Davi Abraão",
   "main": "main.js",
@@ -20,7 +20,9 @@
     "benchmark:columns": "node scripts/benchmark-columns.cjs",
     "config:export": "node scripts/export-private-config.cjs",
     "check:package": "node scripts/check-package.cjs",
-    "test:private-config": "electron scripts/smoke-private-config.cjs"
+    "test:private-config": "electron scripts/smoke-private-config.cjs",
+    "start:installed": "electron . --max-old-space-size=8192",
+    "prestart:installed": "node scripts/restore-installed-renderer.cjs"
   },
   "repository": {
     "type": "git",

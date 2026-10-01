@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
 
-const ENV_KEYS = new Set(['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'API_KEY', 'C6_CLIENT_ID', 'C6_CLIENT_SECRET', 'IM_CLIENT_ID', 'IM_CLIENT_SECRET']);
+const ENV_KEYS = new Set(['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'API_KEY', 'C6_CLIENT_ID', 'C6_CLIENT_SECRET', 'IM_CLIENT_ID', 'IM_CLIENT_SECRET', 'RECEITA_DATABASE_URL', 'BQ_PROJECT']);
 
 function validateBundle(bundle) {
     if (!bundle || bundle.version !== 1 || !bundle.users || Array.isArray(bundle.users) || !Object.keys(bundle.users).length) throw new Error('Arquivo de acesso inválido ou sem usuários.');
