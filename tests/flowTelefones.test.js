@@ -59,6 +59,44 @@ test('variantes consultam o número antigo e o normalizado com e sem DDI', () =>
     assert.deepEqual(variantesTelefoneFluxo('21912345678'), ['21912345678','5521912345678']);
 });
 
+test('empresa sem telefone na Receita chega ao enriquecimento e só é descartada após todos os contatos serem avaliados', async t => {
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'flow-enrich-before-clean-test-'));
+    t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    const cnpjs=['00000000000001','00000000000002','00000000000003'];
+    const rows=[
+        {cnpj:cnpjs[0],razao_social:'Synthetic A',phones:[],telefone_principal:'',telefone_secundario:''},
+        {cnpj:cnpjs[1],razao_social:'Synthetic B',phones:['1132345678']},
+        {cnpj:cnpjs[2],razao_social:'Synthetic C',phones:[]},
+    ];
+    let enrichmentCompleted=false, filterCalls=0;
+    const flow={name:'Synthetic',operation:'c6',generation:{phone:'all'},enrichment:{enabled:true,strategy:'append'},cleaning:{enabled:true,rootSource:'none',blocklist:true,invalidPhones:true,removeLandlines:true,prohibitedCnaes:[]},output:{formatId:'padrao',rowsPerFile:100,directory}};
+    const result=await runFlow({flow,user:{username:'Davi'},jobDir:directory,providers:{
+        async *iterateReceita({filters}){assert.equal(filters.phone,'all');yield {rows};},
+        async queryEnrichment(documents){
+            assert.deepEqual(documents,cnpjs);
+            const generated=fs.readFileSync(path.join(directory,'generation.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+            assert.equal(generated.length,3);
+            assert.deepEqual(generated[0].phones,[]);
+            assert.equal(filterCalls,0);
+            enrichmentCompleted=true;
+            return [{cnpj:cnpjs[0],phones:['2198765432']},{cnpj:cnpjs[1],phones:['2181234567']}];
+        },
+        async queryPhones(){assert.equal(enrichmentCompleted,true);filterCalls++;return [];},
+    }});
+    assert.equal(result.status,'completed');
+    assert.ok(filterCalls>0);
+    const enriched=fs.readFileSync(path.join(directory,'enrichment.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+    assert.equal(enriched.length,3);
+    assert.deepEqual(enriched[0].phones,['21998765432']);
+    const cleaned=fs.readFileSync(path.join(directory,'cleaning.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+    assert.deepEqual(cleaned.map(r=>r.cnpj),cnpjs.slice(0,2));
+    assert.deepEqual(cleaned.map(r=>r.phones),[['21998765432'],['21981234567']]);
+    assert.equal(result.counts.withoutPhones,1);
+    assert.equal(result.counts.withoutPhonesBeforeFilters,1);
+    assert.equal(result.counts.withoutPhonesAfterFilters,0);
+    assert.equal(result.counts.landlines,1);
+});
+
 test('limpeza preserva celular antigo, bloqueia grafia antiga e separa motivos de linhas sem telefone', async t => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-phone-test-'));
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

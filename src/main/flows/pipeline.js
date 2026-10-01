@@ -14,7 +14,7 @@ const { normalizarTelefoneFluxo, variantesTelefoneFluxo, telefoneParaGeracao } =
 const { PROHIBITED_CNAES } = require('../database/connection');
 
 const BATCH_SIZE = 2000;
-const STAGES = ['generation', 'enrichment', 'cleaning', 'api', 'export'];
+const STAGES = ['generation', 'enrichment', 'api', 'cleaning', 'export'];
 function abort(signal) {
     if (signal?.aborted) {
         const error = new Error('Execução cancelada.');
@@ -172,7 +172,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             await close(output);
             abort(signal);
             await fsp.rename(temporary, target);
-            await commit(name, { file: target, rows: count, ...(name === 'generation' ? { phoneFormatVersion: 1 } : {}) });
+            await commit(name, { file: target, rows: count, ...(name === 'generation' ? { phoneFormatVersion: 1 } : {}), ...(name === 'api' ? { sourceStage: 'enrichment' } : {}), ...(name === 'cleaning' ? { sourceStage: flow.api?.enabled ? 'api' : 'enrichment' } : {}) });
         } catch (error) {
             output.destroy();
             await completion.catch(() => {});
@@ -190,6 +190,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         checkpoint = await readJson(checkpointPath);
         if (checkpoint && checkpoint.fingerprint !== fingerprint) throw validation('A configuração do fluxo mudou. Inicie uma nova execução.');
         if (checkpoint?.stages.generation && checkpoint.stages.generation.phoneFormatVersion !== 1) throw validation('Esta execução foi gerada antes do ajuste de celulares na origem. Reinicie a geração para usar os telefones completos desde a primeira etapa.');
+        if (flow.api?.enabled && ((checkpoint?.stages.api && checkpoint.stages.api.sourceStage !== 'enrichment') || (checkpoint?.stages.cleaning && checkpoint.stages.cleaning.sourceStage !== 'api'))) throw validation('Esta execução usava filtros antes da API. Inicie uma nova execução para aplicar os filtros somente no final.');
         if (!checkpoint) {
             checkpoint = { version: 1, id: crypto.randomUUID(), fingerprint, createdAt: new Date().toISOString(), stages: {}, counts: {} };
             await atomicJson(checkpointPath, checkpoint);
@@ -256,12 +257,20 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                 }
             });
         }
+        if (flow.api?.enabled && !checkpoint.stages.api) {
+            stage = 'api';
+            update({ log: 'Validando disponibilidade C6 com chave dupla após enriquecimento e antes dos filtros finais.' });
+            const { runApiStage } = require('./disponibilidadeApi');
+            await jsonlStage(stage, emit => runApiStage({ jobDir, source: checkpoint.stages.enrichment.file, batches, emit, signal,
+                counts: checkpoint.counts, update, acquire: providers.acquireApi,
+                ...providers.apiTiming }));
+        }
         if (!checkpoint.stages.cleaning) {
             stage = 'cleaning';
             // Counts from a failed attempt are reset; retained stages stay immutable.
             delete checkpoint.counts.ninthDigitAdded;
             for (const key of ['kept', 'removedRoot', 'removedCnae', 'removedBlocklist', 'invalidPhones', 'landlines', 'dirtyPhones', 'ddiRemoved', 'repeatedDocuments', 'repeatedPhones', 'withoutPhones', 'withoutPhonesBeforeFilters', 'withoutPhonesAfterFilters', 'withoutPhonesRepeatedOnly', 'truncatedPhones']) checkpoint.counts[key] = 0;
-            update({ log: 'Aplicando limpeza e cruzamento obrigatório.' });
+            update({ log: 'Aplicando filtros finais, limpeza e cruzamento após enriquecimento e API quando ativada.' });
             const options = flow.cleaning || {};
             const enabled = options.enabled !== false;
             let root = new Set();
@@ -278,7 +287,8 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             const seenDocuments = new Set();
             const seenPhones = new Set();
             await jsonlStage(stage, async emit => {
-                for await (const batch of batches(checkpoint.stages.enrichment.file, signal)) {
+                const input = flow.api?.enabled ? checkpoint.stages.api.file : checkpoint.stages.enrichment.file;
+                for await (const batch of batches(input, signal)) {
                     for (const row of batch) {
                         row.phones = row.phones.map(value => {
                             const result = normalizarTelefoneFluxo(value, { ajustarNonoDigito: false });
@@ -337,21 +347,13 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                 }
             });
         }
-        if (flow.api?.enabled && !checkpoint.stages.api) {
-            stage = 'api';
-            update({ log: 'Validando disponibilidade C6 com chave dupla antes da exportação.' });
-            const { runApiStage } = require('./disponibilidadeApi');
-            await jsonlStage(stage, emit => runApiStage({ jobDir, source: checkpoint.stages.cleaning.file, batches, emit, signal,
-                counts: checkpoint.counts, update, acquire: providers.acquireApi,
-                ...providers.apiTiming }));
-        }
         stage = 'export';
         if (!checkpoint.stages.export) {
             update({ log: 'Salvando arquivos finais.' });
             await exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPerFile, commit, update });
         }
         for (const output of checkpoint.stages.export.outputs) await fsp.access(output.path);
-        const result = { status: (flow.api?.enabled ? checkpoint.stages.api.rows : checkpoint.stages.cleaning.rows) ? 'completed' : 'empty', counts: checkpoint.counts, outputs: checkpoint.stages.export.outputs };
+        const result = { status: checkpoint.stages.cleaning.rows ? 'completed' : 'empty', counts: checkpoint.counts, outputs: checkpoint.stages.export.outputs };
         update({ ...result, log: result.status === 'empty' ? 'Nenhum registro restou para exportar após os filtros do fluxo.' : 'Fluxo concluído.' });
         return result;
     } catch (error) {
@@ -410,7 +412,7 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
         active = null;
     }
     try {
-        const input = flow.api?.enabled ? checkpoint.stages.api.file : checkpoint.stages.cleaning.file;
+        const input = checkpoint.stages.cleaning.file;
         for await (const record of records(input, signal)) {
             if (!active) await start();
             const values = map(record, format, context).map(safeCell);
