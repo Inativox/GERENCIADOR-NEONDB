@@ -116,7 +116,8 @@ function register() {
             return { success: true, ...await action(argument) };
         } catch (error) {
             const bqError = ['BQ_AUTH_REQUIRED', 'BQ_CREDENTIAL_INVALID', 'BQ_FORBIDDEN'].includes(error.code);
-            return { success: false, message: error.code && !bqError ? 'Não foi possível concluir. Verifique os arquivos e a configuração de acesso.' : error.message, ...(bqError ? { code: error.code } : {}) };
+            const validationError = error.code === 'FLOW_VALIDATION';
+            return { success: false, message: error.code && !bqError && !validationError ? 'Não foi possível concluir. Verifique os arquivos e a configuração de acesso.' : error.message, ...(bqError ? { code: error.code } : {}) };
         }
     };
     ipcMain.handle('flows-bootstrap', protect(() => {
@@ -160,7 +161,10 @@ function register() {
         if (typeof connectionString !== 'string' || connectionString.length > 4096 || !/^postgres(ql)?:\/\//i.test(connectionString)) throw new Error('Informe uma conexão PostgreSQL válida da base Receita.');
         const pool = new Pool(readOnlyPoolOptions(connectionString, { max: 1, timeout: 15000, connectionTimeout: 10000 }));
         try { await getReceitaMetadata(pool); store.set('receita_connection_string', connectionString); return { message: 'Fonte Receita verificada e salva nesta máquina.' }; }
-        catch { throw new Error('Não foi possível validar a fonte Receita. Confira acesso e schema de empresas.'); }
+        catch (error) {
+            if (error.code === 'FLOW_VALIDATION') throw error;
+            throw new Error('Não foi possível validar a fonte Receita. Confira acesso e schema de empresas.');
+        }
         finally { await pool.end(); }
     }));
     ipcMain.handle('flows-configure-bq', protect(async () => {
