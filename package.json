@@ -24,6 +24,7 @@
     "check:source": "node scripts/check-source.cjs",
     "test:private-config": "electron scripts/smoke-private-config.cjs",
     "test:flow-cache": "electron scripts/smoke-flow-cache.cjs",
+    "test:flow-memory": "electron scripts/smoke-flow-cache.cjs --low-memory",
     "start:installed": "electron . --max-old-space-size=8192",
     "prestart:installed": "node scripts/restore-installed-renderer.cjs"
   },
