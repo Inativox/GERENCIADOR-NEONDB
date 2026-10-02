@@ -16,6 +16,7 @@ Os acessos existentes do banco do Gerenciador continuam sendo usados para enriqu
 
 - Operações iniciais: C6/90, Santander/119, PagBank/34, Mercado Pago Hunter/58. Pipelines podem ser ajustados no fluxo.
 - Geração: limite, UF, cidade, bairro, período de abertura, CNAE, natureza jurídica, MEI, presença de telefone/e-mail e situação cadastral.
+- **Disponibilidade salva**: **Todos** mantém a geração sem filtro de disponibilidade; **Somente disponíveis** exige o status `disponivel` em `public.limpeza_api`, no banco da Receita, por CNPJ. Clientes, resultados diferentes e empresas sem consulta são excluídos antes de aplicar o limite. O filtro usa o resultado histórico, sem chamar a API online. A seleção é salva no fluxo e congelada na execução; fluxos antigos continuam em Todos. Tabela ausente ou incompatível interrompe a geração filtrada, sem retornar todos silenciosamente.
 - UF, cidades, bairros, CNAEs e naturezas jurídicas têm dropdown com busca e multiseleção. As opções vêm por SQL de `public.empresas`, sem catálogos externos. A cidade acompanha as UFs escolhidas e o bairro exige cidades selecionadas; alterar UF limpa cidades/bairros, e alterar cidades limpa bairros. Código e descrição aparecem em CNAEs/naturezas.
 - Os catálogos são consultados uma vez e guardados no armazenamento local por até 24 horas, inclusive entre reinícios. Busca e paginação reutilizam esse cache. A primeira consulta de cidades/naturezas/bairros pode demorar, pois esses campos não têm índice na fonte atual. O carregamento é assíncrono, com tempo limite de três minutos e mensagens de erro; nunca retorna uma amostra como catálogo completo.
 - Situação **02 · Ativa** vem selecionada como filtro de geração. A situação não é acrescentada automaticamente nos novos fluxos. Layouts personalizados podem selecionar explicitamente esses campos. Execuções antigas mantêm o snapshot de saída que já estava congelado.
@@ -70,7 +71,7 @@ Novas execuções adotam a definição atual; execuções já criadas e retomada
 
 ## Limites e validação
 
-- Limite de empresas vazio significa todas as empresas que atendem aos filtros. Limite preenchido deve ser inteiro positivo; não há mais teto de 500 mil. A leitura continua em lotes de 2 mil registros, com paginação por CNPJ.
+- Limite de empresas vazio significa todas as empresas que atendem aos filtros. Limite preenchido deve ser inteiro positivo; não há mais teto de 500 mil. A leitura ocorre em lotes de 100 mil registros, com paginação por CNPJ.
 - Até 1 milhão de linhas por arquivo final.
 - Uma execução de fluxo ativa por aplicativo, sem concorrer com a limpeza local.
 - Raiz BQ: dry run e limite de 1 GB por consulta; até 1 milhão de documentos. Fonte vazia ou indisponível interrompe a execução, sem fallback silencioso para Neon.

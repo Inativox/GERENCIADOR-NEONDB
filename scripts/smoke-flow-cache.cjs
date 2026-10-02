@@ -7,10 +7,10 @@ const path = require('node:path');
 const artifact = process.argv.slice(2).find(argument => !argument.startsWith('--'));
 const root = artifact ? path.resolve(artifact) : path.resolve(__dirname, '..');
 const lowMemory = process.argv.includes('--low-memory');
-const totalRows = lowMemory ? 300001 : 100000;
+const totalRows = lowMemory ? 300001 : 100001;
 const rowsPerFile = lowMemory ? 300000 : 100000;
-const batchSize = 50000;
-// Match the production worker budget for 50k-row batches.
+const batchSize = 100000;
+// Match the production worker budget for 100k-row batches.
 const heapLimit = 512;
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
@@ -54,10 +54,21 @@ app.whenReady().then(async () => {
                     parentPort.postMessage({kept:result.counts.kept,files:outputs.length,maxPendingFiles,peakRss:Math.round(peakRss/1024/1024),peakHeap:Math.round(peakHeap/1024/1024),heap:Math.round(process.memoryUsage().heapUsed/1024/1024)});
                 })().catch(error=>{throw error;});
             `, { eval: true, resourceLimits: { maxOldGenerationSizeMb: heapLimit }, workerData: { pipeline: path.join(root, 'src/main/flows/pipeline.js'), directory, totalRows, rowsPerFile, lowMemory, batchSize } });
-            const timer = setTimeout(() => { void worker.terminate(); reject(new Error('Cache smoke timeout')); }, lowMemory ? 180000 : 45000);
-            worker.once('message', result => { clearTimeout(timer); resolve(result); });
-            worker.once('error', error => { clearTimeout(timer); reject(error); });
-            worker.once('exit', code => { if (code) { clearTimeout(timer); reject(new Error(`Cache worker exited: ${code}`)); } });
+            let completed, failure;
+            const timer = setTimeout(() => {
+                failure = new Error('Cache smoke timeout');
+                void worker.terminate();
+            }, lowMemory ? 300000 : 180000);
+            worker.once('message', result => { completed = result; });
+            worker.once('error', error => { failure = error; });
+            // On Windows, LMDB native handles may stay open until the worker exits.
+            // Receiving its result is not enough to safely delete the test directory.
+            worker.once('exit', code => {
+                clearTimeout(timer);
+                if (failure) reject(failure);
+                else if (code || !completed) reject(new Error(`Cache worker exited without a confirmed result: ${code}`));
+                else resolve(completed);
+            });
         });
         console.log(`Cache Electron aprovado: ${result.kept} registros, lotes de ${batchSize}, falha e retomada, deduplicação em disco, heap de ${result.heap} MiB com limite de ${heapLimit} MiB.`);
         console.log(`Exportação: ${result.files} arquivo(s), no máximo ${result.maxPendingFiles} XLSX aberto, pico RSS ${result.peakRss} MiB, pico heap ${result.peakHeap} MiB.`);

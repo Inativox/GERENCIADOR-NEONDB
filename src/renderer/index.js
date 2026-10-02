@@ -2196,6 +2196,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.9',
+            date: '2026-10-02',
+            highlights: 'Disponibilidade salva na geração e progresso 3D por etapa',
+            notes: [
+                'Na geração, escolha Todos ou Somente disponíveis usando o resultado salvo da Limpeza API. Somente disponíveis exclui clientes e empresas sem consulta antes de contar o limite. A consulta online continua separada.',
+                'Cena 3D integrada ao tema claro ou escuro, com enquadramento automático e indicadores legíveis em telas menores.',
+                'Percentual real da etapa e contagem processada. Etapas concluídas ficam verdes, erros vermelhos e dois minutos sem avanço geram um aviso amarelo.',
+                'Quando o total ainda não foi informado, a geração mostra a contagem de registros sem estimar um percentual.',
+                'Geração, enriquecimento e limpeza dos fluxos processam lotes de 100 mil registros, com retomada compatível com lotes anteriores.'
+            ]
+        },
+        {
             version: '1.8.8',
             date: '2026-10-02',
             highlights: 'Progresso da geração mais claro',

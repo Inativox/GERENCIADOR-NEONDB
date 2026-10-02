@@ -10,15 +10,20 @@ const COLUMNS = {
     email: 'text', estado: 'text', cidade: 'text', bairro: 'text', atividade_principal_cod: 'text',
     natureza_juridica_cod: 'text', data_abertura: 'date', opcao_mei: 'text'
 };
-function fixturePool({ columns = COLUMNS, rows = [], readError } = {}) {
+function fixturePool({ columns = COLUMNS, rows = [], readError, availabilityColumns = { cnpj: 'character', status: 'character varying' }, saved = [], availabilityError } = {}) {
     const calls = [];
     return {
         calls,
         async query(sql, values) {
             calls.push({ sql, values });
-            if (sql.includes('information_schema.columns')) return { rows: Object.entries(columns).map(([column_name, data_type]) => ({ column_name, data_type })) };
+            if (sql.includes('information_schema.columns')) {
+                if (values[1] === 'limpeza_api' && availabilityError) throw availabilityError;
+                const selected = values[1] === 'limpeza_api' ? availabilityColumns : columns;
+                return { rows: Object.entries(selected).map(([column_name, data_type]) => ({ column_name, data_type })) };
+            }
             if (readError) throw readError;
-            return { rows: rows.filter(row => row.cnpj > values[0]).slice(0, values.at(-1)) };
+            const available = sql.includes('EXISTS (SELECT 1 FROM "public"."limpeza_api"');
+            return { rows: rows.filter(row => row.cnpj > values[0] && (!available || saved.some(item => item.cnpj === row.cnpj && item.status === values[2]))).slice(0, values.at(-1)) };
         }
     };
 }
@@ -28,6 +33,43 @@ async function collect(options) {
     return pages;
 }
 const row = index => ({ cnpj: `0000000000000${index}`, razao_social: `Empresa ${index}`, situacao_cadastral_cod: '02' });
+
+test('saved availability excludes clients, unknown and missing results before counting the limit, including resume', async () => {
+    const rows = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(row);
+    const saved = [[1, 'cliente'], [3, 'disponivel'], [4, null], [5, 'erro'], [6, 'disponivel'], [6, 'disponivel'], [7, 'disponivel'], [9, 'disponivel']].map(([index, status]) => ({ cnpj: row(index).cnpj, status }));
+    const pool = fixturePool({ rows, saved });
+    const pages = await collect({ pool, filters: { availability: 'available', limit: 3 }, batchSize: 2 });
+    assert.deepEqual(pages.map(page => page.rows.map(item => item.cnpj)), [[row(3).cnpj, row(6).cnpj], [row(7).cnpj]]);
+    const reads = pool.calls.filter(call => !call.sql.includes('information_schema'));
+    assert.equal(pool.calls.filter(call => call.values[1] === 'limpeza_api').length, 1);
+    assert.deepEqual(reads.map(call => call.values), [['', ['02'], 'disponivel', 2], [row(6).cnpj, ['02'], 'disponivel', 1]]);
+    assert.match(reads[0].sql, /EXISTS \(SELECT 1 FROM "public"\."limpeza_api" a WHERE a\."cnpj" = e\."cnpj"::bpchar AND a\."status" = \$3::varchar\).*LIMIT \$4::integer/);
+    assert.doesNotMatch(reads[0].sql, /a\."cnpj"::|disponivel|JOIN/);
+    const resumed = await collect({ pool: fixturePool({ rows, saved }), filters: { availability: 'available' }, afterCnpj: pages[0].cursor, batchSize: 2 });
+    assert.deepEqual(resumed.flatMap(page => page.rows.map(item => item.cnpj)), [row(7).cnpj, row(9).cnpj]);
+    assert.deepEqual(await collect({ pool: fixturePool({ rows }), filters: { availability: 'available' } }), []);
+});
+
+test('all and legacy generation include unqueried companies without accessing saved availability', async () => {
+    for (const availability of [undefined, 'all']) {
+        const pool = fixturePool({ rows: [row(1), row(2)], availabilityError: new Error('Must not query saved availability') });
+        const pages = await collect({ pool, filters: { availability } });
+        assert.deepEqual(pages.flatMap(page => page.rows.map(item => item.cnpj)), [row(1).cnpj, row(2).cnpj]);
+        assert.ok(pool.calls.every(call => !call.sql.includes('limpeza_api') && !call.values.includes('limpeza_api')));
+    }
+});
+
+test('available generation fails closed when saved availability cannot be read', async () => {
+    for (const availabilityColumns of [{}, { cnpj: 'text' }, { cnpj: 'bigint', status: 'text' }]) {
+        const pool = fixturePool({ rows: [row(1)], availabilityColumns });
+        await assert.rejects(collect({ pool, filters: { availability: 'available' } }), /limpeza_api.*colunas textuais/);
+        assert.ok(pool.calls.every(call => call.sql.includes('information_schema')));
+    }
+    await assert.rejects(collect({ pool: fixturePool({ availabilityError: new Error('private secret') }), filters: { availability: 'available' } }), error => /disponibilidade salva/.test(error.message) && !error.message.includes('secret'));
+    const pool = fixturePool();
+    await assert.rejects(collect({ pool, filters: { availability: "available' OR true --" } }), /availability/);
+    assert.equal(pool.calls.length, 0);
+});
 
 test('Receita streams bounded pages with stable CNPJ cursor and default situation 02', async () => {
     const pool = fixturePool({ rows: [1, 2, 3, 4, 5, 6].map(row) });
@@ -123,17 +165,17 @@ test('Receita validates bounds, situation, lists, dates and cursors before datab
         await assert.rejects(collect({ pool, filters }));
         assert.equal(pool.calls.length, 0);
     }
-    await assert.rejects(collect({ pool: fixturePool(), batchSize: 50001 }), /lote Receita/);
+    await assert.rejects(collect({ pool: fixturePool(), batchSize: 100001 }), /lote Receita/);
     await assert.rejects(collect({ pool: fixturePool(), afterCnpj: 123 }), /Cursor Receita inválido/);
 });
 
-test('Receita fetches 50000-row pages and keeps the final partial page and cursor intact', async () => {
-    const pool = fixturePool({ rows: Array.from({ length: 50002 }, (_, index) => ({ ...row(index + 1), cnpj: String(index + 1).padStart(14, '0') })) });
-    const pages = await collect({ pool, filters: { limit: null }, batchSize: 50000 });
-    assert.deepEqual(pages.map(page => page.rows.length), [50000, 2]);
-    assert.deepEqual(pages.map(page => page.cursor), ['00000000050000', '00000000050002']);
-    assert.deepEqual(pool.calls.slice(1).map(call => call.values.at(-1)), [50000, 50000]);
-    assert.equal(new Set(pages.flatMap(page => page.rows.map(record => record.cnpj))).size, 50002);
+test('Receita fetches 100000-row pages and keeps the final partial page and cursor intact', async () => {
+    const pool = fixturePool({ rows: Array.from({ length: 100002 }, (_, index) => ({ ...row(index + 1), cnpj: String(index + 1).padStart(14, '0') })) });
+    const pages = await collect({ pool, filters: { limit: null }, batchSize: 100000 });
+    assert.deepEqual(pages.map(page => page.rows.length), [100000, 2]);
+    assert.deepEqual(pages.map(page => page.cursor), ['00000000100000', '00000000100002']);
+    assert.deepEqual(pool.calls.slice(1).map(call => call.values.at(-1)), [100000, 100000]);
+    assert.equal(new Set(pages.flatMap(page => page.rows.map(record => record.cnpj))).size, 100002);
 });
 
 test('Receita cancellation prevents requests and discards a returned batch', async () => {

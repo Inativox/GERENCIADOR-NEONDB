@@ -91,6 +91,8 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     assert.equal(await evaluate(`document.querySelector('.flow-editor').textContent.includes(${JSON.stringify(apiLabel)})`), false);
     await selectField('Operação', 'c6');
     await checkbox(apiLabel);
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('.flow-field')).find(item=>item.textContent.startsWith('Disponibilidade salva')).querySelector('select').value`), 'all');
+    await selectField('Disponibilidade salva', 'available');
     await input('Nome do fluxo', 'C6 comércio');
     await input('Limite de empresas', '');
     await openDropdown('UFs');
@@ -122,6 +124,7 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     assert.deepEqual(first.generation.bairro, ['Centro', 'Cambuí']);
     assert.deepEqual(first.generation.naturezas, ['2062']);
     assert.equal(first.generation.limit, null);
+    assert.equal(first.generation.availability, 'available');
     const requests = await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0]==='options').map(item=>item[1])`);
     assert.deepEqual(requests.find(item=>item.field==='cidade').uf,['SP','RJ']);
     assert.deepEqual(requests.find(item=>item.field==='bairro').cidade,['Campinas','São Paulo']);
@@ -146,6 +149,7 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     await click('Salvar fluxo');
     await waitFor(`window.electronAPI.inspect().flows.length===2`);
     await waitFor(`document.querySelectorAll('.flow-presets button').length === 2`);
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('.flow-field')).find(item=>item.textContent.startsWith('Disponibilidade salva')).querySelector('select').value`), 'available');
     assert.equal(await evaluate(`Array.from(document.querySelectorAll('.flow-check')).find(item=>item.textContent===${JSON.stringify(apiLabel)}).querySelector('input').checked`), false);
     await checkbox(apiLabel);
     await click('Salvar fluxo');

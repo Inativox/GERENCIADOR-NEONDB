@@ -3,7 +3,7 @@ const { CNPJ_FORMAT } = require('../documentos');
 const { telefoneParaGeracao } = require('./telefones');
 
 const MAX_ROWS = Number.MAX_SAFE_INTEGER;
-const MAX_BATCH_SIZE = 50000;
+const MAX_BATCH_SIZE = 100000;
 const SITUACOES = Object.freeze({ '01': 'Nula', '02': 'Ativa', '03': 'Suspensa', '04': 'Inapta', '08': 'Baixada' });
 const FIELD_ALIASES = Object.freeze({
     cnpj: ['cnpj'], razao_social: ['razao_social'],
@@ -52,6 +52,21 @@ async function getReceitaMetadata(pool) {
     return { schema: 'public', table: 'empresas', columns, types, fields };
 }
 
+async function getAvailabilityMetadata(pool) {
+    let result;
+    try {
+        result = await pool.query(
+            'SELECT column_name, data_type, udt_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position',
+            ['public', 'limpeza_api']
+        );
+    } catch {
+        fail('Não foi possível verificar a disponibilidade salva. Confira a conexão e a permissão de leitura da Limpeza API.');
+    }
+    const types = Object.fromEntries((result.rows || []).map(row => [row.column_name, row.data_type === 'USER-DEFINED' ? row.udt_name : row.data_type]));
+    if (!TEXT_TYPES.has(types.cnpj) || !TEXT_TYPES.has(types.status)) fail('Para gerar somente disponíveis, a tabela public.limpeza_api deve conter as colunas textuais cnpj e status no banco da Receita.');
+    return { cnpjType: TEXT_SQL_TYPES[types.cnpj], statusType: TEXT_SQL_TYPES[types.status] };
+}
+
 function textList(value, name) {
     if (value == null) return [];
     if (!Array.isArray(value) || value.length > 500 || value.some(item => typeof item !== 'string' || !item.trim())) fail(`Filtro Receita inválido: ${name} deve ser uma lista de textos (máximo 500).`);
@@ -80,6 +95,7 @@ function normalizeFilters(filters) {
         cnaes: textList(filters.cnaes, 'cnaes'), naturezas: textList(filters.naturezas, 'naturezas'),
         dateFrom: isoDate(filters.dateFrom, 'dateFrom'), dateTo: isoDate(filters.dateTo, 'dateTo'),
         mei: mode(filters.mei, 'mei', ['all', 'yes', 'no']),
+        availability: mode(filters.availability, 'availability', ['all', 'available']),
         phone: mode(filters.phone, 'phone', ['all', 'with', 'without']), email: mode(filters.email, 'email', ['all', 'with', 'without'])
     };
     if (normalized.dateFrom && normalized.dateTo && normalized.dateFrom > normalized.dateTo) fail('A data inicial da Receita deve ser anterior ou igual à data final.');
@@ -102,6 +118,12 @@ function buildQuery(metadata, filters, cursor, limit) {
     // Cast the parameters to the stored types. Casting CHAR columns to TEXT
     // prevents PostgreSQL from using their indexes for filtering and pagination.
     const where = [`${field('cnpj', true)} > ${bind(cursor)}::${cnpjType}`, `${situation} = ANY(${bind(filters.situacoes)}::${situationType || 'text'}[])`];
+    if (filters.availability === 'available') {
+        const saved = metadata.availability;
+        // Keep the saved CNPJ index usable; filter before LIMIT and avoid duplicating companies.
+        const cnpj = `${field('cnpj', true)}${saved.cnpjType === cnpjType ? '' : `::${saved.cnpjType}`}`;
+        where.push(`EXISTS (SELECT 1 FROM "public"."limpeza_api" a WHERE a."cnpj" = ${cnpj} AND a."status" = ${bind('disponivel')}::${saved.statusType})`);
+    }
     for (const [name, input] of [['estado', filters.uf], ['cidade', filters.cidade]]) {
         if (input.length) where.push(`${normalized(name)} = ANY(${bind(input)}::text[])`);
     }
@@ -141,6 +163,8 @@ async function* iterateReceita({ pool, filters = {}, batchSize = 2000, afterCnpj
     if (typeof afterCnpj !== 'string' || (afterCnpj && !CNPJ_FORMAT.test(afterCnpj))) fail('Cursor Receita inválido: informe um CNPJ textual com 14 posições.');
     checkCancelled(signal);
     const metadata = await getReceitaMetadata(pool);
+    checkCancelled(signal);
+    if (selected.availability === 'available') metadata.availability = await getAvailabilityMetadata(pool);
     checkCancelled(signal);
     let remaining = selected.limit;
     let cursor = afterCnpj;

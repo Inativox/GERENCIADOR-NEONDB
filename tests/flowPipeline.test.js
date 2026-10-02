@@ -36,8 +36,9 @@ test('pipeline preserves Receita situation and text documents, splits output, es
     let generationCalls = 0;
     const fake = providers(source);
     const iterate = fake.iterateReceita;
-    fake.iterateReceita = args => { generationCalls++; return iterate(args); };
     const config = flow(); config.output.fileName = 'lista rca';
+    config.generation.availability = 'available';
+    fake.iterateReceita = args => { assert.equal(args.filters.availability, 'available'); generationCalls++; return iterate(args); };
     const args = { flow: config, user: { username: 'Operador' }, jobDir, providers: fake };
     const result = await runFlow(args);
     assert.equal(result.status, 'completed'); assert.equal(result.counts.generated, 3); assert.equal(result.counts.kept, 3);

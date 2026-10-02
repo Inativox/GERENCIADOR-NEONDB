@@ -10,7 +10,7 @@ const OPERATIONS = [
 ];
 function defaults() {
     return { id: '', revision: 0, name: 'Novo fluxo', operation: 'c6', pipelines: [90],
-        generation: { limit: 100000, uf: [], cidade: [], bairro: [], cnaes: [], naturezas: [], dateFrom: '', dateTo: '', mei: 'all', phone: 'with', email: 'all', situacoes: ['02'] },
+        generation: { limit: 100000, uf: [], cidade: [], bairro: [], cnaes: [], naturezas: [], dateFrom: '', dateTo: '', mei: 'all', phone: 'with', email: 'all', situacoes: ['02'], availability: 'all' },
         enrichment: { enabled: false, strategy: 'append', fillCpf: false },
         api: { enabled: true, keyMode: 'dupla', delayMs: 60000 },
         cleaning: { enabled: true, rootSource: 'bq', rootFile: '', blocklist: true, invalidPhones: false, removeLandlines: false, fillLivre5: false, prohibitedCnaes: [...PROHIBITED_CNAES].map(value => value.padStart(7, '0')) },
@@ -43,7 +43,7 @@ function validateFlow(input, existing, { resolveFormat = require('./formats').ge
     resolveFormat(o.formatId, { includeSituacao: o.includeSituacao !== false });
     return { id, revision: (existing?.revision || 0) + 1, name, operation, pipelines,
         generation: { limit: g.limit == null || g.limit === '' ? null : number(g.limit, 1, MAX_ROWS), uf: list(g.uf, /^[A-Z]{2}$/i).map(value => value.toUpperCase()), cidade: locations(g.cidade), bairro: locations(g.bairro), cnaes: list(g.cnaes, /^\d{1,7}$/, 500), naturezas: list(g.naturezas, /^\d{1,4}$/, 500), dateFrom: from, dateTo: to,
-            mei: option(g.mei, ['all', 'yes', 'no']), phone: option(g.phone, ['all', 'with', 'without']), email: option(g.email, ['all', 'with', 'without']), situacoes },
+            mei: option(g.mei, ['all', 'yes', 'no']), phone: option(g.phone, ['all', 'with', 'without']), email: option(g.email, ['all', 'with', 'without']), situacoes, availability: option(g.availability, ['all', 'available']) },
         enrichment: { enabled: e.enabled === true, strategy: option(e.strategy, ['append', 'overwrite', 'ignore']), fillCpf: e.fillCpf === true },
         api: { enabled: operation === 'c6' && (input.api?.enabled == null || input.api.enabled === true), keyMode: 'dupla', delayMs: 60000 },
         cleaning: { enabled: c.enabled !== false, rootSource, rootFile, blocklist: c.blocklist !== false, invalidPhones: c.invalidPhones === true, removeLandlines: c.removeLandlines === true, fillLivre5: c.fillLivre5 === true, prohibitedCnaes: list(c.prohibitedCnaes, /^\d{1,7}$/, 500) },

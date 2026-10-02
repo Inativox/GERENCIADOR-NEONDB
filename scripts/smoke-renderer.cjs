@@ -234,6 +234,9 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate(`document.querySelector('.flow-progress-activity') === null`), true);
     await evaluate(`document.querySelector('#fluxos-react-root .flow-view-switch button').click()`);
     await waitFor(`!!document.querySelector('input[name="outputFileName"]')`);
+    const availabilityField = `Array.from(document.querySelectorAll('#fluxos-react-root .flow-field')).find(item => item.firstElementChild.textContent === 'Disponibilidade salva').querySelector('select')`;
+    assert.equal(await evaluate(`${availabilityField}.value`), 'all');
+    await evaluate(`(() => { const select = ${availabilityField}; select.value = 'available'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
     await evaluate(`
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
         const field = document.querySelector('input[name="outputFileName"]');
@@ -245,14 +248,52 @@ app.whenReady().then(async () => {
     await evaluate(`document.querySelector('#fluxos-react-root form').requestSubmit()`);
     await waitFor(`document.getElementById('fluxos-react-root').textContent.includes('Fluxo salvo.')`);
     assert.equal(savedFlow.output.fileName, 'lista rca');
+    assert.equal(savedFlow.generation.availability, 'available');
     await evaluate(`document.querySelector('#fluxos-react-root .flow-new').click()`);
     await waitFor(`document.querySelector('input[name="outputFileName"]').value === ''`);
+    assert.equal(await evaluate(`${availabilityField}.value`), 'all');
     await evaluate(`document.querySelector('#fluxos-react-root .flow-presets button').click()`);
     await waitFor(`document.querySelector('input[name="outputFileName"]').value === 'lista rca'`);
+    assert.equal(await evaluate(`${availabilityField}.value`), 'available');
+    await evaluate(`document.querySelectorAll('#fluxos-react-root .flow-view-switch button')[1].click(); document.getElementById('fluxos').scrollTop = 0`);
+    const sceneJob = { ...syntheticJob, flowSnapshot: { ...defaults(), enrichment: { enabled: true, strategy: 'append' }, api: { enabled: true, keyMode: 'dupla', delayMs: 60000 } } };
+    window.webContents.send('flow-update', sceneJob);
+    await waitFor(`document.querySelectorAll('.flow-scene-station').length === 5`);
+    assert.equal(await evaluate(`document.querySelector('.flow-scene-station.state-active').dataset.stage`), 'cleaning');
+    assert.equal(await evaluate(`document.querySelectorAll('.flow-scene-station.state-complete').length`), 3);
+    assert.equal(await evaluate(`document.querySelector('.flow-scene [role="progressbar"]').getAttribute('aria-valuenow')`), '25');
+    window.webContents.send('flow-update', { ...sceneJob, progress: { stage: 'cleaning', processed: 750, total: 1000 }, counts: { generated: 1000, kept: 100, blockedPhones: 9000 } });
+    await waitFor(`document.querySelector('.flow-scene [role="progressbar"]').getAttribute('aria-valuenow') === '75'`);
+    assert.match(await evaluate(`document.querySelector('.flow-scene-station.state-active .flow-scene-station-readout').textContent`), /75%/);
+    assert.match(await evaluate(`document.querySelector('.flow-scene-progress-summary').textContent`), /750 de 1.000 registros processados/);
+    await evaluate(`document.querySelector('.flow-scene-steps button[data-stage="api"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('.flow-scene-insight-label').textContent`), 'API C6');
+    assert.equal(await evaluate(`document.querySelector('.flow-scene-station.state-active').dataset.stage`), 'cleaning');
+    window.webContents.send('flow-update', { ...sceneJob, status: 'interrupted' });
+    await waitFor(`!!document.querySelector('.flow-scene-station.state-paused') && document.querySelector('.flow-scene').dataset.motion === 'off'`);
+    window.webContents.send('flow-update', { ...sceneJob, status: 'completed', stage: 'export' });
+    await waitFor(`document.querySelectorAll('.flow-scene-station.state-complete').length === 5`);
+    window.webContents.send('flow-update', { ...sceneJob, status: 'failed', stage: 'root' });
+    await waitFor(`document.querySelector('.flow-scene-status').textContent.includes('Falhou')`);
+    await evaluate(`document.querySelector('.flow-scene-toggle').click()`);
+    assert.equal(await evaluate(`document.querySelector('.flow-scene-viewport') === null`), true);
+    assert.equal(await evaluate(`localStorage.getItem('flows-scene-view')`), 'compact');
+    await evaluate(`document.querySelector('.flow-scene-toggle').click()`);
+    window.webContents.send('flow-update', sceneJob);
+    await waitFor(`!!document.querySelector('.flow-scene-station.state-active')`);
+    assert.equal(await evaluate(`document.querySelector('.flow-scene').scrollWidth <= document.querySelector('.flow-scene').clientWidth + 1`), true);
+    await evaluate(`document.getElementById('dark-theme-btn').click()`);
+    await delay(100);
+    await fs.writeFile(path.resolve(__dirname, '../out/flow-scene-dark.png'), (await window.webContents.capturePage()).toPNG());
+    await evaluate(`document.getElementById('light-theme-btn').click(); document.querySelector('[data-tab-name="local"]').click()`);
+    await waitFor(`document.querySelector('.flow-scene').dataset.motion === 'off'`);
     assert.deepEqual(errors, []);
     console.log('Smoke aprovado: React/worker, limpeza local sequencial, controles removidos, preferências, bloqueio de lote, temas e layout compacto, sem banco de produção.');
-}).catch(error => {
+}).catch(async error => {
     console.error(error);
+    if (window && !window.isDestroyed()) {
+        console.error('Estado da limpeza de colunas:', await evaluate(`JSON.stringify({ status: document.querySelector('.columns-status')?.textContent, activity: [...document.querySelectorAll('#columns-activity > p')].slice(-5).map(node => node.textContent) })`).catch(() => 'Janela indisponível.'));
+    }
     if (errors.length) console.error('Erros do renderer:', errors);
     exitCode = 1;
 }).finally(async () => {

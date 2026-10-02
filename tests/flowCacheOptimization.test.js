@@ -163,32 +163,33 @@ test('automatic cache cleanup preserves exports even if output was selected insi
 
 for (const compressed of [false, true]) {
     for (const interruptedStage of ['enrichment', 'cleaning']) {
-        test(`${interruptedStage} resumes a ${compressed ? 'compressed' : 'legacy'} 2000-row checkpoint with 50000-row batches`, async t => {
-            const directory = fixture(t), selected = flow(directory), rows = source(52001);
-            selected.output.rowsPerFile = 60000;
+        const initialBatchSize = compressed ? 50000 : 2000;
+        test(`${interruptedStage} resumes a ${compressed ? 'compressed' : 'legacy'} ${initialBatchSize}-row checkpoint with 100000-row batches`, async t => {
+            const directory = fixture(t), selected = flow(directory), rows = source(initialBatchSize + 100001);
+            selected.output.rowsPerFile = 200000;
             let generated = 0, calls = 0, fail = true;
             const resumedDocuments = [], progress = [];
             const query = documents => {
                 if (fail && ++calls === 2) throw new Error('Synthetic interruption');
-                if (!fail) resumedDocuments.push(...documents);
+                if (!fail) for (const document of documents) resumedDocuments.push(document);
                 return [];
             };
             const providers = {
-                async *iterateReceita() { generated++; for (let i = 0; i < rows.length; i += 2000) yield { rows: rows.slice(i, i + 2000) }; },
+                async *iterateReceita() { generated++; for (let i = 0; i < rows.length; i += initialBatchSize) yield { rows: rows.slice(i, i + initialBatchSize) }; },
                 async queryEnrichment(documents) { return interruptedStage === 'enrichment' ? query(documents) : []; },
                 async queryPhones(kind, phones) { return interruptedStage === 'cleaning' ? query(phones) : []; },
             };
             const args = { flow: selected, user: { username: 'Davi' }, jobDir: directory, providers, cachePolicy: { compressed, prune: true } };
-            await assert.rejects(runFlow(args));
+            await assert.rejects(runFlow({ ...args, processingPolicy: { batchSize: initialBatchSize } }));
             fail = false;
-            const result = await runFlow({ ...args, processingPolicy: { batchSize: 50000 }, onUpdate(update) {
+            const result = await runFlow({ ...args, processingPolicy: { batchSize: 100000 }, onUpdate(update) {
                 if (update.progress?.stage === interruptedStage) progress.push(update.progress.processed);
             } });
             assert.equal(generated, 1);
-            assert.ok(progress.includes(2000));
-            assert.ok(progress.includes(52000));
-            assert.ok(progress.includes(52001));
-            if (interruptedStage === 'enrichment') assert.deepEqual(resumedDocuments, rows.slice(2000).map(row => row.cnpj));
+            assert.ok(progress.includes(initialBatchSize));
+            assert.ok(progress.includes(initialBatchSize + 100000));
+            assert.ok(progress.includes(rows.length));
+            if (interruptedStage === 'enrichment') assert.deepEqual(resumedDocuments, rows.slice(initialBatchSize).map(row => row.cnpj));
             assert.equal(result.counts.kept, rows.length);
             assert.equal(result.counts.exported, rows.length);
             assert.equal(result.counts.repeatedDocuments, 0);

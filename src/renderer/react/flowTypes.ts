@@ -10,6 +10,7 @@ export interface Flow {
         limit: number | null; uf: string[]; cidade: string[]; bairro: string[]; cnaes: string[]; naturezas: string[];
         dateFrom: string; dateTo: string; mei: 'all' | 'yes' | 'no';
         phone: 'all' | 'with' | 'without'; email: 'all' | 'with' | 'without'; situacoes: string[];
+        availability?: 'all' | 'available';
     };
     enrichment: { enabled: boolean; strategy: 'append' | 'overwrite' | 'ignore'; fillCpf: boolean };
     api?: { enabled: boolean; keyMode: 'dupla'; delayMs: 60000 };
@@ -25,6 +26,7 @@ export interface FlowJob {
     createdAt: string; updatedAt: string; counts: Record<string, number | null | undefined>;
     outputs: { path: string; kind: string; rows: number }[]; logs: string[]; error?: string; errorCode?: string;
     flowSnapshot?: Flow;
+    progress?: { stage: string; processed: number; total: number | null; complete?: boolean } | null;
     cacheDiscarded?: boolean;
     rootInfo?: { source?: string; count?: number; rows?: number; documents?: number; pipelines?: number[]; queriedAt?: string; coverage?: string; skipped?: number; restored?: number };
 }

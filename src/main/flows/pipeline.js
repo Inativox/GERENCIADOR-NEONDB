@@ -142,7 +142,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
     let stageProgress = null;
     // Batch size is a runtime setting; changing it must not invalidate saved cursors.
     const batchSize = processingPolicy.batchSize ?? BATCH_SIZE;
-    if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 50000) throw validation('O lote de processamento deve estar entre 1 e 50.000 registros.');
+    if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 100000) throw validation('O lote de processamento deve estar entre 1 e 100.000 registros.');
     const checkpointPath = path.join(jobDir, 'checkpoint.json');
     async function poolFor(name) {
         if (pools[name]) return pools[name];

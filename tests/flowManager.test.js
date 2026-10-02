@@ -63,6 +63,29 @@ test('configuration validates bounds/dates and snapshot enforces authenticated b
     assert.throws(() => validateFlow({ ...input, pipelines: ['90'] }), /inteiro/);
 });
 
+test('saved availability persists and freezes per execution independently of the online API', async t => {
+    const f = fixture(t);
+    const input = defaults();
+    assert.equal(input.generation.availability, 'all');
+    delete input.generation.availability;
+    assert.equal(validateFlow(input).generation.availability, 'all');
+    // Legacy execution snapshots keep their original fingerprint when resuming.
+    assert.equal(Object.hasOwn(effectiveFlow(input, { username: 'Davi' }).generation, 'availability'), false);
+    input.generation.availability = 'available';
+    input.api.enabled = false;
+    const saved = f.manager.save(input);
+    assert.equal(f.manager.bootstrap().flows[0].generation.availability, 'available');
+    const job = f.manager.start({ flowId: saved.id, outputDirectory: f.directory });
+    f.manager.save({ ...saved, generation: { ...saved.generation, availability: 'all' } });
+    assert.equal(job.flowSnapshot.generation.availability, 'available');
+    assert.equal(job.flowSnapshot.api.enabled, false);
+    assert.throws(() => validateFlow({ ...input, generation: { ...input.generation, availability: 'unknown' } }), /Opção inválida/);
+    for (let n = 0; n < 100 && !f.workers.length; n++) await tick();
+    assert.equal(f.workers[0].data.flow.generation.availability, 'available');
+    f.workers[0].emit('message', { type: 'error', message: 'Synthetic cancellation', code: 'FLOW_CANCELLED' });
+    await idle(f.manager);
+});
+
 test('output names persist independently and freeze per execution, with a safe fallback for older flows', async t => {
     const f = fixture(t);
     const input = defaults(); input.name = 'C6 / comércio: SP'; input.output.fileName = '  lista rca  ';
