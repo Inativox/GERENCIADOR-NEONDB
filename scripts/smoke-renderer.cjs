@@ -209,6 +209,29 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate(`document.getElementById('fluxos-react-root').textContent.includes('Telefones removidos pela blocklist')`), true);
     assert.equal(await evaluate(`document.getElementById('fluxos-react-root').scrollWidth <= document.getElementById('fluxos-react-root').clientWidth + 1`), true);
     await fs.writeFile(path.resolve(__dirname, '../out/flow-progress-smoke.png'), (await window.webContents.capturePage()).toPNG());
+    const generationJob = { ...syntheticJob, stage: 'generation', progress: { stage: 'generation', processed: 9460000, total: null }, counts: { generated: 9460000 } };
+    window.webContents.send('flow-update', generationJob);
+    await waitFor(`!!document.querySelector('.flow-progress-activity')`);
+    assert.equal(await evaluate(`document.querySelector('.flow-progress progress') === null`), true);
+    assert.equal(await evaluate(`document.querySelector('.flow-progress-activity').hasAttribute('aria-valuenow')`), false);
+    assert.equal(await evaluate(`document.querySelector('.flow-progress-detail').textContent`), '9.460.000 registros gerados');
+    assert.equal(await evaluate(`document.querySelector('.flow-progress-heading span').textContent`), 'Buscando registros');
+    assert.ok(await evaluate(`document.querySelector('.flow-progress-activity span').getBoundingClientRect().width < document.querySelector('.flow-progress-activity').getBoundingClientRect().width / 2`));
+    if (!await evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`)) {
+        const before = await evaluate(`getComputedStyle(document.querySelector('.flow-progress-activity span')).transform`);
+        await delay(250);
+        assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('.flow-progress-activity span')).transform`), before, 'A busca sem total deve mostrar movimento');
+    }
+    await fs.writeFile(path.resolve(__dirname, '../out/flow-progress-generation.png'), (await window.webContents.capturePage()).toPNG());
+    window.webContents.send('flow-update', { ...generationJob, status: 'interrupted' });
+    await waitFor(`!!document.querySelector('.flow-progress-activity.is-paused')`);
+    assert.equal(await evaluate(`document.querySelector('.flow-progress-heading span').textContent`), 'Execução pausada');
+    if (!await evaluate(`matchMedia('(prefers-reduced-motion: reduce)').matches`)) {
+        assert.equal(await evaluate(`getComputedStyle(document.querySelector('.flow-progress-activity span')).animationPlayState`), 'paused');
+    }
+    window.webContents.send('flow-update', { ...syntheticJob, progress: { stage: 'cleaning', processed: 750, total: 1000 } });
+    await waitFor(`document.querySelector('.flow-progress progress')?.value === 75`);
+    assert.equal(await evaluate(`document.querySelector('.flow-progress-activity') === null`), true);
     await evaluate(`document.querySelector('#fluxos-react-root .flow-view-switch button').click()`);
     await waitFor(`!!document.querySelector('input[name="outputFileName"]')`);
     await evaluate(`

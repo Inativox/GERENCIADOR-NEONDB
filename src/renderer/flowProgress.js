@@ -18,9 +18,11 @@
         const processed = progress.processed || 0;
         const total = progress.total;
         const percent = finished || progress.complete ? 100 : total > 0 ? Math.min(100, Math.max(0, processed / total * 100)) : null;
+        const paused = ['failed', 'cancelled', 'interrupted'].includes(job.status);
         return { stages, stage, label: finished ? 'Concluído' : labels[stage] || 'Preparando execução', processed, total, percent,
-            detail: total != null ? `${number(processed)} de ${number(total)} registros` : `${number(processed)} registros · total ainda em apuração`,
-            paused: ['failed', 'cancelled', 'interrupted'].includes(job.status), finished };
+            detail: total != null ? `${number(processed)} de ${number(total)} registros` : `${number(processed)} registros${stage === 'generation' ? ' gerados' : ' processados'}`,
+            activity: paused ? 'Execução pausada' : stage === 'generation' ? 'Buscando registros' : 'Processando',
+            paused, finished };
     }
     function render(job, jsx, jsxs) {
         const data = model(job);
@@ -29,9 +31,12 @@
                 className: data.finished || index < data.stages.indexOf(data.stage) ? 'is-complete' : stage === data.stage ? 'is-current' : '',
                 'aria-current': stage === data.stage ? 'step' : undefined, children: labels[stage],
             }, stage)) }),
-            jsxs('div', { className: 'flow-progress-heading', children: [jsx('strong', { children: data.label }), jsx('span', { children: data.percent == null ? 'Em andamento' : `${data.percent.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` })] }),
-            jsx('progress', { max: 100, ...(data.percent == null ? {} : { value: data.percent }), 'aria-label': `Progresso de ${data.label}` }),
+            jsxs('div', { className: 'flow-progress-heading', children: [jsx('strong', { children: data.label }), jsx('span', { children: data.percent == null ? data.activity : `${data.percent.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` })] }),
+            data.percent == null
+                ? jsx('div', { className: `flow-progress-activity${data.paused ? ' is-paused' : ''}`, role: 'progressbar', 'aria-label': `Progresso de ${data.label}`, 'aria-valuetext': `${data.activity}. ${data.detail}. Total desconhecido.`, children: jsx('span', { 'aria-hidden': true }) })
+                : jsx('progress', { max: 100, value: data.percent, 'aria-label': `Progresso de ${data.label}` }),
             jsx('p', { className: 'flow-progress-detail', children: `${data.detail}${data.paused ? ' · execução pausada' : ''}` }),
+            data.percent == null && data.stage === 'generation' ? jsx('p', { className: 'flow-progress-detail', children: 'O total será conhecido ao terminar a geração. A contagem avança a cada lote salvo.' }) : null,
             jsx('small', { children: 'A retomada preserva os lotes salvos.' }),
         ] });
     }

@@ -170,7 +170,11 @@ test('API retoma lotes confirmados e reaproveita a metade bem sucedida do lote q
 
 test('barra mede registros processados, e geração sem total conhecido permanece indeterminada', () => {
     assert.equal(model({ status: 'running', stage: 'cleaning', progress: { stage: 'cleaning', processed: 500, total: 2000 } }).percent, 25);
-    assert.equal(model({ status: 'running', stage: 'generation', counts: { generated: 1000 } }).percent, null);
+    const unknown = model({ status: 'running', stage: 'generation', counts: { generated: 9460000 } });
+    assert.equal(unknown.percent, null);
+    assert.equal(unknown.detail, '9.460.000 registros gerados');
+    assert.equal(unknown.activity, 'Buscando registros');
+    assert.equal(model({ status: 'interrupted', stage: 'generation', counts: { generated: 1000 } }).activity, 'Execução pausada');
     assert.equal(model({ status: 'failed', stage: 'enrichment', progress: { stage: 'enrichment', processed: 10, total: 100 } }).paused, true);
     assert.equal(model({ status: 'empty', stage: 'export', progress: { stage: 'export', processed: 0, total: 0 } }).percent, 100);
 });

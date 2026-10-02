@@ -2196,6 +2196,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.8',
+            date: '2026-10-02',
+            highlights: 'Progresso da geração mais claro',
+            notes: [
+                'A geração sem total conhecido mostra um indicador em movimento e a contagem de registros gerados a cada lote salvo.',
+                'As etapas com total conhecido exibem o percentual real. O indicador para quando a execução é interrompida.',
+                'Inclui o processamento em lotes de 50 mil registros da versão 1.8.7.'
+            ]
+        },
+        {
             version: '1.8.7',
             date: '2026-10-02',
             highlights: 'Lotes de 50 mil registros nos fluxos',
