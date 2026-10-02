@@ -44,6 +44,8 @@ test('native folder selection gates start and manual cleaning excludes flow star
     assert.equal((await f.invoke('flows-start', { flowId: 'x', outputDirectory: f.directory })).success, true);
     f.setCleaning(true); assert.equal((await f.invoke('flows-start', { flowId: 'x', outputDirectory: f.directory })).success, false);
     assert.equal((await f.invoke('flows-resume', 'job')).success, false);
+    assert.equal((await f.invoke('flows-configure-bq')).success, false);
+    assert.equal((await f.invoke('flows-renew-bq')).success, false);
     assert.equal((await f.invoke('flows-open-output', { jobId: 'x', path: 'else' })).success, false);
 });
 

@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     downloadRecording: (url, fileName) => ipcRenderer.invoke('download-recording', url, fileName),
 
     // --- Funções da Limpeza Local ---
+    localCleaningRootOptions: () => ipcRenderer.invoke('local-cleaning-root-options'),
     flowsBootstrap: () => ipcRenderer.invoke('flows-bootstrap'),
     flowsSave: (flow) => ipcRenderer.invoke('flows-save', flow),
       flowsReceitaOptions: (input) => ipcRenderer.invoke('flows-receita-options', input),

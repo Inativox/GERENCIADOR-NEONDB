@@ -70,6 +70,13 @@ function register() {
             throw error;
         }
     };
+    // Shared Google access for both generated flows and Local Cleaning.
+    state.bqRootService = {
+        async loadRoot(pipelines, options = {}) {
+            if (login.isBusy()) throw new Error('Conclua o login Google antes de carregar a raiz BQ.');
+            return queryBq(client => client.loadRoot(pipelines, options), options.signal);
+        },
+    };
     const manager = createFlowManager({
         baseDirectory: path.join(app.getPath('userData'), 'flows'), getUser: () => state.currentUser,
         getCacheDirectory: cacheDirectory,
@@ -82,7 +89,7 @@ function register() {
         },
         async resolveRoot(flow, options) {
             const source = flow.cleaning.enabled ? flow.cleaning.rootSource : 'none';
-            if (source === 'bq') return queryBq(client => client.loadRoot(flow.pipelines, options), options.signal);
+            if (source === 'bq') return state.bqRootService.loadRoot(flow.pipelines, options);
             if (source === 'file') return readRootFile(flow.cleaning.rootFile, options.signal);
             if (source === 'neon') {
                 if (!config().enrichment) throw new Error('Configure o banco para consultar a raiz Neon.');
@@ -184,7 +191,7 @@ function register() {
         finally { await pool.end(); }
     }));
     ipcMain.handle('flows-configure-bq', protect(async () => {
-        if (manager.isBusy() || login.isBusy()) throw new Error('Aguarde ou cancele o fluxo e conclua o login Google antes de mudar o acesso.');
+        if (manager.isBusy() || login.isBusy() || require('./limpeza').isCleaning()) throw new Error('Aguarde a limpeza ou o fluxo e conclua o login Google antes de mudar o acesso.');
         const result = await dialog.showOpenDialog(state.mainWindow, { title: 'Importar credencial BQ privada desta máquina', properties: ['openFile'], filters: [{ name: 'Credencial Google', extensions: ['json'] }] });
         if (result.canceled || !result.filePaths.length) return { cancelled: true };
         const file = result.filePaths[0];
@@ -199,7 +206,7 @@ function register() {
     }));
     ipcMain.handle('flows-test-bq', protect(() => queryBq(client => client.test())));
     ipcMain.handle('flows-renew-bq', protect(() => {
-        if (manager.isBusy()) throw new Error('Aguarde ou cancele o fluxo antes de renovar o login Google manualmente.');
+        if (manager.isBusy() || require('./limpeza').isCleaning()) throw new Error('Aguarde a limpeza ou o fluxo antes de renovar o login Google manualmente.');
         return login.renew(state.currentUser.username);
     }));
     ipcMain.handle('flows-bq-auto-login', protect(input => {

@@ -135,7 +135,20 @@
                                         d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z" />
                                 </svg>Selecionar raiz</button>
                             <button id="autoRootBtn" style="flex-grow: 1;">Auto Raiz: OFF</button>
-                            <button id="feedRootBtn" style="flex-grow: 1;">Alimentar Raiz</button>
+                            <button id="feedRootBtn" style="flex-grow: 1;" title="Importa CNPJs para a raiz do Banco de Dados.">Alimentar Raiz (BD)</button>
+                        </div>
+                        <div id="autoRootOptions" class="local-root-options" hidden>
+                            <label for="autoRootSource">Fonte do Auto Raiz
+                                <select id="autoRootSource"><option value="neon">Banco de Dados</option><option value="bq">BigQuery</option></select>
+                            </label>
+                            <div id="autoRootBqOptions" hidden>
+                                <label for="autoRootOperation">Pipeline
+                                    <select id="autoRootOperation"><option value="c6">C6 — Abertura</option></select>
+                                </label>
+                                <p class="local-root-hint">Remove empresas que já passaram pelo pipeline escolhido, usando o histórico disponível no Bitrix. A blocklist e os filtros de telefone usam o Banco de Dados.</p>
+                                <div class="local-bq-actions"><button id="localBqLoginBtn" type="button">Entrar no Google</button><button id="localBqImportBtn" type="button">Importar chave BQ</button><button id="localBqTestBtn" type="button">Testar acesso</button></div>
+                                <p id="localBqStatus" class="local-root-hint" role="status">Usa o acesso Google já configurado nesta máquina.</p>
+                            </div>
                         </div>
                         <span id="cadence-mode-flag" class="cadence-flag" role="status">Modo cadência</span>
                         <div id="rootFilePath" class="files" style="margin-bottom: 1rem;"></div>

@@ -522,6 +522,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let removeLandlinesEnabled = false; // NOVO
     const selectRootBtn = document.getElementById('selectRootBtn');
     const autoRootBtn = document.getElementById('autoRootBtn');
+    const autoRootOptions = document.getElementById('autoRootOptions');
+    const autoRootSource = document.getElementById('autoRootSource');
+    const autoRootOperation = document.getElementById('autoRootOperation');
+    const autoRootBqOptions = document.getElementById('autoRootBqOptions');
+    const localBqStatus = document.getElementById('localBqStatus');
+    let localBqBusy = false;
+    let localBqRenewing = false;
     const feedRootBtn = document.getElementById('feedRootBtn');
     const addCleanFileBtn = document.getElementById('addCleanFileBtn');
     const startCleaningBtn = document.getElementById('startCleaningBtn');
@@ -556,14 +563,57 @@ document.addEventListener('DOMContentLoaded', () => {
         const enabled = autoRootBtn.dataset.on === 'true';
         cadenceModeFlag.hidden = enabled;
         autoRootBtn.setAttribute('aria-pressed', String(enabled));
+        autoRootOptions.hidden = !enabled;
+        autoRootBqOptions.hidden = autoRootSource.value !== 'bq';
+        if (enabled) {
+            rootFilePathSpan.textContent = autoRootSource.value === 'bq'
+                ? `Usará a raiz BigQuery de ${autoRootOperation.selectedOptions[0]?.textContent || 'selecione um pipeline'}`
+                : 'Usará a base de dados Raiz';
+        }
     }
     updateRootModeIndicator();
+    const localRootOptionsReady = window.electronAPI.localCleaningRootOptions().then(result => {
+        if (!result.success) throw new Error(result.message || 'Não foi possível carregar os pipelines.');
+        autoRootOperation.replaceChildren(...result.operations.map(operation => {
+            const option = document.createElement('option');
+            option.value = operation.id;
+            option.textContent = `${operation.name} · ${operation.pipelines.join(', ')}`;
+            return option;
+        }));
+        updateRootModeIndicator();
+    }).catch(error => { localBqStatus.textContent = error.message; });
+    function updateLocalBqButtons() {
+        document.querySelectorAll('.local-bq-actions button').forEach(button => { button.disabled = localCleaningBusy || localBqBusy || localBqRenewing; });
+    }
+    async function localBqAction(action) {
+        if (localCleaningBusy || localBqBusy || localBqRenewing) return;
+        localBqBusy = true; updateLocalBqButtons();
+        localBqStatus.textContent = 'Verificando acesso Google…';
+        try {
+            const result = await action();
+            const message = result.cancelled ? 'Importação cancelada.' : result.message || (result.success ? 'Acesso Google pronto.' : 'Não foi possível verificar o acesso.');
+            if (!localBqRenewing) localBqStatus.textContent = message;
+            if (!result.success && !result.cancelled) appendLog(message);
+        } catch { localBqStatus.textContent = 'Não foi possível verificar o acesso Google. Tente novamente.'; }
+        finally { localBqBusy = false; updateLocalBqButtons(); }
+    }
+    document.getElementById('localBqLoginBtn').addEventListener('click', () => localBqAction(async () => {
+        const result = await window.electronAPI.flowsRenewBq();
+        return result.success ? { ...result, message: 'Acesso Google pronto. Você pode iniciar a limpeza local.' } : result;
+    }));
+    document.getElementById('localBqImportBtn').addEventListener('click', () => localBqAction(() => window.electronAPI.flowsConfigureBq()));
+    document.getElementById('localBqTestBtn').addEventListener('click', () => localBqAction(() => window.electronAPI.flowsTestBq()));
+    window.electronAPI.onFlowBqAuthUpdate(update => {
+        localBqStatus.textContent = update.state === 'ready' ? 'Acesso Google pronto. Você pode iniciar a limpeza local.' : update.message;
+        localBqRenewing = update.state === 'renewing';
+        updateLocalBqButtons();
+    });
     const localControlStates = new Map();
     const cleaningButtonMarkup = startCleaningBtn.innerHTML;
     function setLocalCleaningBusy(busy) {
         localCleaningBusy = busy;
         if (busy) {
-            document.querySelectorAll('#local button, #local input').forEach(control => {
+            document.querySelectorAll('#local button, #local input, #local select').forEach(control => {
                 localControlStates.set(control, control.disabled);
                 control.disabled = true;
             });
@@ -574,6 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
             localControlStates.clear();
             startCleaningBtn.innerHTML = cleaningButtonMarkup;
             applyBlocklistPolicy();
+            updateLocalBqButtons();
         }
     }
     window.electronAPI.onCleaningFinished(({ success }) => {
@@ -595,6 +646,8 @@ document.addEventListener('DOMContentLoaded', () => {
             checkNumerosInvalidos: checkNumerosInvalidosCheckbox.checked, // adicionado por Enzo
             fillLivre5: fillLivre5Checkbox.checked,
             autoRoot: autoRootBtn.dataset.on === 'true',
+            autoRootSource: autoRootSource.value,
+            autoRootOperation: autoRootOperation.value,
 
             // Aba API
             apiKeySelection: apiKeySelection.value,
@@ -615,6 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Função para carregar e aplicar as configurações salvas
     async function loadAndApplyUiSettings() {
         const settings = await window.electronAPI.getUiSettings();
+        await localRootOptionsReady;
         if (!settings || Object.keys(settings).length === 0) return; // Nenhuma configuração salva
 
         // Helper para definir valor e disparar evento 'change'
@@ -647,6 +701,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof settings.checkBlocklist === 'boolean') preferredBlocklist = settings.checkBlocklist;
         applyBlocklistPolicy();
         setChecked(fillLivre5Checkbox, settings.fillLivre5);
+        autoRootSource.value = settings.autoRootSource === 'bq' ? 'bq' : 'neon';
+        if (Array.from(autoRootOperation.options).some(option => option.value === settings.autoRootOperation)) autoRootOperation.value = settings.autoRootOperation;
+        updateRootModeIndicator();
 
         // Aplica a configuração do Auto Raiz
         if (settings.autoRoot && autoRootBtn.dataset.on !== 'true') {
@@ -712,7 +769,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (backupCheckbox) backupCheckbox.addEventListener('change', () => { backupEnabled = backupCheckbox.querySelector('input').checked; });
     if (removeLandlinesCheckbox) removeLandlinesCheckbox.addEventListener('change', () => { removeLandlinesEnabled = removeLandlinesCheckbox.checked; }); // NOVO
     if (selectRootBtn) selectRootBtn.addEventListener('click', async () => { const files = await window.electronAPI.selectFile({ title: 'Selecione a Lista Raiz', multi: false }); if (files && files.length > 0) { rootFile = files[0]; addFileToUI(rootFilePathSpan, rootFile, true); appendLog(`Arquivo raiz selecionado: ${rootFile}`); } });
-    if (autoRootBtn) autoRootBtn.addEventListener('click', () => { if (autoRootBtn.dataset.on) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = "Auto Raiz: OFF"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--text-muted); font-style:italic;">Usará arquivo local selecionado</span>'; selectRootBtn.disabled = false; } else { autoRootBtn.dataset.on = 'true'; autoRootBtn.textContent = "Auto Raiz: ON"; rootFile = null; rootFilePathSpan.innerHTML = '<span style="color:var(--accent-blue); font-weight: 600;">Usará a base de dados Raiz</span>'; selectRootBtn.disabled = true; } updateRootModeIndicator(); saveCurrentUiSettings(); appendLog(`Auto Raiz: ${autoRootBtn.dataset.on ? 'ON (usando Banco de Dados)' : 'OFF'}`); });
+    if (autoRootBtn) autoRootBtn.addEventListener('click', () => { if (autoRootBtn.dataset.on) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = "Auto Raiz: OFF"; rootFile = null; rootFilePathSpan.textContent = 'Usará arquivo local selecionado'; selectRootBtn.disabled = false; } else { autoRootBtn.dataset.on = 'true'; autoRootBtn.textContent = "Auto Raiz: ON"; rootFile = null; selectRootBtn.disabled = true; } updateRootModeIndicator(); saveCurrentUiSettings(); appendLog(`Auto Raiz: ${autoRootBtn.dataset.on ? `ON (${autoRootSource.value === 'bq' ? 'BigQuery' : 'Banco de Dados'})` : 'OFF'}`); });
+    autoRootSource.addEventListener('change', updateRootModeIndicator);
+    autoRootOperation.addEventListener('change', updateRootModeIndicator);
     if (addCleanFileBtn) {
         addCleanFileBtn.addEventListener('click', async () => {
             const files = await window.electronAPI.selectFile({ title: 'Selecione arquivos para limpar', multi: true });
@@ -737,6 +796,7 @@ document.addEventListener('DOMContentLoaded', () => {
         startCleaningBtn.addEventListener('click', () => {
             if (localCleaningBusy) return;
             const isAutoRoot = autoRootBtn.dataset.on === 'true';
+            if (isAutoRoot && autoRootSource.value === 'bq' && (localBqBusy || localBqRenewing)) return appendLog('Conclua o acesso Google antes de iniciar a limpeza.');
 
             // MODIFICADO: A verificação de raiz não é mais um erro bloqueante.
             if (!isAutoRoot && !rootFile) {
@@ -750,6 +810,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             window.electronAPI.startCleaning({
                 isAutoRoot,
+                autoRootSource: autoRootSource.value,
+                autoRootOperation: autoRootOperation.value,
                 rootFile: isAutoRoot ? null : rootFile,
                 cleanFiles,
                 backup: backupEnabled,
@@ -2195,6 +2257,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // SISTEMA DE CHANGELOG / NOTAS DE ATUALIZAÇÃO
     // =========================================================
     const CHANGELOG = [
+        {
+            version: '1.8.10',
+            date: '2026-10-02',
+            highlights: 'Auto Raiz BigQuery na Limpeza Local',
+            notes: [
+                'No Auto Raiz da Limpeza Local, escolha Banco de Dados ou BigQuery. No BQ, selecione C6, Santander, PagBank ou Mercado Pago.',
+                'A raiz BigQuery usa o histórico disponível do pipeline escolhido e é carregada uma vez para todo o lote, antes de alterar as planilhas.',
+                'Fonte e pipeline ficam salvos nas preferências. Login Google, importação da chave BQ e teste de acesso estão na própria aba.',
+                'Falha de acesso ou raiz BQ vazia interrompem o lote preservando os arquivos originais. Os controles ficam bloqueados durante a limpeza.',
+                'O cruzamento com a raiz BQ preserva zeros iniciais e CNPJ alfanumérico. Blocklist e filtros de telefone continuam usando o Banco de Dados.'
+            ]
+        },
         {
             version: '1.8.9',
             date: '2026-10-02',

@@ -13,11 +13,13 @@ const state = require('../state');
 const { PROHIBITED_CNAES, queryWithRetry, logSystemAction } = require('../database/connection');
 const { readSpreadsheet, writeSpreadsheet } = require('./files');
 const { normalizarTelefone, phoneIndices, createCrossListContext, cruzarECompactar, commitCrossList } = require('../limpezaTelefones');
+const { OPERATIONS } = require('../flows/config');
 
 
 
 const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
 let cleaningSender = null;
+let rootController = null;
 
 // --- PROCESSAMENTO DE ARQUIVO DE LIMPEZA ---
 async function processFile(fileObj, rootSet, options, event, crossList = createCrossListContext()) {
@@ -94,7 +96,12 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
     for (let i = 1; i < data.length; i++) {
         if (i % 5000 === 0) await new Promise(resolve => setImmediate(resolve));
         const row = data[i];
-        const key = row[cpfColIdx] ? String(row[cpfColIdx]).trim().replace(/\D/g, "") : "";
+        let key = row[cpfColIdx] == null ? '' : String(row[cpfColIdx]).trim();
+        if (options.isAutoRoot && options.autoRootSource === 'bq') {
+            // BQ returns 14-position CNPJs, including leading zeros and letters.
+            key = key.toUpperCase().replace(/[\s./-]/g, '');
+            if (/^\d{1,14}$/.test(key) && (key.length > 11 || String(header[cpfColIdx]).trim().toLowerCase() === 'cnpj')) key = key.padStart(14, '0');
+        } else key = key.replace(/\D/g, '');
 
         if (key && rootSet.has(key)) {
             removedByRoot++;
@@ -224,6 +231,11 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
 }
 
 function register() {
+    ipcMain.handle('local-cleaning-root-options', event => {
+        if (!isAdmin() || event.sender !== state.mainWindow?.webContents) return { success: false, message: 'Acesso negado.' };
+        return { success: true, operations: OPERATIONS.map(({ id, name, pipelines }) => ({ id, name, pipelines: [...pipelines] })) };
+    });
+    ipcMain.on('logout', () => rootController?.abort());
     ipcMain.on("start-cleaning", async (event, args) => {
         const send = (channel, payload) => {
             if (!event.sender.isDestroyed?.()) event.sender.send(channel, payload);
@@ -248,6 +260,8 @@ function register() {
         let success = false;
         let processados = 0;
         let pulados = 0;
+        const owner = state.currentUser.username;
+        const cancelRoot = () => rootController?.abort();
         try {
             // A exceção depende da sessão autenticada, nunca de dados enviados pela tela.
             args = { ...args, checkBlocklist: state.currentUser.username !== 'Davi' || args?.checkBlocklist === true };
@@ -262,9 +276,13 @@ function register() {
                 if (selectedPaths.has(key)) throw new Error(`Arquivo repetido no lote: ${path.basename(file.path)}. Selecione cada lista apenas uma vez.`);
                 selectedPaths.add(key);
             }
-            if ((args.isAutoRoot || args.checkBlocklist || args.checkNumerosInvalidos) && !state.pool) {
-                throw new Error('Conecte ao banco para usar a raiz automática ou os filtros de telefone.');
-            }
+            const rootSource = args.autoRootSource ?? 'neon';
+            if (args.isAutoRoot && !['neon', 'bq'].includes(rootSource)) throw new Error('Escolha Banco de Dados ou BigQuery como fonte do Auto Raiz.');
+            const operation = args.isAutoRoot && rootSource === 'bq' ? OPERATIONS.find(item => item.id === args.autoRootOperation) : null;
+            if (args.isAutoRoot && rootSource === 'bq' && !operation) throw new Error('Escolha o pipeline do BigQuery para carregar a raiz.');
+            args.autoRootSource = rootSource;
+            if (args.isAutoRoot && rootSource === 'neon' && !state.pool) throw new Error('Conecte ao banco do Gerenciador para carregar a raiz do Banco de Dados.');
+            if ((args.checkBlocklist || args.checkNumerosInvalidos) && !state.pool) throw new Error('Conecte ao banco do Gerenciador para usar a blocklist ou os filtros de telefone.');
             const cleaningDate = new Intl.DateTimeFormat('pt-BR', {
                 timeZone: 'America/Sao_Paulo'
             }).format(new Date());
@@ -273,7 +291,20 @@ function register() {
             log('Cruzamento do lote ativo: mantém a primeira ocorrência de CNPJ/telefone. Ajuste de fones obrigatório.');
             logSystemAction(state.currentUser.username, 'Limpeza Local', `Iniciou limpeza de ${args.cleanFiles.length} arquivos.`);
             const rootSet = new Set();
-            if (args.isAutoRoot) {
+            if (args.isAutoRoot && rootSource === 'bq') {
+                if (!state.bqRootService) throw new Error('O acesso ao BigQuery está indisponível. Reabra o aplicativo.');
+                rootController = new AbortController();
+                event.sender.once?.('destroyed', cancelRoot);
+                log(`Auto Raiz BigQuery: carregando histórico de ${operation.name} (pipeline ${operation.pipelines.join(', ')})...`);
+                const root = await state.bqRootService.loadRoot([...operation.pipelines], {
+                    signal: rootController.signal,
+                    onProgress: ({ documents }) => log(`Raiz BQ: ${Number(documents).toLocaleString('pt-BR')} documentos carregados.`),
+                });
+                if (rootController.signal.aborted || state.currentUser?.username !== owner || !isAdmin()) throw new Error('Carregamento da raiz cancelado. A sessão mudou ou a janela foi fechada.');
+                if (!Array.isArray(root?.documents) || !root.documents.length) throw new Error('A raiz BQ não retornou documentos utilizáveis. A limpeza foi interrompida.');
+                root.documents.forEach(document => rootSet.add(document));
+                log(`✅ Raiz BQ carregada: ${operation.name} · ${rootSet.size.toLocaleString('pt-BR')} CNPJs · histórico disponível do pipeline.`);
+            } else if (args.isAutoRoot) {
                 log("Auto Raiz ATIVADO. Carregando lista raiz do Banco de Dados...");
                 const result = await queryWithRetry('SELECT cnpj FROM raiz_cnpjs', [], 3, log);
                 result.rows.forEach(row => rootSet.add(row.cnpj));
@@ -329,6 +360,8 @@ function register() {
             log(`❌ Erro inesperado no processo de limpeza: ${err.message}`);
             console.error(err);
         } finally {
+            event.sender.removeListener?.('destroyed', cancelRoot);
+            rootController = null;
             cleaningSender = null;
             send('cleaning-finished', { success, processados, pulados });
         }

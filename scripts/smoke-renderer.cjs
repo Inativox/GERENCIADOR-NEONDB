@@ -19,6 +19,8 @@ let selectedPaths;
 let savedUiSettings;
 let releaseUiSettings;
 let localStartCount = 0;
+let localBqLoads = 0;
+let localBqFailure = false;
 const timeout = setTimeout(() => { console.error('Smoke: tempo limite excedido'); app.exit(1); }, 25000);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -44,11 +46,20 @@ app.whenReady().then(async () => {
     await fs.writeFile(skipped, 'nome;cnpj;telefone');
     selectedPaths = [input, skipped];
     // Registra somente o handler local de colunas; banco e usuários reais não são carregados.
-    require(path.join(appRoot, 'src/main/state')).currentUser = { username: 'Davi', role: 'admin' };
+    const mainState = require(path.join(appRoot, 'src/main/state'));
+    mainState.currentUser = { username: 'Davi', role: 'admin' };
+    mainState.bqRootService = { async loadRoot(pipelines, { onProgress }) {
+        localBqLoads++;
+        assert.deepEqual(pipelines, [119]);
+        await delay(30);
+        if (localBqFailure) throw new Error('Falha BQ sintética. Originais preservados.');
+        onProgress({ documents: 1 });
+        return { documents: ['04252011000110'] };
+    } };
     require(path.join(appRoot, 'src/main/handlers/limpezaColunas')).register();
     require(path.join(appRoot, 'src/main/handlers/limpeza')).register();
     ipcMain.handle('get-ui-settings', () => new Promise(resolve => {
-        releaseUiSettings = () => resolve({ checkBlocklist: false, checkDb: true, saveToDb: true, autoAdjust: false, organizeType: 'empresaAqui', mergeStrategy: 'custom' });
+        releaseUiSettings = () => resolve({ autoRoot: true, autoRootSource: 'bq', autoRootOperation: 'santander', checkBlocklist: false, checkDb: true, saveToDb: true, autoAdjust: false, organizeType: 'empresaAqui', mergeStrategy: 'custom' });
     }));
     ipcMain.on('save-ui-settings', (_event, settings) => { savedUiSettings = settings; });
     ipcMain.on('start-cleaning', () => { localStartCount++; });
@@ -66,6 +77,7 @@ app.whenReady().then(async () => {
         catch (error) { return { success: false, message: error.message }; }
     });
     ipcMain.handle('flows-receita-options', () => ({ success: true, options: [] }));
+    ipcMain.handle('flows-test-bq', () => ({ success: true, message: 'Acesso BQ sintético aprovado.' }));
     ipcMain.handle('receita-situacao-state', () => ({ success: true, job: null, templates: [], configured: false }));
     ipcMain.handle('select-file', () => selectedPaths);
     ipcMain.on('start-limpeza-colunas', (_event, paths) => { startCount++; pathsReceived = paths; });
@@ -76,6 +88,7 @@ app.whenReady().then(async () => {
             contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, offscreen: true,
         },
     });
+    mainState.mainWindow = window;
     // O app precisa carregar suas abas mesmo sem acesso às fontes e ao CDN.
     window.webContents.session.webRequest.onBeforeRequest({ urls: ['https://*/*', 'http://*/*'] }, (_details, callback) => callback({ cancel: true }));
     window.webContents.on('console-message', (_event, level, message) => {
@@ -90,6 +103,9 @@ app.whenReady().then(async () => {
     await waitFor(`document.getElementById('checkBlocklistCheckbox').disabled`);
     releaseUiSettings();
     await waitFor(`document.getElementById('log').textContent.includes('Configurações da última sessão foram restauradas')`);
+    assert.equal(await evaluate(`document.getElementById('autoRootBtn').dataset.on`), 'true');
+    assert.equal(await evaluate(`document.getElementById('autoRootSource').value`), 'bq');
+    assert.equal(await evaluate(`document.getElementById('autoRootOperation').value`), 'santander');
     assert.equal(await evaluate(`document.getElementById('checkBlocklistCheckbox').checked`), true, 'Preferência antiga não desativa blocklist obrigatória');
     await evaluate(`document.getElementById('resetLocalBtn').click()`);
     assert.equal(await evaluate(`document.getElementById('checkBlocklistCheckbox').checked && document.getElementById('checkBlocklistCheckbox').disabled`), true);
@@ -108,6 +124,22 @@ app.whenReady().then(async () => {
     await delay(30);
     assert.equal(await evaluate(`document.getElementById('cadence-mode-flag').hidden`), true);
     assert.equal(savedUiSettings.autoRoot, true);
+    assert.equal(await evaluate(`document.getElementById('autoRootBqOptions').hidden`), false);
+    assert.equal(await evaluate(`document.getElementById('autoRootOperation').options.length`), 4);
+    await evaluate(`(() => { const select = document.getElementById('autoRootSource'); select.value = 'neon'; select.dispatchEvent(new Event('change')); })()`);
+    assert.equal(await evaluate(`document.getElementById('autoRootBqOptions').hidden`), true);
+    assert.equal(savedUiSettings.autoRootSource, 'neon');
+    await evaluate(`(() => { const select = document.getElementById('autoRootSource'); select.value = 'bq'; select.dispatchEvent(new Event('change')); })()`);
+    assert.equal(savedUiSettings.autoRootSource, 'bq');
+    assert.equal(savedUiSettings.autoRootOperation, 'santander');
+    window.webContents.send('flow-bq-auth-update', { owner: 'Davi', state: 'renewing', message: 'Login Google sintético em andamento.' });
+    await waitFor(`document.getElementById('localBqLoginBtn').disabled`);
+    await evaluate(`document.getElementById('startCleaningBtn').click()`);
+    await delay(30);
+    assert.equal(localStartCount, 0);
+    window.webContents.send('flow-bq-auth-update', { owner: 'Davi', state: 'ready', message: 'Login verificado.' });
+    await waitFor(`!document.getElementById('localBqLoginBtn').disabled`);
+    assert.equal(await evaluate(`document.getElementById('localBqStatus').textContent`), 'Acesso Google pronto. Você pode iniciar a limpeza local.');
     await evaluate(`document.getElementById('autoRootBtn').click()`);
     await delay(30);
     assert.equal(await evaluate(`document.getElementById('cadence-mode-flag').hidden`), false);
@@ -191,6 +223,34 @@ app.whenReady().then(async () => {
         assert.equal(cleaned.worksheets[0].getCell('E2').value, null);
         assert.match(cleaned.worksheets[0].getCell('D2').value, /lista [AB] \| \d{2}\/\d{2}\/\d{4}/);
     }
+    // BQ uses a synthetic provider and temporary XLSX files, never Google or Neon.
+    const bqFile = path.join(userData, 'lista BQ.xlsx');
+    const bqWorkbook = new ExcelJS.Workbook(), bqSheet = bqWorkbook.addWorksheet('Base');
+    bqSheet.addRow(['cnpj', 'nome', 'fone1']);
+    bqSheet.addRow([4252011000110, 'Na raiz', '11987654321']);
+    bqSheet.addRow(['22345678000199', 'Manter', '21987654321']);
+    await bqWorkbook.xlsx.writeFile(bqFile);
+    selectedPaths = [bqFile];
+    await evaluate(`document.getElementById('resetLocalBtn').click(); document.getElementById('autoRootBtn').click(); document.getElementById('localBqTestBtn').click()`);
+    await waitFor(`document.getElementById('localBqStatus').textContent === 'Acesso BQ sintético aprovado.'`);
+    await evaluate(`document.getElementById('addCleanFileBtn').click()`);
+    await waitFor(`document.querySelectorAll('#progressContainer .file-progress').length === 1`);
+    await fs.writeFile(path.resolve(__dirname, '../out/local-bq-options.png'), (await window.webContents.capturePage()).toPNG());
+    await evaluate(`document.getElementById('startCleaningBtn').click()`);
+    assert.equal(await evaluate(`document.getElementById('autoRootSource').disabled && document.getElementById('autoRootOperation').disabled`), true);
+    await waitFor(`document.getElementById('localCleaningStatus').textContent === 'Lote concluído'`);
+    assert.equal(localBqLoads, 1);
+    assert.equal(await evaluate(`document.getElementById('autoRootSource').disabled || document.getElementById('autoRootOperation').disabled`), false);
+    const bqResult = new ExcelJS.Workbook(); await bqResult.xlsx.readFile(bqFile);
+    assert.equal(bqResult.worksheets[0].rowCount, 2);
+    assert.equal(bqResult.worksheets[0].getCell('A2').value, '22345678000199');
+    const bqOriginal = await fs.readFile(bqFile);
+    localBqFailure = true;
+    await evaluate(`document.getElementById('startCleaningBtn').click()`);
+    await waitFor(`document.getElementById('localCleaningStatus').textContent === 'Verifique o log da limpeza'`);
+    assert.deepEqual(await fs.readFile(bqFile), bqOriginal);
+    assert.equal(await evaluate(`document.getElementById('autoRootOperation').disabled`), false);
+    localBqFailure = false;
     await delay(100);
     await fs.writeFile(path.resolve(__dirname, '../out/workspace-light.png'), (await window.webContents.capturePage()).toPNG());
     await evaluate(`document.getElementById('dark-theme-btn').click()`);

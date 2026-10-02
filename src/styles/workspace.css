@@ -53,6 +53,13 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .local-root-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .local-root-actions > button { width: 100%; margin: 0; }
 .local-root-actions > button:first-child { grid-column: 1 / -1; }
+.local-root-options { display: grid; gap: 12px; margin-top: 16px; }
+.local-root-options[hidden], #autoRootBqOptions[hidden] { display: none; }
+.local-root-options label { display: grid; gap: 6px; margin: 0; font-size: 12px; color: var(--text-primary); }
+.local-root-options select { width: 100%; margin: 0; }
+.local-root-hint { font-size: 11px; line-height: 1.6; color: var(--text-secondary); margin: 8px 0 0; }
+.local-bq-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.local-bq-actions button { flex: 1 1 auto; margin: 0; font-size: 11px; }
 #rootFilePath { margin-top: 12px; }
 #startCleaningBtn { min-height: 42px; }
 #resetLocalBtn { color: var(--text-secondary); border-color: var(--border-color); }

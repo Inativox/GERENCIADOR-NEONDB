@@ -7,6 +7,7 @@ const state = {
     mainWindow: null,
     loginWindow: null,
     currentUser: null,
+    bqRootService: null,
 };
 
 module.exports = state;
