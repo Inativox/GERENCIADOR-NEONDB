@@ -8,6 +8,31 @@ const { defaults, validateFlow, effectiveFlow } = require('../src/main/flows/con
 const { createUserStore } = require('../src/main/flows/store');
 const { createFlowManager } = require('../src/main/flows/manager');
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
+
+test('cache can use another directory and discarded cancelled cache cannot resume; history and outputs survive', async t => {
+    const cache = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-other-cache-'));
+    t.after(() => fs.rmSync(cache, { recursive: true, force: true }));
+    const f = fixture(t, { getCacheDirectory: () => cache }), selected = f.manager.save(defaults());
+    const job = f.manager.start({ flowId: selected.id, outputDirectory: f.directory });
+    assert.ok(job.jobDir.startsWith(cache + path.sep));
+    for (let n = 0; n < 100 && !f.workers.length; n++) await tick();
+    await assert.rejects(f.manager.discardCache(job.id), /ativa/);
+    fs.writeFileSync(path.join(job.jobDir, 'generation.jsonl'), 'synthetic cache');
+    const final = path.join(job.jobDir, 'final.xlsx'); fs.writeFileSync(final, 'synthetic output');
+    const nested = path.join(job.jobDir, 'stage-cache', 'cleaning', 'final.xlsx');
+    fs.mkdirSync(path.dirname(nested), { recursive: true }); fs.writeFileSync(nested, 'synthetic nested output');
+    f.workers[0].emit('message', { type: 'update', data: { outputs: [{ path: final, kind: 'xlsx', rows: 1 }, { path: nested, kind: 'xlsx', rows: 1 }] } });
+    f.workers[0].emit('message', { type: 'error', message: 'cancel', code: 'FLOW_CANCELLED' }); await idle(f.manager);
+    f.setUser({ username: 'Outro', role: 'admin' }); await assert.rejects(f.manager.discardCache(job.id));
+    assert.ok(fs.existsSync(path.join(job.jobDir, 'generation.jsonl')));
+    f.setUser({ username: 'Davi', role: 'admin' });
+    const discarded = await f.manager.discardCache(job.id);
+    assert.equal(discarded.cacheDiscarded, true);
+    assert.ok(fs.existsSync(final)); assert.equal(fs.existsSync(path.join(job.jobDir, 'generation.jsonl')), false);
+    assert.ok(fs.existsSync(nested));
+    assert.equal(f.manager.bootstrap().jobs[0].id, job.id);
+    assert.throws(() => f.manager.resume(job.id), /cache.*apagado/);
+});
 async function idle(manager) { for (let n = 0; n < 100; n++) { if (!manager.isBusy()) return; await tick(); } throw new Error('Manager stayed busy'); }
 function fixture(t, extra = {}) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-manager-'));

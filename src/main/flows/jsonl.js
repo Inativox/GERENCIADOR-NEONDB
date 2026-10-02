@@ -4,6 +4,10 @@ const fs = require('node:fs');
 
 /** Read one bounded chunk at a time, including while a consumer awaits a query. */
 async function* entries(file, signal, startOffset = 0) {
+    if (/\.jsonl\.pack(?:\.tmp)?$/.test(file)) {
+        yield* require('./packedJsonl').packedEntries(file, signal, startOffset);
+        return;
+    }
     const stream = fs.createReadStream(file, { start: startOffset });
     let pending = Buffer.alloc(0), offset = startOffset;
     function checkCancelled() {

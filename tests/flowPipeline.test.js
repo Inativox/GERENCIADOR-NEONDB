@@ -259,7 +259,7 @@ test('an asynchronous XLSX disk stream failure cleans partial outputs and remain
         return stream;
     };
     const args = { flow: config, user: { username: 'Operador' }, jobDir, providers: providers([row(1, ['11999990001'])]) };
-    await assert.rejects(runFlow(args), /salvar os arquivos finais/);
+    await assert.rejects(runFlow(args), { code: 'FLOW_DISK_FULL' });
     assert.deepEqual(await fs.readdir(path.join(jobDir, 'outputs')), []);
     nativeFs.createWriteStream = create;
     const result = await runFlow(args);

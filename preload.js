@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     flowsPreviewLayout: (input) => ipcRenderer.invoke('flows-preview-layout', input),
     flowsDelete: (id) => ipcRenderer.invoke('flows-delete', id),
     flowsSelectFolder: () => ipcRenderer.invoke('flows-select-folder'),
+    flowsSelectCacheFolder: () => ipcRenderer.invoke('flows-select-cache-folder'),
+    flowsDiscardCache: (id) => ipcRenderer.invoke('flows-discard-cache', id),
     flowsStart: (input) => ipcRenderer.invoke('flows-start', input),
     flowsCancel: (id) => ipcRenderer.invoke('flows-cancel', id),
     flowsResume: (id) => ipcRenderer.invoke('flows-resume', id),

@@ -47,6 +47,8 @@ async function readRootFile(filename, signal) {
 function register() {
     const store = new Store();
     const selectedDirectories = new Map();
+    const cacheDirectory = () => store.get('flow_cache_directory') || path.join(app.getPath('userData'), 'flows');
+    const cacheDirectories = () => [...new Set([cacheDirectory(), ...(Array.isArray(store.get('flow_cache_directories')) ? store.get('flow_cache_directories') : [])])].filter(directory => typeof directory === 'string' && path.isAbsolute(directory));
     const config = () => ({ receita: store.get('receita_connection_string') || process.env.RECEITA_DATABASE_URL, enrichment: state.pool?.options?.connectionString || store.get('db_connection_string') || process.env.DATABASE_URL });
     const receitaOptions = createReceitaOptions({ getConnection: () => config().receita, cacheDirectory: path.join(app.getPath('userData'), 'receita-options'), poolFactory: connection => new Pool(readOnlyPoolOptions(connection, { max: 1, timeout: 180000, connectionTimeout: 10000 })) });
     const bq = () => createBqClient({ keyFile: store.get('flow_bq_key_file'), project: process.env.BQ_PROJECT || 'mbtech-bronze' });
@@ -70,6 +72,8 @@ function register() {
     };
     const manager = createFlowManager({
         baseDirectory: path.join(app.getPath('userData'), 'flows'), getUser: () => state.currentUser,
+        getCacheDirectory: cacheDirectory,
+        getCacheDirectories: cacheDirectories,
         resolveConnections(flow) {
             const connections = config();
             if (!connections.receita) throw new Error('Configure a base da Receita na tela de login.');
@@ -154,6 +158,18 @@ function register() {
     }));
     ipcMain.handle('flows-resume', protect(id => { if (login.isBusy()) throw new Error('Conclua o login Google antes de retomar a execução.'); if (require('./limpeza').isCleaning()) throw new Error('Aguarde a limpeza local terminar.'); return { job: manager.resume(id) }; }));
     ipcMain.handle('flows-cancel', protect(id => { manager.cancel(id); return {}; }));
+    ipcMain.handle('flows-discard-cache', protect(async id => ({ job: await manager.discardCache(id) })));
+    ipcMain.handle('flows-select-cache-folder', protect(async () => {
+        const owner = state.currentUser.username;
+        const result = await dialog.showOpenDialog(state.mainWindow, { title: 'Pasta para o cache de novas execuções', properties: ['openDirectory', 'createDirectory'] });
+        if (result.canceled || !result.filePaths.length) return { cancelled: true };
+        if (state.currentUser?.username !== owner || state.currentUser?.role !== 'admin') throw new Error('A sessão mudou. Reabra a geração de listas.');
+        const directory = path.join(result.filePaths[0], 'Gerenciador-cache');
+        fs.mkdirSync(directory, { recursive: true });
+        store.set('flow_cache_directories', [...new Set([...cacheDirectories(), directory])]);
+        store.set('flow_cache_directory', directory);
+        return { path: directory };
+    }));
     ipcMain.handle('flows-open-output', protect(async input => { const error = await shell.openPath(manager.output(input.jobId, input.path)); if (error) throw new Error('Não foi possível abrir o arquivo.'); return {}; }));
     ipcMain.handle('flows-configure-receita', protect(async input => {
         if (manager.isBusy()) throw new Error('Aguarde ou cancele o fluxo antes de mudar o acesso.');

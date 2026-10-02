@@ -46,6 +46,19 @@ test('native folder selection gates start and manual cleaning excludes flow star
     assert.equal((await f.invoke('flows-resume', 'job')).success, false);
     assert.equal((await f.invoke('flows-open-output', { jobId: 'x', path: 'else' })).success, false);
 });
+
+test('cache folder selection is native, remembered and separate from historical records', async t => {
+    const f = fixture(t);
+    assert.equal(f.options().getCacheDirectory(), path.join(f.directory, 'flows'));
+    assert.equal((await f.invoke('flows-select-cache-folder')).cancelled, true);
+    f.dialogPaths.push(f.directory);
+    const selected = await f.invoke('flows-select-cache-folder');
+    assert.equal(selected.success, true);
+    assert.equal(selected.path, path.join(f.directory, 'Gerenciador-cache'));
+    assert.equal(f.options().getCacheDirectory(), selected.path);
+    assert.ok(f.options().getCacheDirectories().includes(path.join(f.directory, 'flows')));
+    assert.equal(f.options().baseDirectory, path.join(f.directory, 'flows'));
+});
 test('Receita access validates before saving, replaces environment fallback and never returns secret', async t => {
     const f = fixture(t), uri = 'postgresql://synthetic/selected';
     assert.equal((await f.invoke('flows-configure-receita', { connectionString: 'invalid' })).success, false); assert.equal(f.pools.length, 0);

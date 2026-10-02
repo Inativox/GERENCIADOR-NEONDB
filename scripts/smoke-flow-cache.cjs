@@ -21,10 +21,10 @@ app.whenReady().then(async () => {
                     async queryPhones() { if (++calls===3 && fail) throw new Error('Synthetic failure'); return []; },
                 };
                 (async()=>{
-                    try { await runFlow({flow,user:{username:'Davi'},jobDir:workerData.directory,providers}); throw new Error('Failure not reached'); }
+                    try { await runFlow({flow,user:{username:'Davi'},jobDir:workerData.directory,providers,cachePolicy:{compressed:true,prune:true}}); throw new Error('Failure not reached'); }
                     catch(error) { if(error.code!=='FLOW_FAILED')throw error; }
                     fail=false;
-                    const result=await runFlow({flow,user:{username:'Davi'},jobDir:workerData.directory,providers});
+                    const result=await runFlow({flow,user:{username:'Davi'},jobDir:workerData.directory,providers,cachePolicy:{compressed:true,prune:true}});
                     if(result.counts.kept!==100000||result.counts.exported!==100000||calls!==51)throw new Error('Invalid resumed result');
                     parentPort.postMessage({kept:result.counts.kept,heap:Math.round(process.memoryUsage().heapUsed/1024/1024)});
                 })().catch(error=>{throw error;});

@@ -7,7 +7,7 @@ const { effectiveFlow, validateFlow } = require('./config');
 const { listFormats, getFormat, mapOutputRow } = require('./formats');
 const { validateLayout } = require('./layouts');
 
-function createFlowManager({ baseDirectory, getUser, resolveConnections, resolveRoot, resolveApiSession, onUpdate = () => {}, workerFactory = data => new Worker(path.join(__dirname, '../workers/flowWorker.js'), { workerData: data, resourceLimits: { maxOldGenerationSizeMb: 512 } }) }) {
+function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirectory, getCacheDirectories = () => [getCacheDirectory()], getUser, resolveConnections, resolveRoot, resolveApiSession, onUpdate = () => {}, workerFactory = data => new Worker(path.join(__dirname, '../workers/flowWorker.js'), { workerData: data, resourceLimits: { maxOldGenerationSizeMb: 512 } }) }) {
     const stores = new Map(); let active = null;
     function user() { const current = getUser(); if (!current || current.role !== 'admin') throw new Error('Seu perfil não tem acesso à geração e limpeza de listas.'); return { username: current.username, role: current.role }; }
     function storeFor(owner) {
@@ -88,7 +88,7 @@ function createFlowManager({ baseDirectory, getUser, resolveConnections, resolve
                         if (message.type === 'api-request') { void apiMessage(message); return; }
                         if (message.type === 'update') saveUpdate(context, message.data || {});
                         if (message.type === 'result') { saveUpdate(context, { ...message.data, status: message.data?.status || 'completed' }); finished = true; resolve(); }
-                        if (message.type === 'error') { finished = true; reject(new Error(message.code === 'FLOW_CANCELLED' ? 'Execução cancelada.' : (message.message || 'Falha na execução do fluxo.'))); }
+                        if (message.type === 'error') { finished = true; reject(Object.assign(new Error(message.code === 'FLOW_CANCELLED' ? 'Execução cancelada.' : (message.message || 'Falha na execução do fluxo.')), { code: ['FLOW_DISK_FULL', 'FLOW_CANCELLED'].includes(message.code) ? message.code : '' })); }
                     } catch { finished = true; reject(new Error('Não foi possível salvar o histórico. Verifique o espaço disponível e retome a execução.')); }
                 });
                 worker.on('error', () => { if (!finished) { finished = true; reject(new Error('O processamento foi interrompido. Retome a etapa; reduza o volume se o problema persistir.')); } });
@@ -96,7 +96,7 @@ function createFlowManager({ baseDirectory, getUser, resolveConnections, resolve
             });
         } catch (error) {
             context.job.error = context.controller.signal.aborted ? 'Execução cancelada. Pode retomar a última etapa confirmada.' : error.message;
-            context.job.errorCode = !context.controller.signal.aborted && error.code === 'BQ_AUTH_REQUIRED' ? error.code : '';
+            context.job.errorCode = !context.controller.signal.aborted && ['BQ_AUTH_REQUIRED', 'FLOW_DISK_FULL'].includes(error.code) ? error.code : '';
             const status = context.controller.signal.aborted ? 'cancelled' : 'failed';
             try { saveUpdate(context, { status, log: context.job.error }); }
             catch { context.job.status = status; try { onUpdate(JSON.parse(JSON.stringify(context.job))); } catch { /* Best effort while disk is unavailable. */ } }
@@ -125,7 +125,7 @@ function createFlowManager({ baseDirectory, getUser, resolveConnections, resolve
         bootstrap() {
             const current = user(), store = storeFor(current.username);
             for (const job of store.listJobs()) if (job.status === 'running' && active?.job.id !== job.id) store.saveJob({ ...store.getJob(job.id), status: 'interrupted', error: 'Execução interrompida. Retome a partir da última etapa confirmada.', updatedAt: new Date().toISOString() });
-            return { user: current, flows: store.listFlows(), jobs: store.listJobs(), formats: listFormats(store.listLayouts()) };
+            return { user: current, flows: store.listFlows(), jobs: store.listJobs(), formats: listFormats(store.listLayouts()), cacheDirectory: getCacheDirectory() };
         },
         save(input) { const store = storeFor(user().username); const existing = input.id ? store.getFlow(input.id) : null; if (input.id && !existing) throw new Error('Fluxo não encontrado nesta conta.'); return store.saveFlow(validateFlow(input, existing, { resolveFormat: formatResolver(store) })); },
         saveLayout(input) {
@@ -154,11 +154,38 @@ function createFlowManager({ baseDirectory, getUser, resolveConnections, resolve
             if (!flow) throw new Error('Salve e selecione um fluxo antes de executar.');
             if (!outputDirectory || !path.isAbsolute(outputDirectory) || !fs.statSync(outputDirectory).isDirectory()) throw new Error('Selecione uma pasta de saída válida.');
             const snapshot = effectiveFlow(flow, current, { resolveFormat: formatResolver(store) }); snapshot.output.directory = outputDirectory;
-            const id = randomUUID(), directory = path.join(store.directory, 'jobs', id); fs.mkdirSync(directory, { recursive: true });
+            const cacheRoot = getCacheDirectory();
+            if (typeof cacheRoot !== 'string' || !path.isAbsolute(cacheRoot)) throw new Error('Pasta do cache inválida.');
+            const account = path.basename(store.directory);
+            const id = randomUUID(), directory = path.join(cacheRoot, account, 'jobs', id); fs.mkdirSync(directory, { recursive: true });
             const timestamp = new Date().toISOString();
             return launch(store, { id, flowId: flow.id, flowName: flow.name, owner: current.username, status: 'running', stage: 'root', createdAt: timestamp, updatedAt: timestamp, counts: {}, outputs: [], logs: [], error: '', flowSnapshot: snapshot, jobDir: directory });
         },
-        resume(id) { const current = user(); if (active) throw new Error('Já existe um fluxo em execução.'); const store = storeFor(current.username), job = store.getJob(id); if (!job || !['failed', 'cancelled', 'interrupted'].includes(job.status)) throw new Error('Esta execução não pode ser retomada.'); job.error = ''; job.errorCode = ''; job.flowSnapshot.cleaning.blocklist = current.username !== 'Davi' || job.flowSnapshot.cleaning.blocklist; return launch(store, job); },
+        resume(id) { const current = user(); if (active) throw new Error('Já existe um fluxo em execução.'); const store = storeFor(current.username), job = store.getJob(id); if (!job || !['failed', 'cancelled', 'interrupted'].includes(job.status)) throw new Error('Esta execução não pode ser retomada.'); if (job.cacheDiscarded) throw new Error('O cache desta execução foi apagado. Gere uma nova lista usando o fluxo salvo.'); job.error = ''; job.errorCode = ''; job.flowSnapshot.cleaning.blocklist = current.username !== 'Davi' || job.flowSnapshot.cleaning.blocklist; return launch(store, job); },
+        async discardCache(id) {
+            const store = storeFor(user().username), job = store.getJob(id);
+            if (!job || active?.job.id === id || job.status === 'running') throw new Error('O cache de uma execução ativa não pode ser apagado.');
+            const directory = path.resolve(job.jobDir);
+            if (!/^[a-zA-Z0-9-]+$/.test(id) || path.basename(directory) !== id || path.basename(path.dirname(directory)) !== 'jobs') throw new Error('Pasta do cache inválida.');
+            const allowed = [baseDirectory, ...getCacheDirectories()].map(root => path.resolve(root, path.basename(store.directory), 'jobs', id));
+            if (!allowed.includes(directory)) throw new Error('Pasta do cache fora do armazenamento autorizado.');
+            // Mark loss of resumability first; final output files are preserved.
+            job.cacheDiscarded = true; job.cacheDiscardedAt = new Date().toISOString();
+            store.saveJob(job);
+            for (const name of ['generation', 'enrichment', 'api', 'cleaning']) {
+                for (const extension of ['.jsonl', '.jsonl.tmp', '.jsonl.pack', '.jsonl.pack.tmp']) await fs.promises.rm(path.join(directory, name + extension), { force: true });
+            }
+            for (const name of ['stage-cache', 'api-results']) {
+                const target = path.join(directory, name);
+                const containsOutput = (job.outputs || []).some(output => {
+                    const relative = path.relative(target, path.resolve(output.path));
+                    return !relative || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
+                });
+                if (!containsOutput) await fs.promises.rm(target, { recursive: true, force: true });
+            }
+            try { onUpdate(store.getJob(id)); } catch { /* Cleanup is already saved. */ }
+            return store.getJob(id);
+        },
         cancel(id) { const current = user(); if (!active || active.job.id !== id || active.job.owner !== current.username) throw new Error('Execução ativa não encontrada nesta conta.'); cancel(active); },
         cancelActive() { if (active) cancel(active); },
         isBusy: () => Boolean(active),

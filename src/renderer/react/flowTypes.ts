@@ -25,6 +25,7 @@ export interface FlowJob {
     createdAt: string; updatedAt: string; counts: Record<string, number | null | undefined>;
     outputs: { path: string; kind: string; rows: number }[]; logs: string[]; error?: string; errorCode?: string;
     flowSnapshot?: Flow;
+    cacheDiscarded?: boolean;
     rootInfo?: { source?: string; count?: number; rows?: number; documents?: number; pipelines?: number[]; queriedAt?: string; coverage?: string; skipped?: number; restored?: number };
 }
 export interface LayoutColumn { header: string; campo: string; valor_manual?: string; partes?: string[]; sep?: string }
@@ -37,6 +38,7 @@ export interface FlowOperation { id: Operation; name?: string; nome?: string; la
 export interface BqAuthStatus { owner?: string; state: 'idle' | 'renewing' | 'ready' | 'failed'; message: string }
 export interface FlowBootstrap {
     success: boolean; message?: string; user?: { username: string; role: string }; flows?: Flow[];
+    cacheDirectory?: string;
     jobs?: FlowJob[]; formats?: FlowFormat[]; layoutFields?: LayoutField[]; operations?: FlowOperation[]; defaults?: Partial<Flow>;
     access?: { receitaConfigured: boolean; neonConfigured?: boolean; apiConfigured?: boolean; bqConfigured: boolean; bqLoginMode?: string; bqAutoLogin?: boolean; bqAuth?: BqAuthStatus }; limits?: { maxRows: number };
 }
@@ -53,6 +55,8 @@ export interface FlowAPI {
     flowsPreviewLayout(input: LayoutPreviewInput): Promise<FlowResult & { preview?: LayoutPreview }>;
     flowsDelete(id: string): Promise<FlowResult>;
     flowsSelectFolder(): Promise<{ success: boolean; path?: string; cancelled?: boolean; message?: string }>;
+    flowsSelectCacheFolder?(): Promise<{ success: boolean; path?: string; cancelled?: boolean; message?: string }>;
+    flowsDiscardCache?(jobId: string): Promise<FlowResult>;
     flowsStart(input: { flowId: string; outputDirectory: string }): Promise<FlowResult>;
     flowsCancel(jobId: string): Promise<FlowResult>;
     flowsResume(jobId: string): Promise<FlowResult>;

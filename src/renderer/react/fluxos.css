@@ -115,8 +115,8 @@
 .flow-confirm { margin: 16px 24px; }
 .flow-confirm button { margin: 12px 8px 0 0; }
 .flow-empty { text-align: center; color: var(--text-secondary); padding: 44px 20px; display: grid; justify-items: center; gap: 12px; }
-.flow-access { border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-card); padding: 16px 20px; margin-top: 24px; }
-.flow-access summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+:is(.flow-access, .flow-storage) { border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-card); padding: 16px 20px; margin-top: 24px; }
+:is(.flow-access, .flow-storage) summary { cursor: pointer; font-size: 12px; font-weight: 600; }
 .flow-access summary span { font-size: 10px; font-weight: 400; color: var(--text-secondary); margin-left: 20px; }
 .flow-access-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; padding-top: 10px; }
 .flow-access-grid form > button { margin-top: 12px; }

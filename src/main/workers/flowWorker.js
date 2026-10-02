@@ -22,7 +22,7 @@ function apiRequest(action) {
         parentPort.postMessage({ type: 'api-request', action, id });
     });
 }
-runFlow({ ...workerData, signal: controller.signal,
+runFlow({ ...workerData, cachePolicy: { compressed: true, prune: true }, signal: controller.signal,
     providers: { async acquireApi() {
         const session = await apiRequest('acquire');
         const client = require('../flows/disponibilidadeApi').createApiClient({ credentials: session.credentials });
@@ -31,5 +31,5 @@ runFlow({ ...workerData, signal: controller.signal,
     onUpdate: data => parentPort.postMessage({ type: 'update', data }) })
     .then(data => parentPort.postMessage({ type: 'result', data }))
     .catch(error => parentPort.postMessage({ type: 'error', message: error.message,
-        code: error.code === 'FLOW_CANCELLED' ? 'FLOW_CANCELLED' : 'FLOW_FAILED' }))
+        code: ['FLOW_CANCELLED', 'FLOW_DISK_FULL'].includes(error.code) ? error.code : 'FLOW_FAILED' }))
     .finally(() => parentPort.close());

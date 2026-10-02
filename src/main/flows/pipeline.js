@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { records, entries } = require('./jsonl');
 const { openStageCache } = require('./stageCache');
-const { once } = require('node:events');
+const { createPackedWriter, writeBuffered } = require('./packedJsonl');
 const { finished } = require('node:stream/promises');
 const ExcelJS = require('exceljs');
 const { readOnlyPoolOptions } = require('./postgres');
@@ -30,6 +30,9 @@ function friendly(stage, error) {
         return cancelled;
     }
     if (error.code === 'FLOW_VALIDATION') return error;
+    if (['ENOSPC', 'EDQUOT', 'FLOW_DISK_FULL'].includes(error.code)) {
+        return Object.assign(new Error('Não há espaço disponível para continuar. Libere espaço no disco do cache ou da saída e retome do último lote confirmado.'), { code: 'FLOW_DISK_FULL' });
+    }
     const messages = {
         generation: 'Não foi possível gerar a base da Receita. Verifique a conexão e os filtros.',
         enrichment: 'Não foi possível enriquecer a base. Verifique a conexão e o esquema do banco.',
@@ -58,7 +61,7 @@ async function readJson(file) {
     catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 async function write(stream, data) {
-    if (!stream.write(data)) await once(stream, 'drain');
+    await writeBuffered(stream, data);
 }
 async function close(stream) { stream.end(); await finished(stream); }
 async function* batches(file, signal, batchSize = BATCH_SIZE, startOffset = 0) {
@@ -130,7 +133,7 @@ async function queryPhones(pool, kind, phones) {
 }
 
 /** Resumes only complete immutable JSONL stages. Connections never enter checkpoints. */
-async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal, onUpdate = () => {}, providers = {} }) {
+async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal, onUpdate = () => {}, providers = {}, cachePolicy = {} }) {
     const ownedPools = [];
     const pools = {};
     let stage = 'generation';
@@ -162,11 +165,45 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         const next = { ...checkpoint, stages: { ...checkpoint.stages, [name]: extra }, counts: { ...checkpoint.counts } };
         await atomicJson(checkpointPath, next);
         checkpoint = next;
+        await retireConsumedStages(name);
         if (stageProgress?.stage === name) stageProgress = { ...stageProgress, complete: true, total: stageProgress.processed };
         update({ log: `Etapa ${name} concluída.` });
     }
+    async function cleanupRetiredStages() {
+        const directory = path.resolve(jobDir);
+        for (const name of STAGES.slice(0, -1)) {
+            if (!checkpoint.stages[name]?.retired) continue;
+            // Only fixed stage names inside this job are eligible for deletion.
+            for (const basename of [`${name}.jsonl`, `${name}.jsonl.pack`]) {
+                for (const suffix of ['', '.tmp']) await fsp.rm(path.join(directory, basename + suffix), { force: true });
+            }
+            for (const target of [path.join(directory, 'stage-cache', name), ...(name === 'api' ? [path.join(directory, 'api-results')] : [])]) {
+                const outputDirectory = path.resolve(flow.output?.directory || path.join(jobDir, 'outputs'));
+                const relative = path.relative(target, outputDirectory);
+                if (!relative || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative))) continue;
+                await fsp.rm(target, { recursive: true, force: true });
+            }
+        }
+    }
+    async function retireConsumedStages(completed) {
+        if (!cachePolicy.prune) return;
+        const boundary = STAGES.indexOf(completed);
+        let changed = false;
+        const stages = { ...checkpoint.stages };
+        for (const name of STAGES.slice(0, boundary)) {
+            if (stages[name] && !stages[name].retired) { stages[name] = { ...stages[name], retired: true }; changed = true; }
+        }
+        if (changed) {
+            const next = { ...checkpoint, stages };
+            await atomicJson(checkpointPath, next);
+            checkpoint = next;
+        }
+        // Cleanup cannot invalidate an already confirmed stage or export.
+        await cleanupRetiredStages().catch(() => update({ log: 'Etapa confirmada. A liberação de arquivos antigos será tentada novamente ao retomar.' }));
+    }
     async function jsonlStage(name, produce) {
-        const target = path.join(jobDir, `${name}.jsonl`);
+        const compressed = checkpoint.cacheFormat === 'packed-v1';
+        const target = path.join(jobDir, `${name}.jsonl${compressed ? '.pack' : ''}`);
         const temporary = `${target}.tmp`;
         const cache = await openStageCache({ jobDir, stage: name, fingerprint: checkpoint.fingerprint, version: name === 'cleaning' ? 2 : 1, temporary, target });
         const total = name === 'generation' ? null : checkpoint.stages[name === 'enrichment' ? 'generation' : name === 'api' || !flow.api?.enabled ? 'enrichment' : 'api'].rows;
@@ -177,15 +214,26 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         const completion = finished(output);
         completion.catch(() => {});
         let count = cache.state.rows, outputBytes = cache.state.outputBytes;
+        const writer = compressed ? createPackedWriter(output, outputBytes) : null;
         cache.confirm = async position => {
             abort(signal);
+            if (cachePolicy.prune && typeof fsp.statfs === 'function') {
+                const disk = await fsp.statfs(jobDir);
+                if (disk.bavail * disk.bsize < 128 * 1024 * 1024) throw Object.assign(new Error('Disco do cache sem espaço livre suficiente.'), { code: 'FLOW_DISK_FULL' });
+            }
+            if (writer) { await writer.flush(); outputBytes = writer.outputBytes; }
             await new Promise((resolve, reject) => output.write('', error => error ? reject(error) : resolve()));
             await cache.save({ ...position, rows: count, outputBytes, counts: { ...checkpoint.counts } });
             stageProgress = { stage: name, processed: cache.state.processed, total, complete: false };
             update();
         };
         try {
-            await produce(async row => { abort(signal); const line = JSON.stringify(row) + '\n'; await write(output, line); outputBytes += Buffer.byteLength(line); count++; }, cache);
+            await produce(async row => {
+                abort(signal);
+                if (writer) await writer.append(row);
+                else { const line = JSON.stringify(row) + '\n'; await write(output, line); outputBytes += Buffer.byteLength(line); }
+                count++;
+            }, cache);
             await cache.confirm({ processed: cache.state.processed });
             await close(output);
             abort(signal);
@@ -209,7 +257,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         if (checkpoint?.stages.generation && checkpoint.stages.generation.phoneFormatVersion !== 1) throw validation('Esta execução foi gerada antes do ajuste de celulares na origem. Reinicie a geração para usar os telefones completos desde a primeira etapa.');
         if (flow.api?.enabled && ((checkpoint?.stages.api && checkpoint.stages.api.sourceStage !== 'enrichment') || (checkpoint?.stages.cleaning && checkpoint.stages.cleaning.sourceStage !== 'api'))) throw validation('Esta execução usava filtros antes da API. Inicie uma nova execução para aplicar os filtros somente no final.');
         if (!checkpoint) {
-            checkpoint = { version: 1, id: crypto.randomUUID(), fingerprint, createdAt: new Date().toISOString(), stages: {}, counts: {} };
+            checkpoint = { version: 1, id: crypto.randomUUID(), fingerprint, createdAt: new Date().toISOString(), stages: {}, counts: {}, ...(cachePolicy.compressed ? { cacheFormat: 'packed-v1' } : {}) };
             await atomicJson(checkpointPath, checkpoint);
         }
         if (checkpoint.stages.cleaning && checkpoint.stages.cleaning.contactFilterVersion !== 2) {
@@ -221,9 +269,10 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             await atomicJson(checkpointPath, checkpoint);
         }
         abort(signal);
+        await cleanupRetiredStages().catch(() => {});
         // Every retained checkpoint points to a stage file confirmed by atomic rename.
         for (const name of STAGES.slice(0, -1)) {
-            if (checkpoint.stages[name]) await fsp.access(checkpoint.stages[name].file);
+            if (checkpoint.stages[name] && !checkpoint.stages[name].retired) await fsp.access(checkpoint.stages[name].file);
         }
         if (!checkpoint.stages.generation) {
             stage = 'generation';
