@@ -2196,6 +2196,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.7',
+            date: '2026-10-02',
+            highlights: 'Lotes de 50 mil registros nos fluxos',
+            notes: [
+                'Geração na Receita, enriquecimento e limpeza dos fluxos passam a processar 50 mil registros por lote.',
+                'Menos consultas e confirmações de cache para processar listas grandes.',
+                'Retomada compatível com lotes anteriores, preservando a deduplicação e os arquivos confirmados.'
+            ]
+        },
+        {
             version: '1.8.6',
             date: '2026-10-02',
             highlights: 'Nomes das listagens e otimização dos fluxos',

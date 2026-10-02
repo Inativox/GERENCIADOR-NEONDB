@@ -9,7 +9,9 @@ const root = artifact ? path.resolve(artifact) : path.resolve(__dirname, '..');
 const lowMemory = process.argv.includes('--low-memory');
 const totalRows = lowMemory ? 300001 : 100000;
 const rowsPerFile = lowMemory ? 300000 : 100000;
-const batchSize = 10000;
+const batchSize = 50000;
+// Match the production worker budget for 50k-row batches.
+const heapLimit = 512;
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
@@ -35,7 +37,7 @@ app.whenReady().then(async () => {
                 const providers = {
                     async *iterateReceita({batchSize}) { if(batchSize!==workerData.batchSize)throw new Error('Unexpected Receita batch size'); for (let offset=0;offset<workerData.totalRows;offset+=batchSize) yield {rows:Array.from({length:Math.min(batchSize,workerData.totalRows-offset)},(_,i)=>{const n=offset+i;return {...extra,cnpj:String(n+1).padStart(14,'0'),phones:['119'+String(12340000+n)]};})}; },
                     async queryEnrichment(documents) { if(documents.length>workerData.batchSize)throw new Error('Oversized enrichment batch'); return documents.map(cnpj=>({cnpj,phones:['219'+String(12340000+Number(cnpj)),'319'+String(12340000+Number(cnpj))]})); },
-                    async queryPhones() { if (++calls===3 && fail) throw new Error('Synthetic failure'); return []; },
+                    async queryPhones() { if (++calls===2 && fail) throw new Error('Synthetic failure'); return []; },
                 };
                 (async()=>{
                     try { await runFlow({flow,user:{username:'Davi'},jobDir:workerData.directory,providers,cachePolicy:{compressed:true,prune:true},processingPolicy:{batchSize:workerData.batchSize}}); throw new Error('Failure not reached'); }
@@ -51,13 +53,13 @@ app.whenReady().then(async () => {
                     if(workerData.lowMemory&&peakRss>768*1024*1024)throw new Error('Low-memory RSS budget exceeded: '+Math.round(peakRss/1024/1024)+' MiB');
                     parentPort.postMessage({kept:result.counts.kept,files:outputs.length,maxPendingFiles,peakRss:Math.round(peakRss/1024/1024),peakHeap:Math.round(peakHeap/1024/1024),heap:Math.round(process.memoryUsage().heapUsed/1024/1024)});
                 })().catch(error=>{throw error;});
-            `, { eval: true, resourceLimits: { maxOldGenerationSizeMb: 64 }, workerData: { pipeline: path.join(root, 'src/main/flows/pipeline.js'), directory, totalRows, rowsPerFile, lowMemory, batchSize } });
+            `, { eval: true, resourceLimits: { maxOldGenerationSizeMb: heapLimit }, workerData: { pipeline: path.join(root, 'src/main/flows/pipeline.js'), directory, totalRows, rowsPerFile, lowMemory, batchSize } });
             const timer = setTimeout(() => { void worker.terminate(); reject(new Error('Cache smoke timeout')); }, lowMemory ? 180000 : 45000);
             worker.once('message', result => { clearTimeout(timer); resolve(result); });
             worker.once('error', error => { clearTimeout(timer); reject(error); });
             worker.once('exit', code => { if (code) { clearTimeout(timer); reject(new Error(`Cache worker exited: ${code}`)); } });
         });
-        console.log(`Cache Electron aprovado: ${result.kept} registros, falha e retomada, deduplicação em disco, heap de ${result.heap} MiB com limite de 64 MiB.`);
+        console.log(`Cache Electron aprovado: ${result.kept} registros, lotes de ${batchSize}, falha e retomada, deduplicação em disco, heap de ${result.heap} MiB com limite de ${heapLimit} MiB.`);
         console.log(`Exportação: ${result.files} arquivo(s), no máximo ${result.maxPendingFiles} XLSX aberto, pico RSS ${result.peakRss} MiB, pico heap ${result.peakHeap} MiB.`);
     } finally { await fs.rm(directory, { recursive: true, force: true }); }
 }).then(() => app.exit(0), error => { console.error(error.message); app.exit(1); });

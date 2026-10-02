@@ -3,7 +3,7 @@ const { CNPJ_FORMAT } = require('../documentos');
 const { telefoneParaGeracao } = require('./telefones');
 
 const MAX_ROWS = Number.MAX_SAFE_INTEGER;
-const MAX_BATCH_SIZE = 10000;
+const MAX_BATCH_SIZE = 50000;
 const SITUACOES = Object.freeze({ '01': 'Nula', '02': 'Ativa', '03': 'Suspensa', '04': 'Inapta', '08': 'Baixada' });
 const FIELD_ALIASES = Object.freeze({
     cnpj: ['cnpj'], razao_social: ['razao_social'],

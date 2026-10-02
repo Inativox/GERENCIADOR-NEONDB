@@ -163,9 +163,9 @@ test('automatic cache cleanup preserves exports even if output was selected insi
 
 for (const compressed of [false, true]) {
     for (const interruptedStage of ['enrichment', 'cleaning']) {
-        test(`${interruptedStage} resumes a ${compressed ? 'compressed' : 'legacy'} 2000-row checkpoint with 10000-row batches`, async t => {
-            const directory = fixture(t), selected = flow(directory), rows = source(12001);
-            selected.output.rowsPerFile = 20000;
+        test(`${interruptedStage} resumes a ${compressed ? 'compressed' : 'legacy'} 2000-row checkpoint with 50000-row batches`, async t => {
+            const directory = fixture(t), selected = flow(directory), rows = source(52001);
+            selected.output.rowsPerFile = 60000;
             let generated = 0, calls = 0, fail = true;
             const resumedDocuments = [], progress = [];
             const query = documents => {
@@ -181,13 +181,13 @@ for (const compressed of [false, true]) {
             const args = { flow: selected, user: { username: 'Davi' }, jobDir: directory, providers, cachePolicy: { compressed, prune: true } };
             await assert.rejects(runFlow(args));
             fail = false;
-            const result = await runFlow({ ...args, processingPolicy: { batchSize: 10000 }, onUpdate(update) {
+            const result = await runFlow({ ...args, processingPolicy: { batchSize: 50000 }, onUpdate(update) {
                 if (update.progress?.stage === interruptedStage) progress.push(update.progress.processed);
             } });
             assert.equal(generated, 1);
             assert.ok(progress.includes(2000));
-            assert.ok(progress.includes(12000));
-            assert.ok(progress.includes(12001));
+            assert.ok(progress.includes(52000));
+            assert.ok(progress.includes(52001));
             if (interruptedStage === 'enrichment') assert.deepEqual(resumedDocuments, rows.slice(2000).map(row => row.cnpj));
             assert.equal(result.counts.kept, rows.length);
             assert.equal(result.counts.exported, rows.length);

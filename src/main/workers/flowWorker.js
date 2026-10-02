@@ -22,7 +22,7 @@ function apiRequest(action) {
         parentPort.postMessage({ type: 'api-request', action, id });
     });
 }
-runFlow({ ...workerData, cachePolicy: { compressed: true, prune: true }, processingPolicy: { batchSize: 10000 }, signal: controller.signal,
+runFlow({ ...workerData, cachePolicy: { compressed: true, prune: true }, processingPolicy: { batchSize: 50000 }, signal: controller.signal,
     providers: { async acquireApi() {
         const session = await apiRequest('acquire');
         const client = require('../flows/disponibilidadeApi').createApiClient({ credentials: session.credentials });

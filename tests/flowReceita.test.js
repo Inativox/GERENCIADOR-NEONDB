@@ -123,8 +123,17 @@ test('Receita validates bounds, situation, lists, dates and cursors before datab
         await assert.rejects(collect({ pool, filters }));
         assert.equal(pool.calls.length, 0);
     }
-    await assert.rejects(collect({ pool: fixturePool(), batchSize: 10001 }), /lote Receita/);
+    await assert.rejects(collect({ pool: fixturePool(), batchSize: 50001 }), /lote Receita/);
     await assert.rejects(collect({ pool: fixturePool(), afterCnpj: 123 }), /Cursor Receita inválido/);
+});
+
+test('Receita fetches 50000-row pages and keeps the final partial page and cursor intact', async () => {
+    const pool = fixturePool({ rows: Array.from({ length: 50002 }, (_, index) => ({ ...row(index + 1), cnpj: String(index + 1).padStart(14, '0') })) });
+    const pages = await collect({ pool, filters: { limit: null }, batchSize: 50000 });
+    assert.deepEqual(pages.map(page => page.rows.length), [50000, 2]);
+    assert.deepEqual(pages.map(page => page.cursor), ['00000000050000', '00000000050002']);
+    assert.deepEqual(pool.calls.slice(1).map(call => call.values.at(-1)), [50000, 50000]);
+    assert.equal(new Set(pages.flatMap(page => page.rows.map(record => record.cnpj))).size, 50002);
 });
 
 test('Receita cancellation prevents requests and discards a returned batch', async () => {
