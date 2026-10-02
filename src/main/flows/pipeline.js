@@ -133,12 +133,15 @@ async function queryPhones(pool, kind, phones) {
 }
 
 /** Resumes only complete immutable JSONL stages. Connections never enter checkpoints. */
-async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal, onUpdate = () => {}, providers = {}, cachePolicy = {} }) {
+async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal, onUpdate = () => {}, providers = {}, cachePolicy = {}, processingPolicy = {} }) {
     const ownedPools = [];
     const pools = {};
     let stage = 'generation';
     let checkpoint;
     let stageProgress = null;
+    // Batch size is a runtime setting; changing it must not invalidate saved cursors.
+    const batchSize = processingPolicy.batchSize ?? BATCH_SIZE;
+    if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 10000) throw validation('O lote de processamento deve estar entre 1 e 10.000 registros.');
     const checkpointPath = path.join(jobDir, 'checkpoint.json');
     async function poolFor(name) {
         if (pools[name]) return pools[name];
@@ -284,7 +287,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                 const filters = generationFilters(flow.generation);
                 if (filters.limit != null && cache.state.processed >= filters.limit) return;
                 if (filters.limit != null) filters.limit -= cache.state.processed;
-                for await (const batch of iterate({ pool, filters, afterCnpj: cache.state.cursor, batchSize: BATCH_SIZE, signal })) {
+                for await (const batch of iterate({ pool, filters, afterCnpj: cache.state.cursor, batchSize, signal })) {
                     abort(signal);
                     for (const row of batch.rows) await emit(canonical(row));
                     checkpoint.counts.generated = (checkpoint.counts.generated || 0) + batch.rows.length;
@@ -298,7 +301,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             const { phoneCapacity } = outputFormat(flow, providers, checkpoint);
             update({ log: flow.enrichment?.enabled ? 'Enriquecendo contatos.' : 'Enriquecimento desativado.' });
             await jsonlStage(stage, async (emit, cache) => {
-                for await (const batch of batches(checkpoint.stages.generation.file, signal, BATCH_SIZE, cache.state.inputOffset)) {
+                for await (const batch of batches(checkpoint.stages.generation.file, signal, batchSize, cache.state.inputOffset)) {
                     let found = new Map();
                     if (flow.enrichment?.enabled) {
                         const documents = [...new Set(batch.map(row => row.cnpj).filter(Boolean))];
@@ -363,7 +366,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             const { phoneCapacity } = outputFormat(flow, providers, checkpoint);
             await jsonlStage(stage, async (emit, cache) => {
                 const input = flow.api?.enabled ? checkpoint.stages.api.file : checkpoint.stages.enrichment.file;
-                for await (const batch of batches(input, signal, BATCH_SIZE, cache.state.inputOffset)) {
+                for await (const batch of batches(input, signal, batchSize, cache.state.inputOffset)) {
                     for (const row of batch) {
                         row.phones = row.phones.map(value => {
                             const result = normalizarTelefoneFluxo(value, { ajustarNonoDigito: false });

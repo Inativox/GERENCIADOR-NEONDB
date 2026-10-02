@@ -160,3 +160,42 @@ test('automatic cache cleanup preserves exports even if output was selected insi
     assert.equal(result.counts.exported, 2);
     assert.ok(result.outputs.every(file => fs.existsSync(file.path)));
 });
+
+for (const compressed of [false, true]) {
+    for (const interruptedStage of ['enrichment', 'cleaning']) {
+        test(`${interruptedStage} resumes a ${compressed ? 'compressed' : 'legacy'} 2000-row checkpoint with 10000-row batches`, async t => {
+            const directory = fixture(t), selected = flow(directory), rows = source(12001);
+            selected.output.rowsPerFile = 20000;
+            let generated = 0, calls = 0, fail = true;
+            const resumedDocuments = [], progress = [];
+            const query = documents => {
+                if (fail && ++calls === 2) throw new Error('Synthetic interruption');
+                if (!fail) resumedDocuments.push(...documents);
+                return [];
+            };
+            const providers = {
+                async *iterateReceita() { generated++; for (let i = 0; i < rows.length; i += 2000) yield { rows: rows.slice(i, i + 2000) }; },
+                async queryEnrichment(documents) { return interruptedStage === 'enrichment' ? query(documents) : []; },
+                async queryPhones(kind, phones) { return interruptedStage === 'cleaning' ? query(phones) : []; },
+            };
+            const args = { flow: selected, user: { username: 'Davi' }, jobDir: directory, providers, cachePolicy: { compressed, prune: true } };
+            await assert.rejects(runFlow(args));
+            fail = false;
+            const result = await runFlow({ ...args, processingPolicy: { batchSize: 10000 }, onUpdate(update) {
+                if (update.progress?.stage === interruptedStage) progress.push(update.progress.processed);
+            } });
+            assert.equal(generated, 1);
+            assert.ok(progress.includes(2000));
+            assert.ok(progress.includes(12000));
+            assert.ok(progress.includes(12001));
+            if (interruptedStage === 'enrichment') assert.deepEqual(resumedDocuments, rows.slice(2000).map(row => row.cnpj));
+            assert.equal(result.counts.kept, rows.length);
+            assert.equal(result.counts.exported, rows.length);
+            assert.equal(result.counts.repeatedDocuments, 0);
+            assert.equal(result.counts.repeatedPhones, 0);
+            const lines = result.outputs.filter(output => output.kind === 'csv').flatMap(output => fs.readFileSync(output.path, 'utf8').trim().split('\n').slice(1));
+            assert.equal(lines.length, rows.length);
+            assert.equal(new Set(lines).size, rows.length);
+        });
+    }
+}
