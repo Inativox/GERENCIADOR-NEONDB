@@ -56,10 +56,15 @@ app.whenReady().then(async () => {
     ipcMain.handle('get-enriched-cnpj-count', () => 0);
     ipcMain.handle('get-blocklist-stats', () => ({ success: true, total: 0 }));
     ipcMain.handle('get-key-file-status', () => ({ loaded: false }));
-    const { defaults, OPERATIONS, MAX_ROWS } = require(path.join(appRoot, 'src/main/flows/config'));
+    const { defaults, validateFlow, OPERATIONS, MAX_ROWS } = require(path.join(appRoot, 'src/main/flows/config'));
     const flowFormats = require(path.join(appRoot, 'src/main/flows/formats'));
     const syntheticJob = { id: 'smoke-job', flowId: 'smoke-flow', flowName: 'Fluxo de teste', owner: 'Davi', status: 'running', stage: 'cleaning', counts: { generated: 1000, kept: 100 }, progress: { stage: 'cleaning', processed: 250, total: 1000 }, flowSnapshot: { ...defaults(), api: { enabled: false } }, logs: [], outputs: [] };
-    ipcMain.handle('flows-bootstrap', () => ({ success: true, user: { username: 'Davi', role: 'admin' }, flows: [], jobs: [syntheticJob], defaults: defaults(), operations: OPERATIONS, formats: flowFormats.listFormats(), layoutFields: [], access: {}, limits: { maxRows: MAX_ROWS } }));
+    let savedFlow;
+    ipcMain.handle('flows-bootstrap', () => ({ success: true, user: { username: 'Davi', role: 'admin' }, flows: savedFlow ? [savedFlow] : [], jobs: [syntheticJob], defaults: defaults(), operations: OPERATIONS, formats: flowFormats.listFormats(), layoutFields: [], access: {}, limits: { maxRows: MAX_ROWS } }));
+    ipcMain.handle('flows-save', (_event, input) => {
+        try { savedFlow = validateFlow(input, savedFlow); return { success: true, flow: savedFlow }; }
+        catch (error) { return { success: false, message: error.message }; }
+    });
     ipcMain.handle('flows-receita-options', () => ({ success: true, options: [] }));
     ipcMain.handle('receita-situacao-state', () => ({ success: true, job: null, templates: [], configured: false }));
     ipcMain.handle('select-file', () => selectedPaths);
@@ -204,6 +209,23 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate(`document.getElementById('fluxos-react-root').textContent.includes('Telefones removidos pela blocklist')`), true);
     assert.equal(await evaluate(`document.getElementById('fluxos-react-root').scrollWidth <= document.getElementById('fluxos-react-root').clientWidth + 1`), true);
     await fs.writeFile(path.resolve(__dirname, '../out/flow-progress-smoke.png'), (await window.webContents.capturePage()).toPNG());
+    await evaluate(`document.querySelector('#fluxos-react-root .flow-view-switch button').click()`);
+    await waitFor(`!!document.querySelector('input[name="outputFileName"]')`);
+    await evaluate(`
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        const field = document.querySelector('input[name="outputFileName"]');
+        setter.call(field, 'lista rca'); field.dispatchEvent(new Event('input', { bubbles: true }));
+        const title = document.querySelector('#fluxos-react-root .flow-section input');
+        setter.call(title, 'C6 teste'); title.dispatchEvent(new Event('input', { bubbles: true }));
+    `);
+    await waitFor(`document.getElementById('fluxos-react-root').textContent.includes('lista rca parte2.xlsx')`);
+    await evaluate(`document.querySelector('#fluxos-react-root form').requestSubmit()`);
+    await waitFor(`document.getElementById('fluxos-react-root').textContent.includes('Fluxo salvo.')`);
+    assert.equal(savedFlow.output.fileName, 'lista rca');
+    await evaluate(`document.querySelector('#fluxos-react-root .flow-new').click()`);
+    await waitFor(`document.querySelector('input[name="outputFileName"]').value === ''`);
+    await evaluate(`document.querySelector('#fluxos-react-root .flow-presets button').click()`);
+    await waitFor(`document.querySelector('input[name="outputFileName"]').value === 'lista rca'`);
     assert.deepEqual(errors, []);
     console.log('Smoke aprovado: React/worker, limpeza local sequencial, controles removidos, preferências, bloqueio de lote, temas e layout compacto, sem banco de produção.');
 }).catch(error => {

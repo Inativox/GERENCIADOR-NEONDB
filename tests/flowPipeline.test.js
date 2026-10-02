@@ -37,10 +37,12 @@ test('pipeline preserves Receita situation and text documents, splits output, es
     const fake = providers(source);
     const iterate = fake.iterateReceita;
     fake.iterateReceita = args => { generationCalls++; return iterate(args); };
-    const args = { flow: flow(), user: { username: 'Operador' }, jobDir, providers: fake };
+    const config = flow(); config.output.fileName = 'lista rca';
+    const args = { flow: config, user: { username: 'Operador' }, jobDir, providers: fake };
     const result = await runFlow(args);
     assert.equal(result.status, 'completed'); assert.equal(result.counts.generated, 3); assert.equal(result.counts.kept, 3);
     assert.deepEqual(result.outputs.map(output => output.rows), [2, 2, 1, 1]);
+    assert.deepEqual(result.outputs.map(output => path.basename(output.path)), ['lista rca parte1.xlsx', 'lista rca parte1.csv', 'lista rca parte2.xlsx', 'lista rca parte2.csv']);
     const sheet = await readXlsx(result.outputs[0].path);
     assert.equal(sheet.getCell('A2').value, '00000000000001'); assert.equal(sheet.getCell('C2').value, '11999990001');
     assert.equal(sheet.getCell('F2').value, '02'); assert.equal(sheet.getCell('B2').value[0], "'");
@@ -146,6 +148,7 @@ test('cancelled cleaning resumes its confirmed batches, empty results create no 
 
 test('export failure preserves confirmed parts and retries without regenerating or duplicate rows', async t => {
     const jobDir = await setup(t); const config = flow(); config.output.rowsPerFile = 1;
+    config.output.fileName = 'lista rca';
     let fail = true; let maps = 0;
     const fake = providers([row(1, ['11999990001']), row(2, ['11999990002'])]);
     const original = fake.mapOutputRow;
@@ -157,8 +160,33 @@ test('export failure preserves confirmed parts and retries without regenerating 
     assert.deepEqual(Object.keys(JSON.parse(await fs.readFile(path.join(jobDir, 'checkpoint.json'), 'utf8')).stages), ['generation', 'enrichment', 'cleaning']);
     fail = false; const result = await runFlow(args);
     assert.equal(result.outputs.length, 4); assert.deepEqual(result.outputs.map(output => output.rows), [1, 1, 1, 1]);
+    assert.deepEqual(result.outputs.map(output => path.basename(output.path)), ['lista rca parte1.xlsx', 'lista rca parte1.csv', 'lista rca parte2.xlsx', 'lista rca parte2.csv']);
     assert.equal(maps, 3); assert.ok(confirmed.every(file => result.outputs.some(output => path.basename(output.path) === file)));
 });
+
+for (const extension of ['xlsx', 'csv']) {
+    test(`named export preserves an existing ${extension} and can resume after it is moved`, async t => {
+        const jobDir = await setup(t), config = flow(); config.output.fileName = 'lista rca';
+        const directory = path.join(jobDir, 'outputs'); await fs.mkdir(directory);
+        const existing = path.join(directory, `lista rca parte1.${extension}`);
+        await fs.writeFile(existing, 'Existing campaign');
+        let generated = 0;
+        const fake = providers([row(1, ['11999990001'])]);
+        const iterate = fake.iterateReceita;
+        fake.iterateReceita = args => { generated++; return iterate(args); };
+        const args = { flow: config, user: { username: 'Davi' }, jobDir, providers: fake };
+        for (let attempt = 0; attempt < 2; attempt++) {
+            await assert.rejects(runFlow(args), { code: 'FLOW_VALIDATION', message: /Já existe um arquivo/ });
+            assert.equal(await fs.readFile(existing, 'utf8'), 'Existing campaign');
+            assert.deepEqual(await fs.readdir(directory), [path.basename(existing)]);
+        }
+        await fs.rename(existing, path.join(directory, `arquivo anterior.${extension}`));
+        const result = await runFlow(args);
+        assert.equal(generated, 1); assert.equal(result.counts.exported, 1);
+        assert.equal((await readXlsx(result.outputs[0].path)).getCell('A2').value, '00000000000001');
+        assert.equal(await fs.readFile(path.join(directory, `arquivo anterior.${extension}`), 'utf8'), 'Existing campaign');
+    });
+}
 
 test('bounded pg lookups are read-only and parameterized', async () => {
     const calls = []; const pool = { async query(sql, args) { calls.push({ sql, args }); return { rows: [] }; } };

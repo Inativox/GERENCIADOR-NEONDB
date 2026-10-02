@@ -13,6 +13,7 @@ const { readOnlyPoolOptions } = require('./postgres');
 const { normalizarDocumento } = require('../limpezaTelefones');
 const { normalizarTelefoneFluxo, variantesTelefoneFluxo, telefoneParaGeracao } = require('./telefones');
 const { PROHIBITED_CNAES } = require('../database/connection');
+const { resolveOutputName } = require('./outputNames');
 
 const BATCH_SIZE = 2000;
 const STAGES = ['generation', 'enrichment', 'api', 'cleaning', 'export'];
@@ -451,9 +452,13 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
     const confirmedPaths = new Set(saved.outputs.map(output => output.path));
     for (const output of saved.outputs) await fsp.access(output.path);
     const previous = await readJson(pendingPath);
+    // Historical snapshots keep their original naming when resumed.
+    const outputName = flow.output?.fileName == null ? null : resolveOutputName(flow.output, flow.name);
     // Delete only our own pending files inside the chosen destination.
     for (const file of previous?.files || []) {
-        if (!confirmedPaths.has(file) && path.dirname(path.resolve(file)) === directory && path.basename(file).startsWith(`fluxo_${checkpoint.id}_`)) await fsp.rm(file, { force: true });
+        const name = path.basename(file);
+        const namedPart = outputName && name.startsWith(`${outputName} parte`) && /^[1-9]\d*\.(xlsx|csv)$/.test(name.slice(`${outputName} parte`.length));
+        if (!confirmedPaths.has(file) && path.dirname(path.resolve(file)) === directory && (namedPart || name.startsWith(`fluxo_${checkpoint.id}_`))) await fsp.rm(file, { force: true });
     }
     const { context, format, map, headers } = outputFormat(flow, providers, checkpoint);
     const attempt = crypto.randomBytes(6).toString('hex');
@@ -464,11 +469,26 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
     let processed = saved.processed, inputOffset = saved.inputOffset;
     onProgress?.(processed);
     const remember = async file => { files.push(file); await atomicJson(pendingPath, { files }); };
+    async function reserve(file) {
+        let handle;
+        try { handle = await fsp.open(file, 'wx', 0o600); }
+        catch (error) {
+            if (error.code === 'EEXIST') throw validation('Já existe um arquivo com esse nome na pasta de saída. Mova o arquivo existente ou escolha outro nome ou pasta para uma nova execução.');
+            throw error;
+        }
+        // Record only files created by this attempt, so a collision is never deleted.
+        files.push(file);
+        await handle.close();
+        await atomicJson(pendingPath, { files });
+    }
     async function start() {
-        const base = path.join(directory, `fluxo_${checkpoint.id}_${attempt}_${String(++part).padStart(3, '0')}`);
+        const temporaryBase = path.join(directory, `fluxo_${checkpoint.id}_${attempt}_${String(++part).padStart(3, '0')}`);
+        const base = outputName ? path.join(directory, `${outputName} parte${part}`) : temporaryBase;
         const xlsx = `${base}.xlsx`;
-        await remember(`${xlsx}.tmp`); await remember(xlsx);
-        const stream = fs.createWriteStream(`${xlsx}.tmp`, { flags: 'wx' });
+        const xlsxTemporary = `${temporaryBase}.xlsx.tmp`;
+        await reserve(xlsx);
+        await remember(xlsxTemporary);
+        const stream = fs.createWriteStream(xlsxTemporary, { flags: 'wx' });
         const streamDone = finished(stream); streamDone.catch(() => {});
         const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream, useStyles: true, useSharedStrings: false });
         const zipFailure = new Promise((_, reject) => workbook.zip.once('error', reject));
@@ -476,12 +496,15 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
         const worksheet = workbook.addWorksheet('Base');
         format.colunas.forEach((_, index) => { worksheet.getColumn(index + 1).numFmt = '@'; });
         worksheet.addRow(headers.map(safeCell)).commit();
-        active = { xlsx, stream, streamDone, zipFailure, workbook, worksheet, rows: 0 };
+        active = { xlsx, xlsxTemporary, stream, streamDone, zipFailure, workbook, worksheet, rows: 0 };
         if (flow.output.csv) {
             const csv = `${base}.csv`;
-            await remember(`${csv}.tmp`); await remember(csv);
+            const csvTemporary = `${temporaryBase}.csv.tmp`;
+            await reserve(csv);
+            await remember(csvTemporary);
             active.csv = csv;
-            active.csvStream = fs.createWriteStream(`${csv}.tmp`, { flags: 'wx' });
+            active.csvTemporary = csvTemporary;
+            active.csvStream = fs.createWriteStream(csvTemporary, { flags: 'wx' });
             active.csvDone = finished(active.csvStream); active.csvDone.catch(() => {});
             await write(active.csvStream, '\uFEFF' + csvRow(headers));
         }
@@ -492,10 +515,10 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
         await Promise.race([active.workbook.commit(), active.streamDone, active.zipFailure]);
         await active.streamDone;
         if (active.csvStream) await close(active.csvStream);
-        for (const file of [active.xlsx, active.csv].filter(Boolean)) {
-            const handle = await fsp.open(`${file}.tmp`, 'r+');
+        for (const [file, temporary] of [[active.xlsx, active.xlsxTemporary], [active.csv, active.csvTemporary]].filter(([file]) => file)) {
+            const handle = await fsp.open(temporary, 'r+');
             try { await handle.sync(); } finally { await handle.close(); }
-            await fsp.rename(`${file}.tmp`, file);
+            await fsp.rename(temporary, file);
         }
         abort(signal);
         outputs.push({ path: active.xlsx, kind: 'xlsx', rows: active.rows });
@@ -533,7 +556,11 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
             active.stream.destroy(); active.csvStream?.destroy();
             await Promise.allSettled([active.streamDone, active.csvDone].filter(Boolean));
         }
-        for (const file of files) if (!confirmedPaths.has(file)) await fsp.rm(file, { force: true }).catch(() => {});
+        const remaining = [];
+        for (const file of files) if (!confirmedPaths.has(file)) await fsp.rm(file, { force: true }).catch(() => { remaining.push(file); });
+        // A removed reservation must not authorize deleting a later unrelated file.
+        if (remaining.length) await atomicJson(pendingPath, { files: remaining }).catch(() => {});
+        else await fsp.rm(pendingPath, { force: true }).catch(() => {});
         throw error;
     }
 }

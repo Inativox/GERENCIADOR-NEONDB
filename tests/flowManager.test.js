@@ -63,6 +63,23 @@ test('configuration validates bounds/dates and snapshot enforces authenticated b
     assert.throws(() => validateFlow({ ...input, pipelines: ['90'] }), /inteiro/);
 });
 
+test('output names persist independently and freeze per execution, with a safe fallback for older flows', async t => {
+    const f = fixture(t);
+    const input = defaults(); input.name = 'C6 / comércio: SP'; input.output.fileName = '  lista rca  ';
+    const saved = f.manager.save(input);
+    assert.equal(f.manager.bootstrap().flows[0].output.fileName, 'lista rca');
+    const job = f.manager.start({ flowId: saved.id, outputDirectory: f.directory });
+    f.manager.save({ ...saved, output: { ...saved.output, fileName: 'Outra campanha' } });
+    assert.equal(job.flowSnapshot.output.fileName, 'lista rca');
+    const legacy = { ...saved, output: { ...saved.output } }; delete legacy.output.fileName;
+    assert.equal(effectiveFlow(legacy, { username: 'Davi' }).output.fileName, 'C6 comércio SP');
+    for (const fileName of ['../lista', 'lista/fora', 'lista\\fora', 'lista:*', 'CON', 'nul.txt', 'lista.', 'lista.xlsx', 'x'.repeat(101), 'lista\0']) {
+        assert.throws(() => validateFlow({ ...input, output: { ...input.output, fileName } }), /nome|Nome/);
+    }
+    for (let n = 0; n < 100 && !f.workers.length; n++) await tick();
+    f.workers[0].emit('message', { type: 'result', data: { status: 'completed', outputs: [] } }); await idle(f.manager);
+});
+
 test('final API is optional per C6 flow, fixed dual/one-minute, and unavailable for other operations', () => {
     const input = defaults();
     assert.equal(validateFlow(input).api.enabled, true);

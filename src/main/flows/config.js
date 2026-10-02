@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const { PROHIBITED_CNAES } = require('../database/connection');
+const { validateOutputName, resolveOutputName } = require('./outputNames');
 const MAX_ROWS = Number.MAX_SAFE_INTEGER;
 const OPERATIONS = [
     { id: 'c6', name: 'C6 — Abertura', pipelines: [90] },
@@ -13,7 +14,7 @@ function defaults() {
         enrichment: { enabled: false, strategy: 'append', fillCpf: false },
         api: { enabled: true, keyMode: 'dupla', delayMs: 60000 },
         cleaning: { enabled: true, rootSource: 'bq', rootFile: '', blocklist: true, invalidPhones: false, removeLandlines: false, fillLivre5: false, prohibitedCnaes: [...PROHIBITED_CNAES].map(value => value.padStart(7, '0')) },
-        output: { formatId: 'padrao', csv: false, rowsPerFile: 100000, includeSituacao: false } };
+        output: { fileName: '', formatId: 'padrao', csv: false, rowsPerFile: 100000, includeSituacao: false } };
 }
 function text(value, max = 200) { if (typeof value !== 'string' || value.length > max || value.includes('\0')) throw new Error('Texto inválido na configuração do fluxo.'); return value.trim(); }
 function option(value, allowed) { if (!allowed.includes(value)) throw new Error('Opção inválida na configuração do fluxo.'); return value; }
@@ -46,12 +47,13 @@ function validateFlow(input, existing, { resolveFormat = require('./formats').ge
         enrichment: { enabled: e.enabled === true, strategy: option(e.strategy, ['append', 'overwrite', 'ignore']), fillCpf: e.fillCpf === true },
         api: { enabled: operation === 'c6' && (input.api?.enabled == null || input.api.enabled === true), keyMode: 'dupla', delayMs: 60000 },
         cleaning: { enabled: c.enabled !== false, rootSource, rootFile, blocklist: c.blocklist !== false, invalidPhones: c.invalidPhones === true, removeLandlines: c.removeLandlines === true, fillLivre5: c.fillLivre5 === true, prohibitedCnaes: list(c.prohibitedCnaes, /^\d{1,7}$/, 500) },
-        output: { formatId: text(o.formatId, 80), csv: o.csv === true, rowsPerFile: number(o.rowsPerFile, 1, 1000000), includeSituacao: o.includeSituacao !== false } };
+        output: { fileName: validateOutputName(o.fileName), formatId: text(o.formatId, 80), csv: o.csv === true, rowsPerFile: number(o.rowsPerFile, 1, 1000000), includeSituacao: o.includeSituacao !== false } };
 }
 function effectiveFlow(flow, user, { resolveFormat = require('./formats').getFormat } = {}) {
     const snapshot = JSON.parse(JSON.stringify(flow));
     snapshot.api = { enabled: flow.operation === 'c6' && (flow.api?.enabled == null || flow.api.enabled === true), keyMode: 'dupla', delayMs: 60000 };
     snapshot.cleaning.blocklist = user.username !== 'Davi' || snapshot.cleaning.blocklist;
+    snapshot.output.fileName = resolveOutputName(snapshot.output, snapshot.name);
     snapshot.output.formatSnapshot = resolveFormat(snapshot.output.formatId, { includeSituacao: snapshot.output.includeSituacao, fillCpf: snapshot.enrichment.enabled && snapshot.enrichment.fillCpf });
     return snapshot;
 }

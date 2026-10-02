@@ -20,6 +20,7 @@ function fixture(validate) {
             get(key) { return settings.get(key); }
             set(key, value) { settings.set(key, value); }
         },
+        '../settingsWriteRetry': require('../src/main/settingsWriteRetry'),
         '../state': { currentUser: { username: 'test', role: 'admin' }, mainWindow: { webContents: sender } },
         '../flows/manager': { createFlowManager: () => ({ isBusy: () => false }) },
         '../flows/bq': {},

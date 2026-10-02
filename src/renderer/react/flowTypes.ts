@@ -17,7 +17,7 @@ export interface Flow {
         enabled: boolean; rootSource: RootSource; rootFile: string; blocklist: boolean; invalidPhones: boolean;
         removeLandlines: boolean; fillLivre5: boolean; prohibitedCnaes: string[];
     };
-    output: { formatId: string; csv: boolean; rowsPerFile: number; includeSituacao: boolean };
+    output: { fileName?: string; formatId: string; csv: boolean; rowsPerFile: number; includeSituacao: boolean };
 }
 export type JobStatus = 'running' | 'completed' | 'empty' | 'failed' | 'cancelled' | 'interrupted';
 export interface FlowJob {

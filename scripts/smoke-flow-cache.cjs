@@ -19,8 +19,9 @@ app.whenReady().then(async () => {
             const worker = new Worker(`
                 const { workerData, parentPort } = require('node:worker_threads');
                 const fs = require('node:fs');
+                const path = require('node:path');
                 const { runFlow } = require(workerData.pipeline);
-                const flow = { name: 'Synthetic', operation: 'c6', generation: {}, enrichment: {enabled:workerData.lowMemory,strategy:'append'}, cleaning: {enabled:true, rootSource:'none',blocklist:true,prohibitedCnaes:[]}, output:{formatId:'padrao',rowsPerFile:workerData.rowsPerFile,directory:workerData.directory} };
+                const flow = { name: 'Synthetic', operation: 'c6', generation: {}, enrichment: {enabled:workerData.lowMemory,strategy:'append'}, cleaning: {enabled:true, rootSource:'none',blocklist:true,prohibitedCnaes:[]}, output:{fileName:'lista rca',formatId:'padrao',rowsPerFile:workerData.rowsPerFile,directory:workerData.directory} };
                 let calls = 0, fail = true;
                 let peakRss = 0, peakHeap = 0, maxPendingFiles = 0;
                 function sample() {
@@ -45,6 +46,7 @@ app.whenReady().then(async () => {
                     const outputs=result.outputs.filter(output=>output.kind==='xlsx');
                     if(result.counts.kept!==workerData.totalRows||result.counts.exported!==workerData.totalRows||calls!==Math.ceil(workerData.totalRows/workerData.batchSize)+1)throw new Error('Invalid resumed result');
                     if(outputs.length!==Math.ceil(workerData.totalRows/workerData.rowsPerFile)||outputs.some((output,i)=>output.rows!==Math.min(workerData.rowsPerFile,workerData.totalRows-i*workerData.rowsPerFile)))throw new Error('Invalid sequential output parts');
+                    if(outputs.some((output,i)=>path.basename(output.path)!=='lista rca parte'+(i+1)+'.xlsx'))throw new Error('Invalid output names');
                     if(maxPendingFiles!==1)throw new Error('More than one XLSX part was open at a time');
                     if(workerData.lowMemory&&peakRss>768*1024*1024)throw new Error('Low-memory RSS budget exceeded: '+Math.round(peakRss/1024/1024)+' MiB');
                     parentPort.postMessage({kept:result.counts.kept,files:outputs.length,maxPendingFiles,peakRss:Math.round(peakRss/1024/1024),peakHeap:Math.round(peakHeap/1024/1024),heap:Math.round(process.memoryUsage().heapUsed/1024/1024)});

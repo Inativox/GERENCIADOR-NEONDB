@@ -2196,6 +2196,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.6',
+            date: '2026-10-02',
+            highlights: 'Nomes das listagens e otimização dos fluxos',
+            notes: [
+                'Defina o nome dos arquivos em Arquivos de saída de cada fluxo: lista rca parte1, parte2 e assim por diante.',
+                'XLSX e CSV usam o mesmo nome e numeração. Campo vazio usa o nome do fluxo.',
+                'A retomada preserva as partes confirmadas. Arquivos existentes não são sobrescritos.',
+                'Processamento em lotes de 10 mil registros, cache comprimido e liberação das etapas já consumidas.',
+                'Proteção ao salvar configurações e bloqueio de instâncias duplicadas do aplicativo.'
+            ]
+        },
+        {
             version: '1.8.2',
             date: '2026-10-01',
             highlights: 'Neon e Receita na tela de login',
