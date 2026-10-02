@@ -9,7 +9,7 @@ const ExcelJS = require('exceljs');
 const axios = require('axios');
 const nodemailer = require('nodemailer');
 const Store = require('electron-store');
-const store = new Store();
+const store = new (require('../settingsWriteRetry')(Store))();
 
 const state = require('../state');
 const { logSystemAction } = require('../database/connection');

@@ -8,7 +8,7 @@ privateConfig.initialize();
 const { app } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
-const store = new Store();
+const store = new (require('./settingsWriteRetry')(Store))();
 const { loadKeyFile } = require('./keyfile');
 
 const state = require('./state');

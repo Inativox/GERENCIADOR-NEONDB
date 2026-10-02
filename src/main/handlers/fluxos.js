@@ -45,7 +45,7 @@ async function readRootFile(filename, signal) {
     return { documents: [...documents], info: { source: 'file', count: documents.size, skipped, queriedAt: new Date().toISOString() } };
 }
 function register() {
-    const store = new Store();
+    const store = new (require('../settingsWriteRetry')(Store))();
     const selectedDirectories = new Map();
     const cacheDirectory = () => store.get('flow_cache_directory') || path.join(app.getPath('userData'), 'flows');
     const cacheDirectories = () => [...new Set([cacheDirectory(), ...(Array.isArray(store.get('flow_cache_directories')) ? store.get('flow_cache_directories') : [])])].filter(directory => typeof directory === 'string' && path.isAbsolute(directory));

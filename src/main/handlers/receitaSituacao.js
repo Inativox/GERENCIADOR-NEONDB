@@ -8,7 +8,7 @@ const state = require('../state');
 const { lookup, document } = require('../receitaSituacao');
 const { readOnlyPoolOptions } = require('../flows/postgres');
 function register() {
-    const store = new Store(), files = new Map(), latest = new Map();
+    const store = new (require('../settingsWriteRetry')(Store))(), files = new Map(), latest = new Map();
     let active = null;
     const connection = () => store.get('receita_connection_string') || process.env.RECEITA_DATABASE_URL;
     const protect = action => async (event, input) => {

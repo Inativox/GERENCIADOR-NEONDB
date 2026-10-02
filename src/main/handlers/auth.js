@@ -5,7 +5,7 @@ const { ipcMain, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const Store = require('electron-store');
-const store = new Store();
+const store = new (require('../settingsWriteRetry')(Store))();
 
 const state = require('../state');
 const { initializePool, closePool } = require('../database/connection');
@@ -231,8 +231,17 @@ function register() {
         return store.get('ui_settings', {});
     });
 
+    let settingsWarningOpen = false;
     ipcMain.on('save-ui-settings', (event, settings) => {
-        store.set('ui_settings', settings);
+        try { store.set('ui_settings', settings); }
+        catch {
+            if (settingsWarningOpen) return;
+            settingsWarningOpen = true;
+            Promise.resolve().then(() => dialog.showMessageBox(state.mainWindow || state.loginWindow, {
+                type: 'error', title: 'Preferências não salvas',
+                message: 'Não foi possível salvar as preferências. Feche outras versões do aplicativo e tente novamente. O processamento atual continua.',
+            })).catch(() => {}).finally(() => { settingsWarningOpen = false; });
+        }
     });
 
     ipcMain.handle('show-confirm-dialog', async (event, options) => {

@@ -5,14 +5,15 @@ const loadModule = require('./helpers/loadModule');
 const { readOnlyPoolOptions } = require('../src/main/flows/postgres');
 
 function fixture(environment = {}) {
-    const handlers = new Map(), settings = new Map(), pools = [];
+    const handlers = new Map(), events = new Map(), settings = new Map(), pools = [], warnings = [];
     const sender = {}, state = { loginWindow: { webContents: sender }, pool: null };
-    let validate = async () => ({}), neonError = null;
+    let validate = async () => ({}), neonError = null, preferenceError = false;
     class Pool { constructor(options) { this.options = options; pools.push(this); } async end() { this.closed = true; } }
     const auth = loadModule('src/main/handlers/auth.js', {
-        electron: { ipcMain: { handle: (name, fn) => handlers.set(name, fn), on() {} }, dialog: {} },
+        electron: { ipcMain: { handle: (name, fn) => handlers.set(name, fn), on: (name, fn) => events.set(name, fn) }, dialog: { async showMessageBox(window, options) { warnings.push(options); } } },
         fs: {}, path,
-        'electron-store': class { get(key) { return settings.get(key); } set(key, value) { settings.set(key, value); } },
+        'electron-store': class { get(key) { return settings.get(key); } set(key, value) { if (preferenceError && key === 'ui_settings') throw Object.assign(new Error('Synthetic lock'), { code: 'EPERM' }); settings.set(key, value); } },
+        '../settingsWriteRetry': require('../src/main/settingsWriteRetry'),
         '../state': state,
         '../database/connection': { initializePool: async uri => { if (neonError) throw neonError; state.pool = { options: { connectionString: uri } }; }, closePool() {} },
         '../database/cache': {}, '../keyfile': {},
@@ -21,8 +22,20 @@ function fixture(environment = {}) {
     }, { process: { env: environment } });
     auth.register();
     return { settings, pools, state, invoke: (name, input, origin = sender) => handlers.get(name)({ sender: origin }, input),
+        events, warnings, failPreferences: () => { preferenceError = true; },
         validate: action => { validate = action; }, failNeon: () => { neonError = new Error('private synthetic failure'); } };
 }
+
+test('locked preferences do not escape as an uncaught main-process exception or overwrite saved settings', async () => {
+    const f = fixture();
+    f.settings.set('ui_settings', { theme: 'dark' });
+    f.failPreferences();
+    assert.doesNotThrow(() => f.events.get('save-ui-settings')({}, { theme: 'light' }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.settings.get('ui_settings'), { theme: 'dark' });
+    assert.equal(f.warnings.length, 1);
+    assert.equal(f.warnings[0].title, 'Preferências não salvas');
+});
 
 test('login database status recognises saved and inherited accesses without returning connection strings', async () => {
     const f = fixture({ RECEITA_DATABASE_URL: 'postgresql://synthetic/environment-receita' });
