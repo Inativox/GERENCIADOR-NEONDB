@@ -9,7 +9,7 @@
 .flows-app button { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 5px; padding: 9px 13px; cursor: pointer; font: 500 12px var(--font-sans); transition: background 120ms; }
 .flows-app button:hover:not(:disabled) { background: var(--bg-element-hover); border-color: var(--border-hover); }
 .flows-app button:disabled { opacity: .5; cursor: default; }
-.flows-app :is(button, input, select, summary):focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.flows-app :is(button, input, textarea, select, summary):focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 .flow-view-switch { display: flex; gap: 3px; padding: 3px; background: var(--bg-element); border-radius: 6px; }
 .flow-view-switch button { background: transparent; border-color: transparent; }
 .flow-view-switch button[aria-pressed="true"] { background: var(--bg-card); border-color: var(--border-color); }
@@ -57,6 +57,13 @@
 .receita-select-options p { color: var(--text-secondary); padding: 10px 4px; font-size: 11px; }
 .receita-select-footer { display: flex; flex-wrap: wrap; gap: 6px; border-top: 1px solid var(--border-color); margin-top: 8px; padding-top: 8px; }
 .flows-app .receita-select-footer button { padding: 6px 8px; font-size: 10px; }
+.receita-cnae-import { margin-top: 8px; }
+.flows-app .receita-cnae-import button { padding: 6px 8px; font-size: 11px; }
+.receita-cnae-import > div { display: grid; gap: 8px; margin-top: 10px; }
+.receita-cnae-import label { font-size: 11px; font-weight: 500; }
+.flows-app .receita-cnae-import textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; border: 1px solid var(--border-color); border-radius: 5px; padding: 8px 10px; color: var(--text-primary); background: var(--bg-input); font: 12px/1.5 var(--font-mono); }
+.receita-cnae-import p { color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
+.receita-cnae-import p[role="alert"] { color: var(--accent-red); }
 .flows-app :is(input:not([type="checkbox"]), select) { width: 100%; min-width: 0; height: 38px; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 5px; padding: 8px 10px; color: var(--text-primary); background: var(--bg-input); font: 12px var(--font-sans); }
 .flows-app input::placeholder { color: var(--text-muted); }
 .flows-app :is(input, select):disabled { opacity: .5; }

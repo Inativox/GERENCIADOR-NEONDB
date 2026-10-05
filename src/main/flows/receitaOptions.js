@@ -4,6 +4,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const CACHE_TTL = 24 * 60 * 60000;
+// Legal natures are a reference catalog: refresh explicitly, not once per day.
+const PERSISTENT_CATALOGS = new Set(['naturezas']);
 const CATALOG_LIMITS = { uf: 100, cnaes: 10000, naturezas: 2000, cidade: 30000, bairro: 50000 };
 const FIELDS = { uf: ['estado'], cidade: ['cidade'], bairro: ['bairro'], cnaes: ['atividade_principal_cod', 'atividade_principal'], naturezas: ['natureza_juridica_cod', 'natureza_juridica'] };
 const normalize = value => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
@@ -17,7 +19,8 @@ function validateRequest(input) {
     if (typeof (input.search ?? '') !== 'string' || (input.search || '').length > 100 || /[\u0000-\u001f]/u.test(input.search || '')) throw new Error('Busca Receita inválida.');
     const offset = input.offset ?? 0;
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw new Error('Página Receita inválida.');
-    return { field: input.field, search: normalize(input.search || ''), offset, uf, cidade };
+    if (input.refresh != null && typeof input.refresh !== 'boolean') throw new Error('Atualização de opções Receita inválida.');
+    return { field: input.field, search: normalize(input.search || ''), offset, uf, cidade, refresh: input.refresh === true };
 }
 function buildOptionsQuery(metadata, input, { catalog = false } = {}) {
     const request = validateRequest(input), values = [], bind = value => { values.push(value); return `$${values.length}`; };
@@ -26,7 +29,7 @@ function buildOptionsQuery(metadata, input, { catalog = false } = {}) {
     const [name, description] = FIELDS[request.field], expression = field(name);
     const value = `btrim(${expression}::text)`;
     const label = description && metadata.fields[description] ? `COALESCE(NULLIF(btrim(${field(description)}::text), ''), ${value})` : value;
-    if (['uf', 'cnaes'].includes(request.field) && metadata.indexedFields?.includes(metadata.fields[name])) {
+    if (['uf', 'cnaes', 'naturezas'].includes(request.field) && metadata.indexedFields?.includes(metadata.fields[name])) {
         const clauses = [];
         if (!catalog && request.search) { const parameter = bind(`%${request.search.replace(/[\\%_]/g, char => `\\${char}`)}%`); clauses.push(`(${normalized('code')} LIKE ${parameter} ESCAPE E'\\\\' OR ${normalized('description')} LIKE ${parameter} ESCAPE E'\\\\')`); }
         // A seek per distinct code, rather than grouping millions of repeated companies.
@@ -81,29 +84,54 @@ function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, now 
         }
         const scope = { field: request.field, uf: request.field === 'bairro' ? request.uf : [], cidade: request.field === 'bairro' ? request.cidade : [] };
         const key = JSON.stringify(scope);
+        const persistent = PERSISTENT_CATALOGS.has(request.field);
         const page = rows => {
             const filtered = rows.filter(row => (request.field !== 'cidade' || !request.uf.length || request.uf.includes(normalize(row.uf || ''))) && (!request.search || normalize(row.value).includes(request.search) || normalize(row.label).includes(request.search)));
             const options = [...new Map(filtered.map(row => [row.value, row])).values()];
             return { options: options.slice(request.offset, request.offset + 50).map(row => ({ value: row.value, label: row.label === row.value ? row.value : `${row.value} · ${row.label}` })), hasMore: options.length > request.offset + 50 };
         };
         const cached = cache.get(key);
-        if (cached && now() - cached.at < CACHE_TTL) return page(cached.rows);
+        if (!request.refresh && cached && (persistent || now() - cached.at < CACHE_TTL)) return page(cached.rows);
         if (pending.has(key)) return page(await pending.get(key));
         if (active >= 2) throw new Error('Aguarde a consulta de opções Receita em andamento e tente novamente.');
         const currentPool = pool, currentSource = source;
-        const filename = cacheDirectory && path.join(cacheDirectory, createHash('sha256').update(currentSource + key).digest('hex') + '.json');
+        const hash = createHash('sha256').update(currentSource + key).digest('hex');
+        const filename = cacheDirectory && path.join(cacheDirectory, hash + (persistent ? '.catalog.json' : '.json'));
+        const legacyFilename = persistent && cacheDirectory && path.join(cacheDirectory, hash + '.json');
         const validRows = rows => Array.isArray(rows) && rows.length <= CATALOG_LIMITS[request.field] && rows.every(row => typeof row.value === 'string' && row.value.length <= 100 && typeof row.label === 'string' && row.label.length <= 1000 && (request.field !== 'cidade' || row.uf == null || typeof row.uf === 'string'));
+        async function saveCatalog(rows) {
+            if (!filename) return;
+            try {
+                await fs.mkdir(cacheDirectory, { recursive: true });
+                await fs.writeFile(filename + '.tmp', JSON.stringify(rows), { mode: 0o600 });
+                await fs.rename(filename + '.tmp', filename);
+                const files = (await fs.readdir(cacheDirectory)).filter(name => /^[a-f0-9]{64}(\.catalog)?\.json$/.test(name));
+                const entries = await Promise.all(files.map(async name => ({ filename: path.join(cacheDirectory, name), persistent: name.endsWith('.catalog.json'), modified: (await fs.stat(path.join(cacheDirectory, name))).mtimeMs })));
+                entries.sort((a, b) => b.modified - a.modified);
+                let catalogs = 0, temporary = 0;
+                for (const entry of entries) {
+                    const count = entry.persistent ? ++catalogs : ++temporary;
+                    if (count > 100 || (!entry.persistent && now() - entry.modified >= CACHE_TTL)) await fs.unlink(entry.filename);
+                }
+            } catch { /* A read-only/full local disk must not prevent a successful query. */ }
+        }
         active++;
         const promise = (async () => {
             try {
-                if (filename) {
-                    try {
-                        const stat = await fs.stat(filename);
-                        if (stat.size <= 20 * 1024 * 1024 && now() - stat.mtimeMs < CACHE_TTL) {
-                            const rows = JSON.parse(await fs.readFile(filename, 'utf8'));
-                            if (validRows(rows)) { if (source === currentSource) cache.set(key, { at: now(), rows }); return rows; }
-                        }
-                    } catch { /* An absent or damaged local cache is rebuilt from SQL. */ }
+                if (filename && !request.refresh) {
+                    for (const candidate of [filename, legacyFilename].filter(Boolean)) {
+                        try {
+                            const stat = await fs.stat(candidate);
+                            if (stat.size <= 20 * 1024 * 1024 && (persistent || now() - stat.mtimeMs < CACHE_TTL)) {
+                                const rows = JSON.parse(await fs.readFile(candidate, 'utf8'));
+                                if (validRows(rows)) {
+                                    if (source === currentSource) cache.set(key, { at: now(), rows });
+                                    if (candidate === legacyFilename) await saveCatalog(rows);
+                                    return rows;
+                                }
+                            }
+                        } catch { /* An absent or damaged local cache is rebuilt from SQL. */ }
+                    }
                 }
                 if (!metadata) metadata = getReceitaMetadata(currentPool).then(async result => {
                     const indexes = await currentPool.query("SELECT a.attname AS column_name FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_class idx ON idx.oid = i.indexrelid JOIN pg_am am ON am.oid = idx.relam JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = i.indkey[0] WHERE n.nspname = 'public' AND t.relname = 'empresas' AND i.indisvalid AND i.indpred IS NULL AND am.amname = 'btree'");
@@ -116,17 +144,7 @@ function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, now 
                 if (!validRows(rows)) throw new Error();
                 const clean = rows.map(row => ({ value: row.value.trim(), label: row.label.trim(), ...(request.field === 'cidade' ? { uf: (row.uf || '').trim() } : {}) })).filter(row => row.value).sort((a, b) => a.value.localeCompare(b.value, 'pt-BR'));
                 if (source === currentSource) { if (cache.size >= 100) cache.delete(cache.keys().next().value); cache.set(key, { at: now(), rows: clean }); }
-                if (filename) {
-                    try {
-                        await fs.mkdir(cacheDirectory, { recursive: true });
-                        await fs.writeFile(filename + '.tmp', JSON.stringify(clean), { mode: 0o600 });
-                        await fs.rename(filename + '.tmp', filename);
-                        const files = (await fs.readdir(cacheDirectory)).filter(name => /^[a-f0-9]{64}\.json$/.test(name));
-                        const entries = await Promise.all(files.map(async name => ({ filename: path.join(cacheDirectory, name), modified: (await fs.stat(path.join(cacheDirectory, name))).mtimeMs })));
-                        entries.sort((a, b) => b.modified - a.modified);
-                        for (const [index, entry] of entries.entries()) if (index >= 100 || now() - entry.modified >= CACHE_TTL) await fs.unlink(entry.filename);
-                    } catch { /* A read-only/full local disk must not prevent a successful query. */ }
-                }
+                await saveCatalog(clean);
                 return clean;
             } catch { if (source === currentSource) metadata = null; throw new Error('Não foi possível carregar as opções da Receita. Tente novamente ou refine a busca e a localização.'); }
             finally { active--; if (pending.get(key) === promise) pending.delete(key); }

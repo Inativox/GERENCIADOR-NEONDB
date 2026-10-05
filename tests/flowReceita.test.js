@@ -133,6 +133,27 @@ test('Receita supports MEI-only, phone-without, email-with and one-sided date fi
     assert.equal(pool.calls[1].values.at(-1), 2000);
 });
 
+test('bulk CNAEs survive flow saving and reach generation as one parameterized SQL filter', async () => {
+    const cnaes = require('./fixtures/cnaes-geracao.json');
+    const { defaults, validateFlow } = require('../src/main/flows/config');
+    const input = defaults(); input.generation.cnaes = [...cnaes, '0111301'];
+    const flow = validateFlow(input);
+    const columns = { ...COLUMNS, atividade_principal_cod: 'character' };
+    const pool = fixturePool({ columns });
+    const candidates = [...cnaes, '0111301', '9999999'].map((code, index) => ({ ...row(index + 1), cnpj: String(index + 1).padStart(14, '0'), atividade_principal_cod: code }));
+    const originalQuery = pool.query.bind(pool);
+    pool.query = async (sql, values) => {
+        if (sql.includes('information_schema')) return originalQuery(sql, values);
+        assert.match(sql, /e\."atividade_principal_cod"::text = ANY\(\$3::text\[\]\)/);
+        assert.deepEqual(values[2], [...cnaes, '0111301']);
+        for (const code of cnaes) assert.ok(!sql.includes(code));
+        return { rows: candidates.filter(item => item.cnpj > values[0] && values[2].includes(item.atividade_principal_cod)).slice(0, values.at(-1)) };
+    };
+    const result = (await collect({ pool, filters: flow.generation, batchSize: 20 })).flatMap(page => page.rows);
+    assert.deepEqual(result.map(item => item.atividade_principal_cod), [...cnaes, '0111301']);
+    assert.equal(result.length, 48);
+});
+
 test('Receita metadata rejects missing required and numeric CNPJ columns with friendly errors', async () => {
     await assert.rejects(getReceitaMetadata(fixturePool({ columns: { cnpj: 'text' } })), /colunas obrigatórias razao_social, situacao_cadastral_cod/);
     await assert.rejects(getReceitaMetadata(fixturePool({ columns: { ...COLUMNS, cnpj: 'bigint' } })), /cnpj deve ser textual/);

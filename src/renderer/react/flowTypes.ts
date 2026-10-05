@@ -46,7 +46,7 @@ export interface FlowBootstrap {
 }
 export interface FlowResult { success: boolean; message?: string; flow?: Flow; job?: FlowJob }
 export interface ReceitaOption { value: string; label: string }
-export interface ReceitaOptionsInput { field: 'uf' | 'cidade' | 'bairro' | 'cnaes' | 'naturezas'; search?: string; offset?: number; uf?: string[]; cidade?: string[] }
+export interface ReceitaOptionsInput { field: 'uf' | 'cidade' | 'bairro' | 'cnaes' | 'naturezas'; search?: string; offset?: number; uf?: string[]; cidade?: string[]; refresh?: boolean }
 export interface ReceitaOptionsResult extends FlowResult { options?: ReceitaOption[]; hasMore?: boolean }
 export interface FlowAPI {
     flowsBootstrap(): Promise<FlowBootstrap>;

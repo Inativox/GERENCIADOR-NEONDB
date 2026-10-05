@@ -2258,6 +2258,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.11',
+            date: '2026-10-05',
+            highlights: 'Lista de CNAEs e catálogo salvo de naturezas jurídicas',
+            notes: [
+                'Em Gerar Listas, cole vários CNAEs de uma vez, separados por linhas, espaços, vírgulas ou ponto e vírgula.',
+                'Aceita códigos com sete dígitos ou no formato 1091-1/02, preserva zeros iniciais e adiciona à seleção atual sem repetir códigos.',
+                'Códigos inválidos ou uma seleção acima de 500 CNAEs exibem uma mensagem e preservam a seleção anterior.',
+                'O catálogo de naturezas jurídicas fica salvo nesta máquina e continua disponível ao reabrir o aplicativo, sem recarga diária.',
+                'Use Atualizar opções para buscar novamente as naturezas jurídicas. Se a consulta falhar, o último catálogo salvo é preservado.'
+            ]
+        },
+        {
             version: '1.8.10',
             date: '2026-10-02',
             highlights: 'Auto Raiz BigQuery na Limpeza Local',

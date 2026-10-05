@@ -20,7 +20,7 @@ test('database dropdown queries whitelist columns, parameterize searches and cas
     assert.throws(() => buildOptionsQuery({ ...metadata, fields: {} }, { field: 'uf' }), /estado/);
 });
 test('invalid field/search/page fails before any database access', () => {
-    for (const input of [{ field: '__proto__' }, { field: 'uf', offset: -1 }, { field: 'cidade', uf: ['SP;DROP'] }, { field: 'cnaes', search: 'x'.repeat(101) }]) assert.throws(() => validateRequest(input));
+    for (const input of [{ field: '__proto__' }, { field: 'uf', offset: -1 }, { field: 'cidade', uf: ['SP;DROP'] }, { field: 'cnaes', search: 'x'.repeat(101) }, { field: 'naturezas', refresh: 'true' }]) assert.throws(() => validateRequest(input));
 });
 test('options cache combines same requests, pages bounded results and resets after source changes', async () => {
     let source = 'first', queries = 0, ended = 0;
@@ -50,6 +50,10 @@ test('indexed catalogs seek distinct codes, while location catalogs aggregate ra
     assert.match(cnaes.text, /WITH RECURSIVE choices/);
     assert.match(cnaes.text, /"atividade_principal_cod" > previous.code/);
     assert.doesNotMatch(cnaes.text, /SELECT DISTINCT|GROUP BY/);
+    const indexedNatures = buildOptionsQuery({ ...indexed, indexedFields: ['natureza_juridica_cod'] }, { field: 'naturezas' }, { catalog: true });
+    assert.match(indexedNatures.text, /WITH RECURSIVE choices/);
+    assert.match(indexedNatures.text, /"natureza_juridica_cod" > previous.code/);
+    assert.doesNotMatch(indexedNatures.text, /GROUP BY/);
     const naturezas = buildOptionsQuery(metadata, { field: 'naturezas' }, { catalog: true });
     assert.match(naturezas.text, /MIN\(e\."natureza_juridica"\)/);
     assert.match(naturezas.text, /GROUP BY e\."natureza_juridica_cod"/);
@@ -74,15 +78,15 @@ test('search, pagination and UF combinations reuse the complete SQL catalog with
     assert.equal(queries, 1); await service.close();
 });
 
-test('persistent catalogs survive restart, expire and contain no connection credentials', async t => {
+test('legal natures survive restart and aging; explicit refresh replaces the saved catalog without credentials', async t => {
     const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path');
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'receita-options-'));
     t.after(() => fs.rm(directory, { recursive: true, force: true }));
-    let reads = 0;
+    let reads = 0, currentRows = [{ value: '2062', label: 'Sociedade Empresária Limitada' }];
     const settings = { getConnection: () => 'private-password', cacheDirectory: directory, poolFactory: () => ({ query: async sql => {
         if (sql.includes('information_schema')) return { rows: Object.keys(fields).map(column_name => ({ column_name, data_type: 'text' })) };
         if (sql.includes('pg_index')) return { rows: [] };
-        reads++; return { rows: [{ value: '2062', label: 'Sociedade Empresária Limitada' }] };
+        reads++; return { rows: currentRows };
     }, end: async () => {} }) };
     const first = createReceitaOptions(settings); await first.load({ field: 'naturezas' }); await first.close();
     const file = path.join(directory, (await fs.readdir(directory)).find(name => name.endsWith('.json')));
@@ -90,8 +94,75 @@ test('persistent catalogs survive restart, expire and contain no connection cred
     const restarted = createReceitaOptions(settings);
     assert.equal((await restarted.load({ field: 'naturezas', search: 'empresaria' })).options[0].value, '2062');
     assert.equal(reads, 1); await restarted.close();
-    const old = new Date(Date.now() - 25 * 60 * 60000); await fs.utimes(file, old, old);
-    const expired = createReceitaOptions(settings); await expired.load({ field: 'naturezas' }); assert.equal(reads, 2); await expired.close();
+    const old = new Date(Date.now() - 90 * 24 * 60 * 60000); await fs.utimes(file, old, old);
+    const aged = createReceitaOptions(settings);
+    assert.equal((await aged.load({ field: 'naturezas' })).options[0].value, '2062'); assert.equal(reads, 1);
+    currentRows = [...currentRows, { value: '2135', label: 'Empresário Individual' }];
+    const updated = await aged.load({ field: 'naturezas', refresh: true });
+    assert.deepEqual(updated.options.map(row => row.value), ['2062', '2135']); assert.equal(reads, 2);
+    await aged.close();
+    const final = createReceitaOptions(settings);
+    assert.deepEqual((await final.load({ field: 'naturezas', search: 'individual' })).options.map(row => row.value), ['2135']);
+    assert.equal(reads, 2); await final.close();
+});
+
+test('daily caches still expire and their cleanup preserves old legal-nature catalogs', async t => {
+    const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path');
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'receita-options-'));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    let time = Date.now(), reads = 0;
+    const settings = { getConnection: () => 'fixture', now: () => time, cacheDirectory: directory, poolFactory: () => ({ query: async sql => {
+        if (sql.includes('information_schema')) return { rows: Object.keys(fields).map(column_name => ({ column_name, data_type: 'text' })) };
+        if (sql.includes('pg_index')) return { rows: [] };
+        reads++; return { rows: sql.includes('natureza_juridica_cod') ? [{ value: '2062', label: 'Limitada' }] : [{ value: 'SP', label: 'SP' }] };
+    }, end: async () => {} }) };
+    const service = createReceitaOptions(settings);
+    await service.load({ field: 'naturezas' }); await service.load({ field: 'uf' });
+    const files = await fs.readdir(directory), old = new Date(time - 25 * 60 * 60000);
+    for (const name of files) await fs.utimes(path.join(directory, name), old, old);
+    time += 25 * 60 * 60000;
+    await service.load({ field: 'naturezas', search: 'limitada' }); assert.equal(reads, 2);
+    await service.load({ field: 'uf' }); assert.equal(reads, 3); await service.close();
+    const restarted = createReceitaOptions(settings);
+    assert.deepEqual((await restarted.load({ field: 'naturezas' })).options, [{ value: '2062', label: '2062 · Limitada' }]);
+    assert.equal(reads, 3); await restarted.close();
+});
+
+test('old legal-nature cache migrates without SQL and failed refresh preserves the last complete catalog', async t => {
+    const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path'), { createHash } = require('node:crypto');
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'receita-options-'));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    const hash = createHash('sha256').update('fixture' + JSON.stringify({ field: 'naturezas', uf: [], cidade: [] })).digest('hex');
+    const legacy = path.join(directory, hash + '.json');
+    await fs.writeFile(legacy, JSON.stringify([{ value: '2062', label: 'Limitada' }]));
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60000); await fs.utimes(legacy, old, old);
+    let queries = 0;
+    const settings = { getConnection: () => 'fixture', cacheDirectory: directory, poolFactory: () => ({ query: async () => { queries++; throw new Error('private secret'); }, end: async () => {} }) };
+    const service = createReceitaOptions(settings);
+    assert.equal((await service.load({ field: 'naturezas' })).options[0].value, '2062'); assert.equal(queries, 0);
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, hash + '.catalog.json'), 'utf8')), [{ value: '2062', label: 'Limitada' }]);
+    await assert.rejects(service.load({ field: 'naturezas', refresh: true }), /carregar/);
+    assert.equal((await service.load({ field: 'naturezas' })).options[0].value, '2062'); assert.equal(queries, 1); await service.close();
+    const restarted = createReceitaOptions(settings);
+    assert.equal((await restarted.load({ field: 'naturezas' })).options[0].value, '2062'); assert.equal(queries, 1); await restarted.close();
+});
+
+test('damaged legal-nature cache is rebuilt instead of used as a permanent catalog', async t => {
+    const fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path');
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'receita-options-'));
+    t.after(() => fs.rm(directory, { recursive: true, force: true }));
+    let reads = 0;
+    const settings = { getConnection: () => 'fixture', cacheDirectory: directory, poolFactory: () => ({ query: async sql => {
+        if (sql.includes('information_schema')) return { rows: Object.keys(fields).map(column_name => ({ column_name, data_type: 'text' })) };
+        if (sql.includes('pg_index')) return { rows: [] };
+        reads++; return { rows: [{ value: '2062', label: 'Limitada' }] };
+    }, end: async () => {} }) };
+    const first = createReceitaOptions(settings); await first.load({ field: 'naturezas' }); await first.close();
+    const file = path.join(directory, (await fs.readdir(directory)).find(name => name.endsWith('.catalog.json')));
+    await fs.writeFile(file, '{broken');
+    const restarted = createReceitaOptions(settings);
+    assert.deepEqual((await restarted.load({ field: 'naturezas' })).options, [{ value: '2062', label: '2062 · Limitada' }]);
+    assert.equal(reads, 2); await restarted.close();
 });
 
 test('oversized catalogs fail without caching or returning incomplete results', async () => {
