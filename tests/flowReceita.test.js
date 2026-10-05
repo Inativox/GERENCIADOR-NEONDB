@@ -22,8 +22,13 @@ function fixturePool({ columns = COLUMNS, rows = [], readError, availabilityColu
                 return { rows: Object.entries(selected).map(([column_name, data_type]) => ({ column_name, data_type })) };
             }
             if (readError) throw readError;
+            if (sql.includes('__scan_end')) {
+                const window = rows.filter(row => row.cnpj > values[0]).slice(0, values.at(-1));
+                return { rows: [{ __scan_end: window.at(-1)?.cnpj || null, __scan_count: window.length }] };
+            }
             const available = sql.includes('EXISTS (SELECT 1 FROM "public"."limpeza_api"');
-            return { rows: rows.filter(row => row.cnpj > values[0] && (!available || saved.some(item => item.cnpj === row.cnpj && item.status === values[2]))).slice(0, values.at(-1)) };
+            const upper = sql.match(/e\."cnpj" <= \$(\d+)::/);
+            return { rows: rows.filter(row => row.cnpj > values[0] && (!upper || row.cnpj <= values[Number(upper[1]) - 1]) && (!available || saved.some(item => item.cnpj === row.cnpj && item.status === values[2]))).slice(0, values.at(-1)) };
         }
     };
 }
@@ -108,15 +113,15 @@ test('empty or omitted limit reads all matching rows in bounded pages and accept
 });
 
 test('Receita parameters cover all generation filters without SQL interpolation', async () => {
-    const pool = fixturePool();
+    const pool = fixturePool({ rows: [row(1)] });
     await collect({ pool, filters: {
         limit: 15, uf: ['sp'], cidade: ["São Paulo'); DROP TABLE empresas; --"], bairro: ['São_%'],
         cnaes: ['0111301'], naturezas: ['2062'], dateFrom: '2026-01-01', dateTo: '2026-09-30',
         mei: 'no', phone: 'with', email: 'without', situacoes: ['02', '08']
     } });
-    const { sql, values } = pool.calls[1];
+    const { sql, values } = pool.calls.find(call => call.sql.includes('AS "razao_social"'));
     assert.doesNotMatch(sql, /DROP TABLE|2026-01-01|0111301|2062/);
-    assert.deepEqual(values, ['', ['02', '08'], ['SP'], ["SAO PAULO'); DROP TABLE EMPRESAS; --"], ['0111301'], ['2062'], '%SAO\\_\\%%', '2026-01-01', '2026-09-30', 'N', 15]);
+    assert.deepEqual(values, ['', ['02', '08'], ['SP'], ["SAO PAULO'); DROP TABLE EMPRESAS; --"], ['0111301'], ['2062'], '%SAO\\_\\%%', '2026-01-01', '2026-09-30', 'N', row(1).cnpj, 15]);
     assert.match(sql, /LIKE \$7 ESCAPE E'\\\\'/);
     assert.match(sql, /data_abertura"::date >= \$8::date/);
     assert.match(sql, /opcao_mei" IS NULL/);
@@ -139,15 +144,16 @@ test('bulk CNAEs survive flow saving and reach generation as one parameterized S
     const input = defaults(); input.generation.cnaes = [...cnaes, '0111301'];
     const flow = validateFlow(input);
     const columns = { ...COLUMNS, atividade_principal_cod: 'character' };
-    const pool = fixturePool({ columns });
     const candidates = [...cnaes, '0111301', '9999999'].map((code, index) => ({ ...row(index + 1), cnpj: String(index + 1).padStart(14, '0'), atividade_principal_cod: code }));
+    const pool = fixturePool({ columns, rows: candidates });
     const originalQuery = pool.query.bind(pool);
     pool.query = async (sql, values) => {
-        if (sql.includes('information_schema')) return originalQuery(sql, values);
+        if (sql.includes('information_schema') || sql.includes('__scan_end')) return originalQuery(sql, values);
         assert.match(sql, /e\."atividade_principal_cod"::text = ANY\(\$3::text\[\]\)/);
         assert.deepEqual(values[2], [...cnaes, '0111301']);
         for (const code of cnaes) assert.ok(!sql.includes(code));
-        return { rows: candidates.filter(item => item.cnpj > values[0] && values[2].includes(item.atividade_principal_cod)).slice(0, values.at(-1)) };
+        const bound = sql.match(/e\."cnpj" <= \$(\d+)::/);
+        return { rows: candidates.filter(item => item.cnpj > values[0] && (!bound || item.cnpj <= values[Number(bound[1]) - 1]) && values[2].includes(item.atividade_principal_cod)).slice(0, values.at(-1)) };
     };
     const result = (await collect({ pool, filters: flow.generation, batchSize: 20 })).flatMap(page => page.rows);
     assert.deepEqual(result.map(item => item.atividade_principal_cod), [...cnaes, '0111301']);

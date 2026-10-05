@@ -54,6 +54,28 @@ test('geração retoma no cursor confirmado e preserva limite, contadores e linh
     assert.equal(output(directory, 'generation')[1999].razao_social, 'Sintética á😀');
 });
 
+test('geração confirma cursor de janela vazia e retoma sem apagar progresso ou pular resultados', async t => {
+    const directory = fixture(t), selected = flow(directory), source = rows(2);
+    selected.generation = { limit: 2, cnaes: ['1091102'] };
+    const emptyCursor = '00000000010000';
+    source[0].cnpj = '00000000010001'; source[1].cnpj = '00000000010002';
+    let failed = false, resumedCursor;
+    const providers = {
+        async *iterateReceita({afterCnpj,filters}) {
+            if (!failed) { yield {rows:[],cursor:emptyCursor}; failed=true; throw new Error('Synthetic failure after empty range'); }
+            resumedCursor=afterCnpj; assert.equal(filters.limit,2);
+            yield {rows:source,cursor:source[1].cnpj};
+        },
+        async queryPhones() { return []; },
+    };
+    const args={flow:selected,user:{username:'Davi'},jobDir:directory,providers};
+    await assert.rejects(runFlow(args),/gerar a base da Receita/);
+    const result=await runFlow(args);
+    assert.equal(resumedCursor,emptyCursor);
+    assert.equal(result.counts.generated,2);
+    assert.deepEqual(output(directory,'generation').map(row=>row.cnpj),source.map(row=>row.cnpj));
+});
+
 test('enriquecimento retoma no lote seguinte, sem repetir consultas ou duplicar contatos', async t => {
     const directory = fixture(t), selected = flow(directory), source = rows(4001);
     selected.enrichment = { enabled: true, strategy: 'append' };

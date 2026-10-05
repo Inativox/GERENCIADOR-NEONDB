@@ -4,6 +4,8 @@ const { telefoneParaGeracao } = require('./telefones');
 
 const MAX_ROWS = Number.MAX_SAFE_INTEGER;
 const MAX_BATCH_SIZE = 100000;
+const CNAE_SCAN_SIZE = 10000;
+const MIN_CNAE_SCAN_SIZE = 500;
 const SITUACOES = Object.freeze({ '01': 'Nula', '02': 'Ativa', '03': 'Suspensa', '04': 'Inapta', '08': 'Baixada' });
 const FIELD_ALIASES = Object.freeze({
     cnpj: ['cnpj'], razao_social: ['razao_social'],
@@ -102,7 +104,7 @@ function normalizeFilters(filters) {
     return normalized;
 }
 
-function buildQuery(metadata, filters, cursor, limit) {
+function buildQuery(metadata, filters, cursor, limit, throughCnpj) {
     const values = [];
     const bind = value => { values.push(value); return `$${values.length}`; };
     const field = (name, required = false) => {
@@ -151,6 +153,7 @@ function buildQuery(metadata, filters, cursor, limit) {
         where.push(input === 'with' ? `(${condition})` : `NOT (${condition})`);
     }
     const selection = Object.keys(FIELD_ALIASES).map(name => `${field(name) ? `${field(name)}::text` : 'NULL::text'} AS ${quote(name)}`).join(', ');
+    if (throughCnpj) where.push(`${field('cnpj', true)} <= ${bind(throughCnpj)}::${cnpjType}`);
     return {
         text: `SELECT ${selection} FROM "public"."empresas" e WHERE ${where.join(' AND ')} ORDER BY ${field('cnpj', true)} ASC LIMIT ${bind(limit)}::integer`,
         values
@@ -168,33 +171,62 @@ async function* iterateReceita({ pool, filters = {}, batchSize = 2000, afterCnpj
     checkCancelled(signal);
     let remaining = selected.limit;
     let cursor = afterCnpj;
+    // A selective CNAE filter can make an ordered LIMIT traverse millions of
+    // companies. Bound the CNPJ range first using the existing primary index.
+    // All business filters (including active status and MEI) stay in SQL.
+    let scanSize = selected.cnaes.length ? CNAE_SCAN_SIZE : null;
     while (remaining === null || remaining > 0) {
         checkCancelled(signal);
         const size = remaining === null ? batchSize : Math.min(batchSize, remaining);
-        const query = buildQuery(metadata, selected, cursor, size);
+        // Validate requested columns even if the source window is empty.
+        let query = buildQuery(metadata, selected, cursor, size);
+        let windowEnd;
         let result;
-        try { result = await pool.query(query.text, query.values); }
+        try {
+            if (scanSize) {
+                const cnpj = `e.${quote(metadata.fields.cnpj)}`;
+                const type = TEXT_SQL_TYPES[metadata.types[metadata.fields.cnpj]];
+                const boundary = await pool.query(`SELECT max(cnpj)::text AS __scan_end, count(*)::integer AS __scan_count FROM (SELECT ${cnpj} AS cnpj FROM "public"."empresas" e WHERE ${cnpj} > $1::${type} ORDER BY ${cnpj} ASC LIMIT $2::integer) source_window`, [cursor, scanSize]);
+                const window = boundary.rows?.[0];
+                if (!window || !Number.isSafeInteger(window.__scan_count) || window.__scan_count < 0 || window.__scan_count > scanSize) fail('Resposta Receita inválida: janela de leitura inconsistente.');
+                if (window.__scan_count === 0) return;
+                windowEnd = window.__scan_end;
+                if (typeof windowEnd !== 'string' || !CNPJ_FORMAT.test(windowEnd) || windowEnd <= cursor) fail('Resposta Receita inválida: cursor da janela inconsistente.');
+                checkCancelled(signal);
+                query = buildQuery(metadata, selected, cursor, size, windowEnd);
+            }
+            result = await pool.query(query.text, query.values);
+        }
         catch (error) {
             checkCancelled(signal);
+            if (error.code === 'FLOW_VALIDATION') throw error;
+            if (error.code === '57014' && scanSize > MIN_CNAE_SCAN_SIZE) {
+                scanSize = Math.max(MIN_CNAE_SCAN_SIZE, Math.floor(scanSize / 2));
+                continue; // No rows/cursor were confirmed; retry the same range.
+            }
             if (error.code === '57014') fail('A consulta à Receita excedeu o tempo limite do banco. Refine os filtros e retome o fluxo.');
             fail('Não foi possível ler a base Receita. Verifique a conexão e tente retomar o fluxo.');
         }
         checkCancelled(signal);
         if (!Array.isArray(result.rows) || result.rows.length > size) fail('Resposta Receita inválida: o lote excede o limite solicitado.');
-        if (!result.rows.length) return;
+        if (!result.rows.length && !windowEnd) return;
         const rows = result.rows.map(source => {
             const row = Object.fromEntries(Object.keys(FIELD_ALIASES).map(name => [name, source[name] == null ? '' : String(source[name])]));
             row.telefone_principal = telefoneParaGeracao(row.telefone_principal);
             row.telefone_secundario = telefoneParaGeracao(row.telefone_secundario);
-            if (!CNPJ_FORMAT.test(row.cnpj) || row.cnpj <= cursor) fail('Base Receita incompatível: CNPJs inválidos ou fora da ordem de paginação.');
+            if (!CNPJ_FORMAT.test(row.cnpj) || row.cnpj <= cursor || (windowEnd && row.cnpj > windowEnd)) fail('Base Receita incompatível: CNPJs inválidos ou fora da ordem de paginação.');
             cursor = row.cnpj;
             row.situacao_cadastral_cod = row.situacao_cadastral_cod.padStart(2, '0');
             if (!row.situacao_cadastral) row.situacao_cadastral = SITUACOES[row.situacao_cadastral_cod] || '';
             return row;
         });
+        // A short filtered page exhausts this range, not the whole table. The
+        // cursor may advance past nonmatches, including an entirely empty range.
+        // Full pages keep the last returned CNPJ to preserve remaining matches.
+        if (windowEnd && rows.length < size) cursor = windowEnd;
         if (remaining !== null) remaining -= rows.length;
         yield { rows, cursor };
-        if (rows.length < size) return;
+        if (!windowEnd && rows.length < size) return;
     }
 }
 

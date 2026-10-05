@@ -2258,6 +2258,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.12',
+            date: '2026-10-05',
+            highlights: 'Geração com CNAEs em trechos menores e retomada segura',
+            notes: [
+                'A busca com CNAEs percorre trechos menores de CNPJ para evitar consultas longas ao gerar listas grandes.',
+                'Situação cadastral, CNAEs, MEI e os demais filtros selecionados continuam aplicados diretamente no SQL.',
+                'Trechos sem empresas elegíveis também salvam o ponto de retomada. A geração continua procurando os próximos resultados.',
+                'Se um trecho exceder o tempo do banco, a leitura tenta um trecho menor a partir do mesmo ponto.',
+                'Após atualizar, use Histórico e Retomar execução para continuar um fluxo interrompido, preservando a raiz e o cache salvos.'
+            ]
+        },
+        {
             version: '1.8.11',
             date: '2026-10-05',
             highlights: 'Lista de CNAEs e catálogo salvo de naturezas jurídicas',
