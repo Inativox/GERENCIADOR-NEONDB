@@ -121,7 +121,7 @@ test('Receita parameters cover all generation filters without SQL interpolation'
     } });
     const { sql, values } = pool.calls.find(call => call.sql.includes('AS "razao_social"'));
     assert.doesNotMatch(sql, /DROP TABLE|2026-01-01|0111301|2062/);
-    assert.deepEqual(values, ['', ['02', '08'], ['SP'], ["SAO PAULO'); DROP TABLE EMPRESAS; --"], ['0111301'], ['2062'], '%SAO\\_\\%%', '2026-01-01', '2026-09-30', 'N', row(1).cnpj, 15]);
+    assert.deepEqual(values, ['', ['02', '08'], ['SP'], ["SAO PAULO'); DROP TABLE EMPRESAS; --"], ['0111301'], ['2062'], '%SAO\\_\\%%', '2026-01-01', '2026-09-30', 'N', 15]);
     assert.match(sql, /LIKE \$7 ESCAPE E'\\\\'/);
     assert.match(sql, /data_abertura"::date >= \$8::date/);
     assert.match(sql, /opcao_mei" IS NULL/);

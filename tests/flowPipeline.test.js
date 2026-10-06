@@ -165,6 +165,38 @@ test('export failure preserves confirmed parts and retries without regenerating 
     assert.equal(maps, 3); assert.ok(confirmed.every(file => result.outputs.some(output => path.basename(output.path) === file)));
 });
 
+test('generation reads up to 50000 rows without query timeouts and exports the returned company', async t => {
+    const jobDir = await setup(t);
+    const ConnectionParameters = require('pg/lib/connection-parameters');
+    const { iterateReceita } = require('../src/main/flows/receita');
+    const fake = providers([], {
+        createPool(settings) {
+            const effective = new ConnectionParameters(settings);
+            assert.ok(!effective.statement_timeout);
+            assert.ok(!effective.query_timeout);
+            assert.match(effective.options, /statement_timeout=0$/);
+            return { on() {}, async end() {}, async query(sql) {
+                if (sql.includes('information_schema')) return { rows: [
+                    {column_name:'cnpj',data_type:'text'}, {column_name:'razao_social',data_type:'text'},
+                    {column_name:'situacao_cadastral_cod',data_type:'text'}, {column_name:'telefone_principal',data_type:'text'}
+                ] };
+                return { rows: [{cnpj:'00000000000001',razao_social:'Sintetica',situacao_cadastral_cod:'02',telefone_principal:'11999990001'}] };
+            } };
+        },
+        async *iterateReceita(args) {
+            assert.equal(args.batchSize, 50000);
+            yield* iterateReceita(args);
+        }
+    });
+    const result = await runFlow({ flow: flow(), user: {username:'Davi'}, jobDir, providers: fake,
+        connections: {receita:'postgresql://fixture@localhost/source?statement_timeout=60000&query_timeout=30000'}, processingPolicy:{batchSize:100000} });
+    assert.equal(result.status, 'completed');
+    assert.equal(result.counts.generated, 1);
+    const sheet = await readXlsx(result.outputs.find(output=>output.kind==='xlsx').path);
+    assert.equal(sheet.getCell('A2').value, '00000000000001');
+    assert.equal(sheet.getCell('C2').value, '11999990001');
+});
+
 for (const extension of ['xlsx', 'csv']) {
     test(`named export preserves an existing ${extension} and can resume after it is moved`, async t => {
         const jobDir = await setup(t), config = flow(); config.output.fileName = 'lista rca';
@@ -315,7 +347,12 @@ for (const address of [{ cidade: '', bairro: '' }, { cidade: 'Campinas', bairro:
         const columns = { cnpj: 'text', razao_social: 'text', situacao_cadastral_cod: 'text',
             telefone_principal: 'text', telefone_secundario: 'text', cidade: 'text', bairro: 'text' };
         const calls = [];
-        const pool = { async query(sql, values) {
+        const pool = { async connect() {
+            return { connection: { stream: { pause() {}, resume() {} } }, release() {}, query(query) {
+                calls.push({ sql: query.text, values: query.values });
+                setImmediate(() => { query.emit('row', { cnpj: '00000000000001', razao_social: 'Fixture', situacao_cadastral_cod: '02', telefone_principal: '11999990001' }); query.emit('end', {}); });
+            } };
+        }, async query(sql, values) {
             calls.push({ sql, values });
             if (sql.includes('information_schema.columns')) return { rows: Object.entries(columns).map(([column_name, data_type]) => ({ column_name, data_type })) };
             return { rows: [{ cnpj: '00000000000001', razao_social: 'Fixture', situacao_cadastral_cod: '02', telefone_principal: '11999990001' }] };
@@ -325,13 +362,35 @@ for (const address of [{ cidade: '', bairro: '' }, { cidade: 'Campinas', bairro:
         assert.equal(result.status, 'completed'); assert.equal(result.counts.kept, 1);
         assert.deepEqual(config.generation.cidade, address.cidade ? [address.cidade] : []); assert.deepEqual(config.generation.bairro, address.bairro ? [address.bairro] : []);
         const read = calls.find(call => !call.sql.includes('information_schema.columns'));
-        assert.deepEqual(read.values[1], ['02']);
+        assert.deepEqual(read.values[0], ['02']);
+        assert.doesNotMatch(read.sql, /ORDER BY|"cnpj" >/);
         if (address.cidade) { assert.ok(read.values.some(value => Array.isArray(value) && value[0] === 'CAMPINAS')); assert.ok(read.values.includes('%CENTRO%')); }
         else { assert.ok(!read.values.some(value => Array.isArray(value) && value.length === 0)); }
         const sheet = await readXlsx(result.outputs[0].path);
         assert.ok(sheet.getRow(2).values.includes('00000000000001')); assert.ok(sheet.getRow(2).values.includes('11999990001'));
     });
 }
+
+test('unordered generation resumes confirmed files even when the next scan changes order', async t => {
+    const jobDir = await setup(t); const config = flow(); config.generation.limit = 4;
+    const controller = new AbortController(); let order = [9, 1, 7, 3];
+    const pool = { async query() { return { rows: ['cnpj','razao_social','situacao_cadastral_cod','telefone_principal'].map(column_name => ({ column_name, data_type: 'text' })) }; }, async connect() {
+        return { connection: { stream: { pause() {}, resume() {}, destroy() {} } }, release() {}, query(query) {
+            assert.doesNotMatch(query.text, /ORDER BY|OFFSET|"cnpj" >/);
+            setImmediate(() => { for (const n of order) query.emit('row', { cnpj: String(n).padStart(14,'0'), razao_social: 'Synthetic', situacao_cadastral_cod: '02', telefone_principal: `1199999000${n}` }); query.emit('end', {}); });
+        } };
+    } };
+    const fake = providers([]); delete fake.iterateReceita;
+    const args = { flow: config, user: { username: 'Davi' }, jobDir, connections: { receita: pool }, providers: fake, processingPolicy: { batchSize: 2 } };
+    await assert.rejects(runFlow({ ...args, signal: controller.signal, onUpdate(update) {
+        if (update.stage === 'generation' && update.progress?.processed === 2) controller.abort();
+    } }), { code: 'FLOW_CANCELLED' });
+    order = [3, 9, 7, 1];
+    const result = await runFlow(args);
+    assert.equal(result.counts.generated, 4);
+    const rows = (await fs.readFile(path.join(jobDir,'generation.jsonl'),'utf8')).trim().split('\n').map(JSON.parse);
+    assert.deepEqual(rows.map(r => r.cnpj), [9,1,3,7].map(n => String(n).padStart(14,'0')));
+});
 
 test('append enrichment counts normalized additions that fit the final layout only', async t => {
     const jobDir = await setup(t); const config = flow();

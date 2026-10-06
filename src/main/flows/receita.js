@@ -4,8 +4,6 @@ const { telefoneParaGeracao } = require('./telefones');
 
 const MAX_ROWS = Number.MAX_SAFE_INTEGER;
 const MAX_BATCH_SIZE = 100000;
-const CNAE_SCAN_SIZE = 10000;
-const MIN_CNAE_SCAN_SIZE = 500;
 const SITUACOES = Object.freeze({ '01': 'Nula', '02': 'Ativa', '03': 'Suspensa', '04': 'Inapta', '08': 'Baixada' });
 const FIELD_ALIASES = Object.freeze({
     cnpj: ['cnpj'], razao_social: ['razao_social'],
@@ -104,7 +102,7 @@ function normalizeFilters(filters) {
     return normalized;
 }
 
-function buildQuery(metadata, filters, cursor, limit, throughCnpj) {
+function buildQuery(metadata, filters, cursor, limit) {
     const values = [];
     const bind = value => { values.push(value); return `$${values.length}`; };
     const field = (name, required = false) => {
@@ -119,7 +117,9 @@ function buildQuery(metadata, filters, cursor, limit, throughCnpj) {
     const situation = situationType ? situationField : `lpad(${situationField}::text, 2, '0')`;
     // Cast the parameters to the stored types. Casting CHAR columns to TEXT
     // prevents PostgreSQL from using their indexes for filtering and pagination.
-    const where = [`${field('cnpj', true)} > ${bind(cursor)}::${cnpjType}`, `${situation} = ANY(${bind(filters.situacoes)}::${situationType || 'text'}[])`];
+    const where = [];
+    if (cursor !== null) where.push(`${field('cnpj', true)} > ${bind(cursor)}::${cnpjType}`);
+    where.push(`${situation} = ANY(${bind(filters.situacoes)}::${situationType || 'text'}[])`);
     if (filters.availability === 'available') {
         const saved = metadata.availability;
         // Keep the saved CNPJ index usable; filter before LIMIT and avoid duplicating companies.
@@ -153,9 +153,8 @@ function buildQuery(metadata, filters, cursor, limit, throughCnpj) {
         where.push(input === 'with' ? `(${condition})` : `NOT (${condition})`);
     }
     const selection = Object.keys(FIELD_ALIASES).map(name => `${field(name) ? `${field(name)}::text` : 'NULL::text'} AS ${quote(name)}`).join(', ');
-    if (throughCnpj) where.push(`${field('cnpj', true)} <= ${bind(throughCnpj)}::${cnpjType}`);
     return {
-        text: `SELECT ${selection} FROM "public"."empresas" e WHERE ${where.join(' AND ')} ORDER BY ${field('cnpj', true)} ASC LIMIT ${bind(limit)}::integer`,
+        text: `SELECT ${selection} FROM "public"."empresas" e WHERE ${where.join(' AND ')}${cursor === null ? '' : ` ORDER BY ${field('cnpj', true)} ASC`}${limit == null ? '' : ` LIMIT ${bind(limit)}::${cursor === null ? 'bigint' : 'integer'}`}`,
         values
     };
 }
@@ -171,63 +170,105 @@ async function* iterateReceita({ pool, filters = {}, batchSize = 2000, afterCnpj
     checkCancelled(signal);
     let remaining = selected.limit;
     let cursor = afterCnpj;
-    // A selective CNAE filter can make an ordered LIMIT traverse millions of
-    // companies. Bound the CNPJ range first using the existing primary index.
-    // All business filters (including active status and MEI) stay in SQL.
-    let scanSize = selected.cnaes.length ? CNAE_SCAN_SIZE : null;
+    // LIMIT counts eligible companies after all business filters. Generation
+    // uses a query without a deadline and confirms only the returned CNPJ cursor.
     while (remaining === null || remaining > 0) {
         checkCancelled(signal);
         const size = remaining === null ? batchSize : Math.min(batchSize, remaining);
-        // Validate requested columns even if the source window is empty.
-        let query = buildQuery(metadata, selected, cursor, size);
-        let windowEnd;
+        const query = buildQuery(metadata, selected, cursor, size);
         let result;
         try {
-            if (scanSize) {
-                const cnpj = `e.${quote(metadata.fields.cnpj)}`;
-                const type = TEXT_SQL_TYPES[metadata.types[metadata.fields.cnpj]];
-                const boundary = await pool.query(`SELECT max(cnpj)::text AS __scan_end, count(*)::integer AS __scan_count FROM (SELECT ${cnpj} AS cnpj FROM "public"."empresas" e WHERE ${cnpj} > $1::${type} ORDER BY ${cnpj} ASC LIMIT $2::integer) source_window`, [cursor, scanSize]);
-                const window = boundary.rows?.[0];
-                if (!window || !Number.isSafeInteger(window.__scan_count) || window.__scan_count < 0 || window.__scan_count > scanSize) fail('Resposta Receita inválida: janela de leitura inconsistente.');
-                if (window.__scan_count === 0) return;
-                windowEnd = window.__scan_end;
-                if (typeof windowEnd !== 'string' || !CNPJ_FORMAT.test(windowEnd) || windowEnd <= cursor) fail('Resposta Receita inválida: cursor da janela inconsistente.');
-                checkCancelled(signal);
-                query = buildQuery(metadata, selected, cursor, size, windowEnd);
-            }
             result = await pool.query(query.text, query.values);
         }
         catch (error) {
             checkCancelled(signal);
             if (error.code === 'FLOW_VALIDATION') throw error;
-            if (error.code === '57014' && scanSize > MIN_CNAE_SCAN_SIZE) {
-                scanSize = Math.max(MIN_CNAE_SCAN_SIZE, Math.floor(scanSize / 2));
-                continue; // No rows/cursor were confirmed; retry the same range.
-            }
-            if (error.code === '57014') fail('A consulta à Receita excedeu o tempo limite do banco. Refine os filtros e retome o fluxo.');
+            if (error.code === '57014') fail('A consulta à Receita foi interrompida pelo banco. Retome o fluxo do último lote salvo.');
             fail('Não foi possível ler a base Receita. Verifique a conexão e tente retomar o fluxo.');
         }
         checkCancelled(signal);
         if (!Array.isArray(result.rows) || result.rows.length > size) fail('Resposta Receita inválida: o lote excede o limite solicitado.');
-        if (!result.rows.length && !windowEnd) return;
+        if (!result.rows.length) return;
         const rows = result.rows.map(source => {
             const row = Object.fromEntries(Object.keys(FIELD_ALIASES).map(name => [name, source[name] == null ? '' : String(source[name])]));
             row.telefone_principal = telefoneParaGeracao(row.telefone_principal);
             row.telefone_secundario = telefoneParaGeracao(row.telefone_secundario);
-            if (!CNPJ_FORMAT.test(row.cnpj) || row.cnpj <= cursor || (windowEnd && row.cnpj > windowEnd)) fail('Base Receita incompatível: CNPJs inválidos ou fora da ordem de paginação.');
+            if (!CNPJ_FORMAT.test(row.cnpj) || row.cnpj <= cursor) fail('Base Receita incompatível: CNPJs inválidos ou fora da ordem de paginação.');
             cursor = row.cnpj;
             row.situacao_cadastral_cod = row.situacao_cadastral_cod.padStart(2, '0');
             if (!row.situacao_cadastral) row.situacao_cadastral = SITUACOES[row.situacao_cadastral_cod] || '';
             return row;
         });
-        // A short filtered page exhausts this range, not the whole table. The
-        // cursor may advance past nonmatches, including an entirely empty range.
-        // Full pages keep the last returned CNPJ to preserve remaining matches.
-        if (windowEnd && rows.length < size) cursor = windowEnd;
         if (remaining !== null) remaining -= rows.length;
         yield { rows, cursor };
-        if (!windowEnd && rows.length < size) return;
+        if (rows.length < size) return;
     }
 }
 
-module.exports = { iterateReceita, getReceitaMetadata, MAX_ROWS, MAX_BATCH_SIZE, FIELD_ALIASES };
+// One unordered SELECT, with row events instead of buffering the whole result.
+// Socket backpressure bounds pending batches without using a server-side cursor
+// (which prevents the parallel scan used by the Hub).
+async function* iterateReceitaFast({ pool, filters = {}, batchSize = 50000, savedCount = 0, isSaved = () => false, signal } = {}) {
+    const selected = normalizeFilters(filters);
+    if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > MAX_BATCH_SIZE) fail('Lote Receita inválido.');
+    if (!Number.isSafeInteger(savedCount) || savedCount < 0) fail('Cache Receita inválido.');
+    checkCancelled(signal);
+    const metadata = await getReceitaMetadata(pool);
+    if (selected.availability === 'available') metadata.availability = await getAvailabilityMetadata(pool);
+    const total = selected.limit == null ? null : selected.limit + savedCount;
+    if (total !== null && !Number.isSafeInteger(total)) fail('Limite Receita inválido.');
+    const sql = buildQuery(metadata, selected, null, total);
+    const client = await pool.connect();
+    const query = new (require('pg').Query)({ text: sql.text, values: sql.values });
+    const ready = []; let pending = [], ended = false, error, wake;
+    const notify = () => { const resolve = wake; wake = null; resolve?.(); };
+    const stream = client.connection.stream;
+    const onClientError = value => { error = value; notify(); };
+    client.on?.('error', onClientError);
+    const onAbort = () => { stream.destroy(); notify(); };
+    query.on('row', row => {
+        pending.push(row);
+        if (pending.length >= batchSize) { ready.push(pending); pending = []; stream.pause(); notify(); }
+    });
+    query.on('end', () => { ended = true; notify(); });
+    query.on('error', value => { error = value; notify(); });
+    signal?.addEventListener('abort', onAbort, { once: true });
+    let remaining = selected.limit, output = [];
+    try {
+        checkCancelled(signal);
+        client.query(query);
+        while (true) {
+            checkCancelled(signal);
+            if (error) throw error;
+            if (!ready.length && !ended) { await new Promise(resolve => { wake = resolve; }); continue; }
+            const source = ready.length ? ready.shift() : pending.splice(0);
+            for (const record of source) {
+                checkCancelled(signal);
+                const row = Object.fromEntries(Object.keys(FIELD_ALIASES).map(name => [name, record[name] == null ? '' : String(record[name])]));
+                if (!CNPJ_FORMAT.test(row.cnpj)) fail('Base Receita incompatível: CNPJ inválido.');
+                if (isSaved(row.cnpj)) continue;
+                row.telefone_principal = telefoneParaGeracao(row.telefone_principal);
+                row.telefone_secundario = telefoneParaGeracao(row.telefone_secundario);
+                row.situacao_cadastral_cod = row.situacao_cadastral_cod.padStart(2, '0');
+                if (!row.situacao_cadastral) row.situacao_cadastral = SITUACOES[row.situacao_cadastral_cod] || '';
+                output.push(row);
+                if (remaining !== null) remaining--;
+                if (output.length === batchSize || remaining === 0) { yield { rows: output }; output = []; }
+                if (remaining === 0) return;
+            }
+            if (ended && !ready.length && !pending.length) break;
+            if (!ready.length) stream.resume();
+        }
+        if (output.length) yield { rows: output };
+    } catch (value) {
+        checkCancelled(signal);
+        if (value.code === 'FLOW_VALIDATION') throw value;
+        fail('Não foi possível ler a base Receita. Retome do último lote salvo.');
+    } finally {
+        signal?.removeEventListener('abort', onAbort);
+        client.release(!ended || Boolean(error));
+        client.removeListener?.('error', onClientError);
+    }
+}
+
+module.exports = { iterateReceita, iterateReceitaFast, getReceitaMetadata, MAX_ROWS, MAX_BATCH_SIZE, FIELD_ALIASES };

@@ -150,7 +150,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         if (!config) throw validation(`Configure a conexão ${name === 'receita' ? 'da Receita' : 'do enriquecimento'} para executar este fluxo.`);
         if (typeof config.query === 'function') return (pools[name] = config);
         const create = providers.createPool || (settings => new (require('pg').Pool)(settings));
-        const pool = create(readOnlyPoolOptions(config));
+        const pool = create(readOnlyPoolOptions(config, name === 'receita' ? { timeout: 0 } : {}));
         pool.on?.('error', () => {});
         ownedPools.push(pool);
         return (pools[name] = pool);
@@ -282,17 +282,27 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             stage = 'generation';
             checkpoint.counts = { generated: 0 };
             update({ status: 'running', log: 'Gerando base da Receita.' });
-            const iterate = providers.iterateReceita || require('./receita').iterateReceita;
+            const iterate = providers.iterateReceita || require('./receita').iterateReceitaFast;
             const pool = providers.iterateReceita && !connections.receita ? undefined : await poolFor('receita');
             await jsonlStage(stage, async (emit, cache) => {
                 const filters = generationFilters(flow.generation);
                 if (filters.limit != null && cache.state.processed >= filters.limit) return;
                 if (filters.limit != null) filters.limit -= cache.state.processed;
-                for await (const batch of iterate({ pool, filters, afterCnpj: cache.state.cursor, batchSize, signal })) {
+                // Migrate existing confirmed files to document-based resume. An
+                // unordered scan may return saved documents in any position.
+                if (!providers.iterateReceita && !cache.state.unorderedResume && cache.state.rows) {
+                    const file = path.join(jobDir, `generation.jsonl${checkpoint.cacheFormat === 'packed-v1' ? '.pack' : ''}.tmp`);
+                    for await (const row of records(file, signal)) cache.remember('generation-cnpj', row.cnpj);
+                    await cache.confirm({ unorderedResume: true });
+                }
+                for await (const batch of iterate({ pool, filters, afterCnpj: cache.state.cursor, savedCount: cache.state.rows, isSaved: cnpj => cache.has('generation-cnpj', cnpj), batchSize: Math.min(batchSize, 50000), signal })) {
                     abort(signal);
-                    for (const row of batch.rows) await emit(canonical(row));
+                    for (const row of batch.rows) {
+                        await emit(canonical(row));
+                        cache.remember('generation-cnpj', row.cnpj);
+                    }
                     checkpoint.counts.generated = (checkpoint.counts.generated || 0) + batch.rows.length;
-                    await cache.confirm({ processed: cache.state.processed + batch.rows.length, cursor: batch.cursor || batch.rows.at(-1)?.cnpj || cache.state.cursor });
+                    await cache.confirm({ processed: cache.state.processed + batch.rows.length, cursor: batch.cursor || batch.rows.at(-1)?.cnpj || cache.state.cursor, unorderedResume: !providers.iterateReceita });
                 }
             });
         }

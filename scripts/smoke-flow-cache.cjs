@@ -35,7 +35,7 @@ app.whenReady().then(async () => {
                 const monitor = setInterval(sample, 100); monitor.unref();
                 const extra = workerData.lowMemory ? {razao_social:'Empresa sintética para validação de memória '.repeat(3),email:'contato@example.test',atividade_principal:'Descrição sintética da atividade '.repeat(8),estado:'SP',cidade:'São Paulo',data_abertura:'2020-01-15'} : {};
                 const providers = {
-                    async *iterateReceita({batchSize}) { if(batchSize!==workerData.batchSize)throw new Error('Unexpected Receita batch size'); for (let offset=0;offset<workerData.totalRows;offset+=batchSize) yield {rows:Array.from({length:Math.min(batchSize,workerData.totalRows-offset)},(_,i)=>{const n=offset+i;return {...extra,cnpj:String(n+1).padStart(14,'0'),phones:['119'+String(12340000+n)]};})}; },
+                    async *iterateReceita({batchSize}) { if(batchSize!==50000)throw new Error('Unexpected Receita batch size'); for (let offset=0;offset<workerData.totalRows;offset+=batchSize) yield {rows:Array.from({length:Math.min(batchSize,workerData.totalRows-offset)},(_,i)=>{const n=offset+i;return {...extra,cnpj:String(n+1).padStart(14,'0'),phones:['119'+String(12340000+n)]};})}; },
                     async queryEnrichment(documents) { if(documents.length>workerData.batchSize)throw new Error('Oversized enrichment batch'); return documents.map(cnpj=>({cnpj,phones:['219'+String(12340000+Number(cnpj)),'319'+String(12340000+Number(cnpj))]})); },
                     async queryPhones() { if (++calls===2 && fail) throw new Error('Synthetic failure'); return []; },
                 };

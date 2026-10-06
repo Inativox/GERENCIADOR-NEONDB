@@ -28,3 +28,17 @@ test('non-Neon hosts with pooler names are never redirected', () => {
     const uri = 'postgresql://fixture@postgres-pooler.example.test/receita?sslmode=require';
     assert.equal(new URL(readOnlyPoolOptions(uri).connectionString).hostname, 'postgres-pooler.example.test');
 });
+
+test('disabled query timeout overrides inherited server and client limits without changing the source', () => {
+    const ConnectionParameters = require('pg/lib/connection-parameters');
+    const source = { connectionString: 'postgresql://fixture@localhost/source?statement_timeout=60000&query_timeout=30000&options=-c%20statement_timeout%3D60000', query_timeout: 15000 };
+    const result = readOnlyPoolOptions(source, { timeout: 0 });
+    const effective = new ConnectionParameters(result);
+    assert.ok(!effective.statement_timeout);
+    assert.ok(!effective.query_timeout);
+    assert.match(effective.options, /default_transaction_read_only=on -c statement_timeout=0$/);
+    assert.equal(new URL(result.connectionString).searchParams.has('query_timeout'), false);
+    assert.equal(result.connectionTimeoutMillis, 15000);
+    assert.equal(source.query_timeout, 15000);
+    assert.equal(new URL(source.connectionString).searchParams.get('query_timeout'), '30000');
+});

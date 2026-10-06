@@ -12,10 +12,12 @@ function readOnlyPoolOptions(connection, { max = 2, timeout = 60000, connectionT
             // pg gives URL parameters precedence over constructor options.
             url.searchParams.delete('options');
             url.searchParams.delete('statement_timeout');
+            if (timeout === 0) url.searchParams.delete('query_timeout');
             source.connectionString = url.toString();
         } catch { /* pg reports an invalid connection; never expose its URL. */ }
     }
     return { ...source, max, connectionTimeoutMillis: connectionTimeout, idleTimeoutMillis: 10000,
+        ...(timeout === 0 ? { query_timeout: 0 } : {}),
         statement_timeout: timeout, options: `${sessionOptions} -c default_transaction_read_only=on -c statement_timeout=${timeout}`.trim() };
 }
 module.exports = { readOnlyPoolOptions };

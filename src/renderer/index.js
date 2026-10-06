@@ -2258,6 +2258,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================
     const CHANGELOG = [
         {
+            version: '1.8.14',
+            date: '2026-10-06',
+            highlights: 'Busca da Receita sem ordenação por CNPJ',
+            notes: [
+                'A geração busca diretamente pelos filtros selecionados, sem ordenar por CNPJ.',
+                'Os resultados são lidos continuamente e salvos em lotes de até 50 mil, sem timeout de consulta.',
+                'A retomada reconhece os CNPJs já salvos para evitar repetições, independentemente da ordem devolvida pelo banco.'
+            ]
+        },
+        {
+            version: '1.8.13',
+            date: '2026-10-06',
+            highlights: 'Geração em lotes de até 50 mil empresas elegíveis',
+            notes: [
+                'Cada consulta busca até 50 mil empresas que passam pelos filtros selecionados.',
+                'A geração não usa timeout de consulta e mantém a retomada pelo último lote salvo.',
+                'Situação cadastral, CNAEs, datas, MEI, contatos e disponibilidade continuam aplicados no SQL antes do limite.'
+            ]
+        },
+        {
             version: '1.8.12',
             date: '2026-10-05',
             highlights: 'Geração com CNAEs em trechos menores e retomada segura',

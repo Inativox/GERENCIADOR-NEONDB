@@ -48,7 +48,7 @@ test('paginação textual e normalização de situação numérica continuam sup
     assert.match(pool.queries[0].text, /lpad\(e\."situacao_cadastral_cod"::text, 2, '0'\) = ANY\(\$2::text\[\]\)/);
 });
 
-test('cancelamento por statement_timeout informa tempo limite em vez de conexão inválida', async () => {
+test('interrupção da consulta pelo banco orienta retomada sem expor detalhes internos', async () => {
     const pool = poolFixture({ error: Object.assign(new Error('internal query details'), { code: '57014' }) });
-    await assert.rejects(iterateReceita({ pool }).next(), error => error.code === 'FLOW_VALIDATION' && /tempo limite/.test(error.message) && !error.message.includes('internal query details'));
+    await assert.rejects(iterateReceita({ pool }).next(), error => error.code === 'FLOW_VALIDATION' && /interrompida pelo banco/.test(error.message) && /último lote salvo/.test(error.message) && !error.message.includes('internal query details'));
 });
