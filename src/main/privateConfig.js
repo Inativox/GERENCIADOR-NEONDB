@@ -12,7 +12,9 @@ function validateBundle(bundle) {
     const env = bundle.env || {};
     if (typeof env !== 'object' || Array.isArray(env) || Object.entries(env).some(([key, value]) => !ENV_KEYS.has(key) || typeof value !== 'string')) throw new Error('Configuração de ambiente inválida.');
     if (bundle.keyFile !== undefined && (typeof bundle.keyFile !== 'string' || !bundle.keyFile.trim())) throw new Error('Licença de API inválida.');
-    return { version: 1, users: bundle.users, env, ...(bundle.keyFile ? { keyFile: bundle.keyFile } : {}) };
+    const fastway = bundle.fastway || {};
+    if (!fastway || typeof fastway !== 'object' || Array.isArray(fastway) || Object.entries(fastway).some(([key, value]) => !['login', 'password'].includes(key) || typeof value !== 'string' || value.length > 500)) throw new Error('Configuração Fastway inválida.');
+    return { version: 1, users: bundle.users, env, ...(bundle.keyFile ? { keyFile: bundle.keyFile } : {}), ...(fastway.login && fastway.password ? { fastway } : {}) };
 }
 
 function createPrivateConfig({ app, projectRoot, environment = process.env }) {
@@ -22,7 +24,7 @@ function createPrivateConfig({ app, projectRoot, environment = process.env }) {
     const managedEnvironment = new Map();
     const read = () => fs.existsSync(configPath) ? validateBundle(JSON.parse(fs.readFileSync(configPath, 'utf8'))) : null;
     function importBundle(bundle) {
-        const validated = validateBundle(bundle);
+        const validated = validateBundle({ ...bundle, fastway: bundle.fastway || read()?.fastway });
         fs.mkdirSync(directory, { recursive: true });
         const temporary = `${configPath}.tmp`;
         fs.writeFileSync(temporary, JSON.stringify(validated), { mode: 0o600 });
@@ -85,7 +87,16 @@ function createPrivateConfig({ app, projectRoot, environment = process.env }) {
         fs.writeFileSync(file, config.keyFile, { mode: 0o600 });
         return file;
     }
-    return { initialize, importBundle, loadUsers, keyFilePath, hasAccess: () => Object.keys(loadUsers()).length > 0, status: () => ({ configured: Object.keys(loadUsers()).length > 0, message: issue }) };
+    function saveFastway(input) {
+        const config = read();
+        if (!config) throw new Error('Importe o arquivo de acesso da empresa antes de configurar a Fastway.');
+        const login = typeof input?.login === 'string' ? input.login.trim() : '';
+        const password = typeof input?.password === 'string' ? input.password : '';
+        if (!login || !password || login.length > 200 || password.length > 300) throw new Error('Informe o login e a senha da Fastway.');
+        importBundle({ ...config, fastway: { login, password } });
+    }
+    function fastwayConfig() { try { return read()?.fastway || null; } catch { return null; } }
+    return { initialize, importBundle, loadUsers, keyFilePath, saveFastway, fastwayStatus: () => Boolean(fastwayConfig()?.login && fastwayConfig()?.password), getFastwayCredentials: fastwayConfig, hasAccess: () => Object.keys(loadUsers()).length > 0, status: () => ({ configured: Object.keys(loadUsers()).length > 0, message: issue }) };
 }
 
 module.exports = { createPrivateConfig, validateBundle };

@@ -7,7 +7,7 @@ const { effectiveFlow, validateFlow } = require('./config');
 const { listFormats, getFormat, mapOutputRow } = require('./formats');
 const { validateLayout } = require('./layouts');
 
-function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirectory, getCacheDirectories = () => [getCacheDirectory()], getUser, resolveConnections, resolveRoot, resolveApiSession, onUpdate = () => {}, workerFactory = data => new Worker(path.join(__dirname, '../workers/flowWorker.js'), { workerData: data, resourceLimits: { maxOldGenerationSizeMb: 512 } }) }) {
+function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirectory, getCacheDirectories = () => [getCacheDirectory()], getUser, resolveConnections, resolveRoot, resolveApiSession, resolveFastwayCredentials, onUpdate = () => {}, workerFactory = data => new Worker(path.join(__dirname, '../workers/flowWorker.js'), { workerData: data, resourceLimits: { maxOldGenerationSizeMb: 512 } }) }) {
     const stores = new Map(); let active = null;
     function user() { const current = getUser(); if (!current || current.role !== 'admin') throw new Error('Seu perfil não tem acesso à geração e limpeza de listas.'); return { username: current.username, role: current.role }; }
     function storeFor(owner) {
@@ -50,10 +50,17 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
             }
             if (context.controller.signal.aborted) throw new Error('Execução cancelada.');
             const current = user(); if (current.username !== context.job.owner) throw new Error('A sessão mudou. Retome usando o usuário que iniciou o fluxo.');
-            const worker = workerFactory({ flow: context.job.flowSnapshot, user: current, jobDir: context.job.jobDir, connections, rootFile: context.job.rootFile });
+            const worker = workerFactory({ flow: context.job.flowSnapshot, user: current, jobDir: context.job.jobDir, connections, rootFile: context.job.rootFile, retryUncertainUpload: context.retryUncertainUpload === true });
             context.worker = worker;
             async function apiMessage(message) {
                 try {
+                    if (message.type === 'upload-request') {
+                        if (!context.job.flowSnapshot.fastway?.enabled || !resolveFastwayCredentials) throw new Error('Configure o acesso Fastway antes de iniciar esta execução.');
+                        const credentials = await resolveFastwayCredentials(context.job.owner);
+                        if (context.controller.signal.aborted || active !== context || getUser()?.username !== context.job.owner) throw new Error('A execução ou a sessão foi encerrada.');
+                        worker.postMessage({ type: 'upload-response', id: message.id, credentials });
+                        return;
+                    }
                     if (!context.job.flowSnapshot.api?.enabled || context.job.flowSnapshot.operation !== 'c6' || !resolveApiSession) throw new Error('A etapa API não está disponível nesta execução.');
                     if (message.action === 'acquire') {
                         if (context.apiLease || context.apiAcquiring) throw new Error('Já existe uma reserva de API nesta execução.');
@@ -85,10 +92,10 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
                 worker.on('message', message => {
                     if (finished) return;
                     try {
-                        if (message.type === 'api-request') { void apiMessage(message); return; }
+                        if (message.type === 'api-request' || message.type === 'upload-request') { void apiMessage(message); return; }
                         if (message.type === 'update') saveUpdate(context, message.data || {});
                         if (message.type === 'result') { saveUpdate(context, { ...message.data, status: message.data?.status || 'completed' }); finished = true; resolve(); }
-                        if (message.type === 'error') { finished = true; reject(Object.assign(new Error(message.code === 'FLOW_CANCELLED' ? 'Execução cancelada.' : (message.message || 'Falha na execução do fluxo.')), { code: ['FLOW_DISK_FULL', 'FLOW_CANCELLED'].includes(message.code) ? message.code : '' })); }
+                        if (message.type === 'error') { finished = true; reject(Object.assign(new Error(message.code === 'FLOW_CANCELLED' ? 'Execução cancelada.' : (message.message || 'Falha na execução do fluxo.')), { code: ['FLOW_DISK_FULL', 'FLOW_CANCELLED', 'FLOW_VALIDATION'].includes(message.code) ? message.code : '' })); }
                     } catch { finished = true; reject(new Error('Não foi possível salvar o histórico. Verifique o espaço disponível e retome a execução.')); }
                 });
                 worker.on('error', () => { if (!finished) { finished = true; reject(new Error('O processamento foi interrompido. Retome a etapa; reduza o volume se o problema persistir.')); } });
@@ -108,8 +115,8 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
             if (active === context) active = null;
         }
     }
-    function launch(store, job) {
-        const context = { job, store, controller: new AbortController(), worker: null };
+    function launch(store, job, runtime = {}) {
+        const context = { job, store, controller: new AbortController(), worker: null, retryUncertainUpload: runtime.retryUncertainUpload };
         saveUpdate(context, { status: 'running' }); active = context;
         setImmediate(() => { void run(context); });
         return JSON.parse(JSON.stringify(job));
@@ -152,6 +159,7 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
             const current = user(); if (active) throw new Error('Já existe um fluxo em execução. Aguarde ou cancele.');
             const store = storeFor(current.username), flow = store.getFlow(flowId);
             if (!flow) throw new Error('Salve e selecione um fluxo antes de executar.');
+            if (flow.fastway?.enabled && !resolveFastwayCredentials?.()) throw new Error('Configure as credenciais Fastway nos acessos do fluxo antes de iniciar.');
             if (!outputDirectory || !path.isAbsolute(outputDirectory) || !fs.statSync(outputDirectory).isDirectory()) throw new Error('Selecione uma pasta de saída válida.');
             const snapshot = effectiveFlow(flow, current, { resolveFormat: formatResolver(store) }); snapshot.output.directory = outputDirectory;
             const cacheRoot = getCacheDirectory();
@@ -161,7 +169,7 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
             const timestamp = new Date().toISOString();
             return launch(store, { id, flowId: flow.id, flowName: flow.name, owner: current.username, status: 'running', stage: 'root', createdAt: timestamp, updatedAt: timestamp, counts: {}, outputs: [], logs: [], error: '', flowSnapshot: snapshot, jobDir: directory });
         },
-        resume(id) { const current = user(); if (active) throw new Error('Já existe um fluxo em execução.'); const store = storeFor(current.username), job = store.getJob(id); if (!job || !['failed', 'cancelled', 'interrupted'].includes(job.status)) throw new Error('Esta execução não pode ser retomada.'); if (job.cacheDiscarded) throw new Error('O cache desta execução foi apagado. Gere uma nova lista usando o fluxo salvo.'); job.error = ''; job.errorCode = ''; job.flowSnapshot.cleaning.blocklist = current.username !== 'Davi' || job.flowSnapshot.cleaning.blocklist; return launch(store, job); },
+        resume(id, options = {}) { const current = user(); if (active) throw new Error('Já existe um fluxo em execução.'); const store = storeFor(current.username), job = store.getJob(id); if (!job || !['failed', 'cancelled', 'interrupted'].includes(job.status)) throw new Error('Esta execução não pode ser retomada.'); if (job.cacheDiscarded) throw new Error('O cache desta execução foi apagado. Gere uma nova lista usando o fluxo salvo.'); job.error = ''; job.errorCode = ''; job.flowSnapshot.cleaning.blocklist = current.username !== 'Davi' || job.flowSnapshot.cleaning.blocklist; return launch(store, job, { retryUncertainUpload: options.retryUncertainUpload === true }); },
         async discardCache(id) {
             const store = storeFor(user().username), job = store.getJob(id);
             if (!job || active?.job.id === id || job.status === 'running') throw new Error('O cache de uma execução ativa não pode ser apagado.');

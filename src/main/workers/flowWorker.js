@@ -10,16 +10,16 @@ parentPort.on('message', message => {
         for (const request of pending.values()) request.reject(Object.assign(new Error('Execução cancelada.'), { code: 'FLOW_CANCELLED' }));
         pending.clear();
     }
-    if (message?.type === 'api-response') {
+    if (message?.type === 'api-response' || message?.type === 'upload-response') {
         const request = pending.get(message.id);
         if (request) { pending.delete(message.id); if (message.error) request.reject(Object.assign(new Error(message.error), { code: 'FLOW_VALIDATION' })); else request.resolve(message); }
     }
 });
-function apiRequest(action) {
+function apiRequest(action, type = 'api-request') {
     return new Promise((resolve, reject) => {
         if (controller.signal.aborted) { reject(Object.assign(new Error('Execução cancelada.'), { code: 'FLOW_CANCELLED' })); return; }
         const id = ++requestId; pending.set(id, { resolve, reject });
-        parentPort.postMessage({ type: 'api-request', action, id });
+        parentPort.postMessage({ type, action, id });
     });
 }
 runFlow({ ...workerData, cachePolicy: { compressed: true, prune: true }, processingPolicy: { batchSize: 100000 }, signal: controller.signal,
@@ -27,9 +27,13 @@ runFlow({ ...workerData, cachePolicy: { compressed: true, prune: true }, process
         const session = await apiRequest('acquire');
         const client = require('../flows/disponibilidadeApi').createApiClient({ credentials: session.credentials });
         return { ...client, nextAllowedAt: session.nextAllowedAt, assert: () => apiRequest('assert'), release: () => controller.signal.aborted ? Promise.resolve() : apiRequest('release') };
+    }, async uploadMailing({ file, campaignId, signal }) {
+        if (signal?.aborted) throw Object.assign(new Error('Envio cancelado.'), { code: 'FLOW_CANCELLED' });
+        const { credentials } = await apiRequest('credentials', 'upload-request');
+        return require('../flows/fastway').upload({ file, campaignId, credentials, signal });
     } },
     onUpdate: data => parentPort.postMessage({ type: 'update', data }) })
     .then(data => parentPort.postMessage({ type: 'result', data }))
     .catch(error => parentPort.postMessage({ type: 'error', message: error.message,
-        code: ['FLOW_CANCELLED', 'FLOW_DISK_FULL'].includes(error.code) ? error.code : 'FLOW_FAILED' }))
+        code: ['FLOW_CANCELLED', 'FLOW_DISK_FULL', 'FLOW_VALIDATION'].includes(error.code) ? error.code : 'FLOW_FAILED' }))
     .finally(() => parentPort.close());

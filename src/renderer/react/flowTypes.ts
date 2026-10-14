@@ -14,6 +14,7 @@ export interface Flow {
     };
     enrichment: { enabled: boolean; strategy: 'append' | 'overwrite' | 'ignore'; fillCpf: boolean };
     api?: { enabled: boolean; keyMode: 'dupla'; delayMs: 60000 };
+    fastway?: { enabled: boolean; campaignId: string };
     cleaning: {
         enabled: boolean; rootSource: RootSource; rootFile: string; blocklist: boolean; invalidPhones: boolean;
         removeLandlines: boolean; fillLivre5: boolean; prohibitedCnaes: string[];
@@ -42,7 +43,7 @@ export interface FlowBootstrap {
     success: boolean; message?: string; user?: { username: string; role: string }; flows?: Flow[];
     cacheDirectory?: string;
     jobs?: FlowJob[]; formats?: FlowFormat[]; layoutFields?: LayoutField[]; operations?: FlowOperation[]; defaults?: Partial<Flow>;
-    access?: { receitaConfigured: boolean; neonConfigured?: boolean; apiConfigured?: boolean; bqConfigured: boolean; bqLoginMode?: string; bqAutoLogin?: boolean; bqAuth?: BqAuthStatus }; limits?: { maxRows: number };
+    access?: { receitaConfigured: boolean; neonConfigured?: boolean; fastwayConfigured?: boolean; apiConfigured?: boolean; bqConfigured: boolean; bqLoginMode?: string; bqAutoLogin?: boolean; bqAuth?: BqAuthStatus }; limits?: { maxRows: number };
 }
 export interface FlowResult { success: boolean; message?: string; flow?: Flow; job?: FlowJob }
 export interface ReceitaOption { value: string; label: string }
@@ -51,6 +52,7 @@ export interface ReceitaOptionsResult extends FlowResult { options?: ReceitaOpti
 export interface FlowAPI {
     flowsBootstrap(): Promise<FlowBootstrap>;
     flowsSave(flow: Flow): Promise<FlowResult>;
+    flowsConfigureFastway(input: { login: string; password: string }): Promise<FlowResult>;
     flowsReceitaOptions(input: ReceitaOptionsInput): Promise<ReceitaOptionsResult>;
     flowsSaveLayout(layout: CustomLayout): Promise<FlowResult & { layout?: CustomLayout }>;
     flowsDeleteLayout(id: string): Promise<FlowResult>;
@@ -61,7 +63,7 @@ export interface FlowAPI {
     flowsDiscardCache?(jobId: string): Promise<FlowResult>;
     flowsStart(input: { flowId: string; outputDirectory: string }): Promise<FlowResult>;
     flowsCancel(jobId: string): Promise<FlowResult>;
-    flowsResume(jobId: string): Promise<FlowResult>;
+    flowsResume(input: { jobId: string; retryUncertainUpload?: boolean }): Promise<FlowResult>;
     flowsOpenOutput(input: { jobId: string; path: string }): Promise<FlowResult>;
     flowsConfigureReceita(input: { connectionString: string }): Promise<FlowResult>;
     flowsConfigureBq(): Promise<FlowResult>;

@@ -14,6 +14,7 @@ function defaults() {
         enrichment: { enabled: false, strategy: 'append', fillCpf: false },
         api: { enabled: true, keyMode: 'dupla', delayMs: 60000 },
         cleaning: { enabled: true, rootSource: 'bq', rootFile: '', blocklist: true, invalidPhones: false, removeLandlines: false, fillLivre5: false, prohibitedCnaes: [...PROHIBITED_CNAES].map(value => value.padStart(7, '0')) },
+        fastway: { enabled: false, campaignId: '' },
         output: { fileName: '', formatId: 'padrao', csv: false, rowsPerFile: 100000, includeSituacao: false } };
 }
 function text(value, max = 200) { if (typeof value !== 'string' || value.length > max || value.includes('\0')) throw new Error('Texto inválido na configuração do fluxo.'); return value.trim(); }
@@ -39,6 +40,9 @@ function validateFlow(input, existing, { resolveFormat = require('./formats').ge
     const situacoes = list(g.situacoes, /^(01|02|03|04|08)$/); if (!situacoes.length) throw new Error('Escolha ao menos uma situação da Receita.');
     const rootSource = option(c.rootSource, ['bq', 'neon', 'file', 'none']);
     const rootFile = text(c.rootFile || '', 2048);
+    const fastway = input.fastway || base.fastway;
+    const campaignId = text(fastway.campaignId || '', 9);
+    if (fastway.enabled === true && (!/^[1-9]\d{0,8}$/.test(campaignId) || o.csv !== true || o.rowsPerFile > require('./fastway').MAX_ROWS)) throw new Error('Para enviar pela Fastway, informe o ID do serviço, ative o CSV e use no máximo 250.000 linhas por arquivo.');
     if (rootSource === 'file' && c.enabled !== false && !/\.(xlsx|csv)$/i.test(rootFile)) throw new Error('Selecione um arquivo raiz XLSX ou CSV.');
     resolveFormat(o.formatId, { includeSituacao: o.includeSituacao !== false });
     return { id, revision: (existing?.revision || 0) + 1, name, operation, pipelines,
@@ -47,11 +51,13 @@ function validateFlow(input, existing, { resolveFormat = require('./formats').ge
         enrichment: { enabled: e.enabled === true, strategy: option(e.strategy, ['append', 'overwrite', 'ignore']), fillCpf: e.fillCpf === true },
         api: { enabled: operation === 'c6' && (input.api?.enabled == null || input.api.enabled === true), keyMode: 'dupla', delayMs: 60000 },
         cleaning: { enabled: c.enabled !== false, rootSource, rootFile, blocklist: c.blocklist !== false, invalidPhones: c.invalidPhones === true, removeLandlines: c.removeLandlines === true, fillLivre5: c.fillLivre5 === true, prohibitedCnaes: list(c.prohibitedCnaes, /^\d{1,7}$/, 500) },
+        fastway: { enabled: fastway.enabled === true, campaignId },
         output: { fileName: validateOutputName(o.fileName), formatId: text(o.formatId, 80), csv: o.csv === true, rowsPerFile: number(o.rowsPerFile, 1, 1000000), includeSituacao: o.includeSituacao !== false } };
 }
 function effectiveFlow(flow, user, { resolveFormat = require('./formats').getFormat } = {}) {
     const snapshot = JSON.parse(JSON.stringify(flow));
     snapshot.api = { enabled: flow.operation === 'c6' && (flow.api?.enabled == null || flow.api.enabled === true), keyMode: 'dupla', delayMs: 60000 };
+    snapshot.fastway = { enabled: flow.fastway?.enabled === true, campaignId: flow.fastway?.campaignId || '' };
     snapshot.cleaning.blocklist = user.username !== 'Davi' || snapshot.cleaning.blocklist;
     snapshot.output.fileName = resolveOutputName(snapshot.output, snapshot.name);
     snapshot.output.formatSnapshot = resolveFormat(snapshot.output.formatId, { includeSituacao: snapshot.output.includeSituacao, fillCpf: snapshot.enrichment.enabled && snapshot.enrichment.fillCpf });

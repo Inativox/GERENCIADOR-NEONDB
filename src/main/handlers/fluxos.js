@@ -15,6 +15,7 @@ const { listLayoutFields } = require('../flows/layouts');
 const { getReceitaMetadata } = require('../flows/receita');
 const { readOnlyPoolOptions } = require('../flows/postgres');
 const { createReceitaOptions } = require('../flows/receitaOptions');
+const privateConfig = require('../runtimeConfig');
 
 async function readRootFile(filename, signal) {
     const documents = new Set(); let skipped = 0;
@@ -79,6 +80,7 @@ function register() {
     };
     const manager = createFlowManager({
         baseDirectory: path.join(app.getPath('userData'), 'flows'), getUser: () => state.currentUser,
+        resolveFastwayCredentials: () => privateConfig.getFastwayCredentials(),
         getCacheDirectory: cacheDirectory,
         getCacheDirectories: cacheDirectories,
         resolveConnections(flow) {
@@ -138,9 +140,10 @@ function register() {
         let bqLoginMode = 'unavailable';
         try { bqLoginMode = loginModeFor(store.get('flow_bq_key_file')); } catch { /* Invalid private file offers import instead. */ }
         const bootstrap = manager.bootstrap();
-        return { ...bootstrap, defaults: defaults(), operations: OPERATIONS, formats: bootstrap.formats || listFormats(), layoutFields: listLayoutFields(), access: { neonConfigured: Boolean(config().enrichment), receitaConfigured: Boolean(config().receita), apiConfigured: Boolean(require('../keyfile').getApiCredentials()?.c6?.clientId && require('../keyfile').getApiCredentials()?.im?.clientId), bqConfigured, bqLoginMode, bqAutoLogin: store.get('flow_bq_auto_login') !== false, bqAuth: login.status(state.currentUser.username) }, limits: { maxRows: MAX_ROWS } };
+        return { ...bootstrap, defaults: defaults(), operations: OPERATIONS, formats: bootstrap.formats || listFormats(), layoutFields: listLayoutFields(), access: { neonConfigured: Boolean(config().enrichment), receitaConfigured: Boolean(config().receita), fastwayConfigured: privateConfig.fastwayStatus(), apiConfigured: Boolean(require('../keyfile').getApiCredentials()?.c6?.clientId && require('../keyfile').getApiCredentials()?.im?.clientId), bqConfigured, bqLoginMode, bqAutoLogin: store.get('flow_bq_auto_login') !== false, bqAuth: login.status(state.currentUser.username) }, limits: { maxRows: MAX_ROWS } };
     }));
     ipcMain.handle('flows-save-layout', protect(input => ({ layout: manager.saveLayout(input) })));
+    ipcMain.handle('flows-configure-fastway', protect(input => { privateConfig.saveFastway(input); return { message: 'Credenciais Fastway salvas no armazenamento privado.' }; }));
     ipcMain.handle('flows-receita-options', protect(async input => {
         const owner = state.currentUser.username;
         const result = await receitaOptions.load(input);
@@ -163,7 +166,7 @@ function register() {
         if (selectedDirectories.get(state.currentUser.username) !== input?.outputDirectory) throw new Error('Selecione a pasta de saída pelo aplicativo.');
         return { job: manager.start(input) };
     }));
-    ipcMain.handle('flows-resume', protect(id => { if (login.isBusy()) throw new Error('Conclua o login Google antes de retomar a execução.'); if (require('./limpeza').isCleaning()) throw new Error('Aguarde a limpeza local terminar.'); return { job: manager.resume(id) }; }));
+    ipcMain.handle('flows-resume', protect(input => { if (login.isBusy()) throw new Error('Conclua o login Google antes de retomar a execução.'); if (require('./limpeza').isCleaning()) throw new Error('Aguarde a limpeza local terminar.'); const payload = typeof input === 'string' ? { jobId: input } : input; return { job: manager.resume(payload?.jobId, { retryUncertainUpload: payload?.retryUncertainUpload === true }) }; }));
     ipcMain.handle('flows-cancel', protect(id => { manager.cancel(id); return {}; }));
     ipcMain.handle('flows-discard-cache', protect(async id => ({ job: await manager.discardCache(id) })));
     ipcMain.handle('flows-select-cache-folder', protect(async () => {

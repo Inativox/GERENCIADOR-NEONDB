@@ -16,7 +16,7 @@ const { PROHIBITED_CNAES } = require('../database/connection');
 const { resolveOutputName } = require('./outputNames');
 
 const BATCH_SIZE = 2000;
-const STAGES = ['generation', 'enrichment', 'api', 'cleaning', 'export'];
+const STAGES = ['generation', 'enrichment', 'api', 'cleaning', 'export', 'upload'];
 function abort(signal) {
     if (signal?.aborted) {
         const error = new Error('Execução cancelada.');
@@ -134,7 +134,7 @@ async function queryPhones(pool, kind, phones) {
 }
 
 /** Resumes only complete immutable JSONL stages. Connections never enter checkpoints. */
-async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal, onUpdate = () => {}, providers = {}, cachePolicy = {}, processingPolicy = {} }) {
+async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal, onUpdate = () => {}, providers = {}, cachePolicy = {}, processingPolicy = {}, retryUncertainUpload = false }) {
     const ownedPools = [];
     const pools = {};
     let stage = 'generation';
@@ -442,11 +442,42 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             await exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPerFile, commit, update, onProgress: processed => { stageProgress = { ...stageProgress, processed }; update(); } });
         }
         for (const output of checkpoint.stages.export.outputs) await fsp.access(output.path);
+        if (flow.fastway?.enabled) {
+            stage = 'upload';
+            const csvOutputs = checkpoint.stages.export.outputs.filter(output => output.kind === 'csv');
+            if (!csvOutputs.length) throw validation('Ative a geração de CSV antes de enviar mailings pela Fastway.');
+            const confirmed = new Set(checkpoint.stages.upload?.confirmed || []);
+            const pending = checkpoint.stages.upload?.pending;
+            if (pending && !retryUncertainUpload) throw validation(`A Fastway não confirmou ${path.basename(pending)}. Confira o painel antes de retomar; só autorize o reenvio se o arquivo não tiver sido recebido.`);
+            if (pending && retryUncertainUpload) {
+                const next = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed] } } };
+                await atomicJson(checkpointPath, next); checkpoint = next;
+            }
+            stageProgress = { stage, processed: confirmed.size, total: csvOutputs.length, complete: false };
+            for (const output of csvOutputs) {
+                abort(signal);
+                if (confirmed.has(output.path)) continue;
+                if (!providers.uploadMailing) throw validation('O envio Fastway não está disponível nesta execução.');
+                update({ log: `Enviando ${path.basename(output.path)} para a Fastway.` });
+                const before = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed], pending: output.path } } };
+                await atomicJson(checkpointPath, before); checkpoint = before;
+                const result = await providers.uploadMailing({ file: output.path, campaignId: flow.fastway.campaignId, signal });
+                confirmed.add(output.path);
+                const next = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed], last: { file: path.basename(output.path), rows: result.rows } } } };
+                await atomicJson(checkpointPath, next);
+                checkpoint = next;
+                stageProgress = { stage, processed: confirmed.size, total: csvOutputs.length, complete: false };
+                update({ log: `Fastway confirmou ${path.basename(output.path)} (${result.rows.toLocaleString('pt-BR')} registros).` });
+            }
+            await commit('upload', { confirmed: [...confirmed] });
+        } else if (!checkpoint.stages.upload) {
+            await commit('upload', { confirmed: [], skipped: true });
+        }
         const result = { status: checkpoint.stages.cleaning.rows ? 'completed' : 'empty', counts: checkpoint.counts, outputs: checkpoint.stages.export.outputs };
         update({ ...result, log: result.status === 'empty' ? 'Nenhum registro restou para exportar após os filtros do fluxo.' : 'Fluxo concluído.' });
         return result;
     } catch (error) {
-        if (checkpoint) update({ status: friendly(stage, error).code === 'FLOW_CANCELLED' ? 'cancelled' : 'failed', log: friendly(stage, error).message });
+        if (checkpoint) update({ status: friendly(stage, error).code === 'FLOW_CANCELLED' ? 'cancelled' : 'failed', log: stage === 'upload' && checkpoint.stages.upload?.pending ? 'Envio Fastway sem confirmação. Confira o painel antes de autorizar um reenvio.' : friendly(stage, error).message });
         throw friendly(stage, error);
     } finally { await Promise.allSettled(ownedPools.map(pool => pool.end())); }
 }
