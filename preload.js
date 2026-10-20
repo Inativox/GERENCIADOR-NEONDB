@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
+    onConfirmCloseDuringFlow: (callback) => subscribe('confirm-close-during-flow', callback),
+    answerCloseDuringFlow: (close) => ipcRenderer.send('close-during-flow-answer', close === true),
 
     // --- Funções de Login e Sessão ---
     loginAttempt: (username, password, rememberMe) => ipcRenderer.invoke('login-attempt', username, password, rememberMe),

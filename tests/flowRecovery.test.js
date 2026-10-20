@@ -200,3 +200,11 @@ test('barra mede registros processados, e geração sem total conhecido permanec
     assert.equal(model({ status: 'failed', stage: 'enrichment', progress: { stage: 'enrichment', processed: 10, total: 100 } }).paused, true);
     assert.equal(model({ status: 'empty', stage: 'export', progress: { stage: 'export', processed: 0, total: 0 } }).percent, 100);
 });
+
+test('envio Fastway aparece como etapa própria, contada em arquivos, só quando o fluxo envia', () => {
+    const upload = model({ status: 'running', stage: 'upload', flowSnapshot: { fastway: { enabled: true } }, progress: { stage: 'upload', processed: 0, total: 1 } });
+    assert.deepEqual(upload.stages, ['generation', 'enrichment', 'cleaning', 'export', 'upload']);
+    assert.equal(upload.label, 'Envio Fastway');
+    assert.equal(upload.detail, '0 de 1 arquivos');
+    assert.equal(model({ status: 'running', stage: 'export', flowSnapshot: {} }).stages.includes('upload'), false);
+});

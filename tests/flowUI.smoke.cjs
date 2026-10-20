@@ -217,6 +217,10 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     assert.equal(await evaluate(`document.querySelectorAll('.flow-progress-stages li').length`), 5);
     await evaluate(`window.electronAPI.emit({...window.electronAPI.inspect().jobs[0],progress:{stage:'generation',processed:25,total:100}})`);
     await waitFor(`document.querySelector('.flow-progress progress').value === 25`);
+    await evaluate(`window.electronAPI.emit({...window.electronAPI.inspect().jobs[0],stage:'upload',flowSnapshot:{...window.electronAPI.inspect().jobs[0].flowSnapshot,fastway:{enabled:true,campaignId:'18'}},progress:{stage:'upload',processed:0,total:1}})`);
+    await waitFor(`document.querySelector('.flow-scene-station[data-stage="upload"]')?.classList.contains('state-active')`);
+    assert.match(await evaluate(`document.querySelector('.flow-scene-status').textContent`), /Fastway/);
+    assert.equal(await evaluate(`document.querySelector('.flow-progress-heading strong').textContent`), 'Envio Fastway');
     assert.equal(await evaluate(`document.querySelectorAll('.flow-logs img').length`), 0);
     assert.equal(await evaluate(`document.querySelectorAll('.flow-job-counts strong')[1].textContent`), '—');
     await click('Cancelar execução');

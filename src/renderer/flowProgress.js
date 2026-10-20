@@ -1,10 +1,10 @@
 (function (root) {
     'use strict';
-    const labels = { root: 'Preparando a raiz', generation: 'Geração Receita', enrichment: 'Enriquecimento', api: 'Consulta API', cleaning: 'Filtros finais', export: 'Exportação' };
+    const labels = { root: 'Preparando a raiz', generation: 'Geração Receita', enrichment: 'Enriquecimento', api: 'Consulta API', cleaning: 'Filtros finais', export: 'Exportação', upload: 'Envio Fastway' };
     const number = value => Number(value).toLocaleString('pt-BR');
     function model(job) {
         const finished = ['completed', 'empty'].includes(job.status);
-        const stages = ['generation', 'enrichment', ...(job.flowSnapshot?.api?.enabled ? ['api'] : []), 'cleaning', 'export'];
+        const stages = ['generation', 'enrichment', ...(job.flowSnapshot?.api?.enabled ? ['api'] : []), 'cleaning', 'export', ...(job.flowSnapshot?.fastway?.enabled || job.stage === 'upload' ? ['upload'] : [])];
         const stage = job.stage === 'output' ? 'export' : job.stage;
         const counts = job.counts || {};
         let progress = job.progress?.stage === stage ? job.progress : null;
@@ -19,8 +19,9 @@
         const total = progress.total;
         const percent = finished || progress.complete ? 100 : total > 0 ? Math.min(100, Math.max(0, processed / total * 100)) : null;
         const paused = ['failed', 'cancelled', 'interrupted'].includes(job.status);
+        const unit = stage === 'upload' ? 'arquivos' : 'registros';
         return { stages, stage, label: finished ? 'Concluído' : labels[stage] || 'Preparando execução', processed, total, percent,
-            detail: total != null ? `${number(processed)} de ${number(total)} registros` : `${number(processed)} registros${stage === 'generation' ? ' gerados' : ' processados'}`,
+            detail: total != null ? `${number(processed)} de ${number(total)} ${unit}` : `${number(processed)} ${unit}${stage === 'generation' ? ' gerados' : ' processados'}`,
             activity: paused ? 'Execução pausada' : stage === 'generation' ? 'Buscando registros' : 'Processando',
             paused, finished };
     }

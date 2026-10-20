@@ -1,6 +1,8 @@
 import { appendBoundedLog } from './boundedLog.mjs';
+import { setupCloseFlowModal } from './closeFlowModal.mjs';
 console.log('--- RENDERER.JS CARREGADO - VERSÃO NOVA ---');
 document.addEventListener('DOMContentLoaded', () => {
+    setupCloseFlowModal(window.electronAPI);
     const getBasename = (p) => p.split(/[\\/]/).pop();
 
     // --- SELETORES GLOBAIS ---

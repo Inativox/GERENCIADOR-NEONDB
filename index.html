@@ -925,6 +925,28 @@
         </div>
     </div>
 
+    <div id="close-flow-modal" class="modal-overlay hidden" inert>
+        <div class="modal-content close-flow-dialog" role="alertdialog" aria-modal="true" aria-labelledby="close-flow-title" aria-describedby="close-flow-detail">
+            <div class="close-flow-body">
+                <span class="close-flow-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>
+                        <path d="M12 9v4"/>
+                        <path d="M12 17h.01"/>
+                    </svg>
+                </span>
+                <div>
+                    <h3 class="modal-title close-flow-title" id="close-flow-title">Há um fluxo em execução</h3>
+                    <p class="close-flow-detail" id="close-flow-detail">Se fechar agora, a execução será interrompida.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="close-flow-confirm" class="btn-danger">Fechar mesmo assim</button>
+                <button type="button" id="close-flow-keep" class="btn-primary">Manter aberto</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Update overlay — blocks all interaction while downloading/installing -->
     <div id="update-overlay">
         <div class="upd-icon">

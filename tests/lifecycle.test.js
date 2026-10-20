@@ -39,6 +39,68 @@ test('reabrir janela não duplica controles IPC e janela fechada é ignorada', (
     assert.doesNotThrow(() => ipcMain.emit('minimize-window'));
 });
 
+function closingFixture({ crashed = false } = {}) {
+    const state = {}, ipcMain = new EventEmitter(), dialogs = [];
+    ipcMain.handle = () => {};
+    class BrowserWindow extends EventEmitter {
+        constructor() { super(); this.webContents = new EventEmitter(); this.webContents.sent = []; this.webContents.send = (...args) => this.webContents.sent.push(args); this.webContents.isCrashed = () => crashed; this.closes = 0; }
+        loadFile() {}
+        isDestroyed() { return false; }
+        close() { this.closes++; }
+    }
+    const auth = loadModule('src/main/handlers/auth.js', {
+        electron: { ipcMain, BrowserWindow, app: { isPackaged: false }, dialog: { showMessageBox: async (window, options) => { dialogs.push(options); return { response: 1 }; } } },
+        fs: { readFileSync: () => '{}' }, path,
+        'electron-store': class {}, '../state': state,
+        '../settingsWriteRetry': require('../src/main/settingsWriteRetry'),
+        '../runtimeConfig': { loadUsers: () => ({}) },
+        '../database/connection': {}, '../database/cache': {}, '../keyfile': {},
+        pg: {}, '../flows/receita': {}, '../flows/postgres': {},
+        'electron-updater': { autoUpdater: {} },
+        './cnpj': { getCurrentLockedKeys: () => [] },
+    });
+    let busy = false, prevented = 0;
+    state.flowManager = { isBusy: () => busy, activeStage: () => 'upload' };
+    auth.register();
+    auth.createMainWindow();
+    const window = state.mainWindow;
+    return {
+        window, ipcMain, dialogs, setBusy: value => { busy = value; }, prevented: () => prevented,
+        close: () => { window.emit('close', { preventDefault: () => { prevented++; } }); return new Promise(setImmediate); },
+        answer: (close, sender = window.webContents) => { ipcMain.emit('close-during-flow-answer', { sender }, close); return new Promise(setImmediate); },
+    };
+}
+
+test('fechar a janela durante um fluxo abre o modal do app e só fecha se o usuário aceitar', async () => {
+    const f = closingFixture();
+    await f.close();
+    assert.equal(f.prevented(), 0);
+    f.setBusy(true);
+    await f.close();
+    assert.equal(f.prevented(), 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.window.webContents.sent)), [['confirm-close-during-flow', { uploading: true }]]);
+    await f.answer(false);
+    assert.equal(f.window.closes, 0);
+    await f.close();
+    await f.answer(true, {});
+    assert.equal(f.window.closes, 0, 'outra janela não decide o fechamento');
+    await f.answer(true);
+    assert.equal(f.window.closes, 1);
+    await f.close();
+    assert.equal(f.prevented(), 2);
+    assert.equal(f.window.webContents.sent.length, 2);
+    assert.equal(f.dialogs.length, 0);
+});
+
+test('com a tela travada, o fechamento durante um fluxo usa o diálogo nativo', async () => {
+    const f = closingFixture({ crashed: true });
+    f.setBusy(true);
+    await f.close();
+    assert.equal(f.window.webContents.sent.length, 0);
+    assert.match(f.dialogs[0].message, /Fastway/);
+    assert.equal(f.window.closes, 1);
+});
+
 test('atualização pronta avisa sem forçar encerramento durante tarefa', () => {
     const autoUpdater = new EventEmitter();
     let forcedQuit = 0;

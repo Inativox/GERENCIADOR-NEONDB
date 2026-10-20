@@ -3,7 +3,7 @@ import type { CSSProperties, PointerEvent, ReactNode } from 'react';
 import type { Flow, FlowJob } from './flowTypes';
 import './flowScene.css';
 
-type Stage = 'generation' | 'enrichment' | 'api' | 'cleaning' | 'export';
+type Stage = 'generation' | 'enrichment' | 'api' | 'cleaning' | 'export' | 'upload';
 type StageState = 'ready' | 'waiting' | 'active' | 'complete' | 'paused' | 'failed' | 'skipped' | 'slow';
 interface SceneStep { id: Stage; label: string; description: string; state: StageState; metric?: string }
 const stateLabels: Record<StageState, string> = { ready: 'Configurado', waiting: 'Na sequência', active: 'Processando', complete: 'Concluído', paused: 'Interrompido', failed: 'Falhou', skipped: 'Desligado', slow: 'Sem avanço' };
@@ -51,17 +51,18 @@ function stepsFor(flow?: Flow, job?: FlowJob): SceneStep[] {
         ...(hasApi ? [{ id: 'api' as Stage, label: 'API C6', description: 'A consulta com chave dupla verifica a disponibilidade dos CNPJs no C6.' }] : []),
         { id: 'cleaning', label: 'Limpeza', description: 'Contatos são ajustados, duplicidades são cruzadas e as regras de limpeza do fluxo são aplicadas.' },
         { id: 'export', label: 'Exportação', description: `A lista é dividida em partes com o nome definido e salva em ${flow?.output?.csv ? 'XLSX e CSV' : 'XLSX'}.` },
+        ...(flow?.fastway?.enabled || job?.stage === 'upload' ? [{ id: 'upload' as Stage, label: 'Envio Fastway', description: 'Os CSVs são enviados um por um. A Fastway só confirma depois de importar o mailing, o que pode levar alguns minutos: mantenha o app aberto.' }] : []),
     ];
     const stage = job?.stage === 'output' ? 'export' : job?.stage;
     const current = stages.findIndex(item => item.id === stage);
     const finished = job && ['completed', 'empty'].includes(job.status);
-    const metricKeys: Record<Stage, [string, string]> = { generation: ['generated', 'gerados'], enrichment: ['enriched', 'enriquecidos'], api: ['apiAvailable', 'disponíveis'], cleaning: ['cleaned', 'após limpeza'], export: ['exported', 'exportados'] };
+    const metricKeys: Partial<Record<Stage, [string, string]>> = { generation: ['generated', 'gerados'], enrichment: ['enriched', 'enriquecidos'], api: ['apiAvailable', 'disponíveis'], cleaning: ['cleaned', 'após limpeza'], export: ['exported', 'exportados'] };
     return stages.map((item, index) => {
         let state: StageState = job ? 'waiting' : 'ready';
         if (finished || current > index || job?.stage === 'finalizing') state = 'complete';
         else if (index === current) state = job?.status === 'running' ? 'active' : job?.status === 'failed' ? 'failed' : 'paused';
         if (item.id === 'enrichment' && flow?.enrichment?.enabled === false) state = 'skipped';
-        const [key, label] = metricKeys[item.id], count = job?.counts[key];
+        const [key, label] = metricKeys[item.id] || ['', ''], count = key ? job?.counts[key] : undefined;
         return { ...item, state, metric: count == null || state === 'skipped' ? undefined : `${displayNumber(count)} ${label}` };
     });
 }
@@ -88,12 +89,13 @@ export function FlowScene({ flow, job }: { flow?: Flow; job?: FlowJob }) {
     const [selection, setSelection] = useState<Stage | ''>('');
     const progress = progressFor(job);
     const idleTime = useIdleTime(job, progress.processed, progress.complete);
-    const slow = idleTime >= SLOW_AFTER_MS;
+    // The Fastway answers only after importing the whole file, so a long wait there is expected.
+    const slow = idleTime >= SLOW_AFTER_MS && job?.stage !== 'upload';
     const steps = stepsFor(flow, job).map(step => ({ ...step, state: step.state === 'active' && slow ? 'slow' as const : step.state }));
     const active = steps.find(step => ['active', 'failed', 'paused', 'slow'].includes(step.state));
     const selected = steps.find(step => step.id === selection) || active || steps[0];
     const ended = job && ['completed', 'empty'].includes(job.status);
-    const status = !job ? 'Prévia do fluxo' : ended ? job.status === 'empty' ? 'Sem registros na saída' : 'Listas prontas' : job.status === 'failed' ? 'Falhou' : ['cancelled', 'interrupted'].includes(job.status) ? 'Execução interrompida' : slow ? `Sem avanço há ${Math.floor(idleTime / 60_000)} min` : active ? `${active.label} em processamento` : job.stage === 'finalizing' ? 'Finalizando arquivos' : 'Preparando a raiz';
+    const status = !job ? 'Prévia do fluxo' : ended ? job.status === 'empty' ? 'Sem registros na saída' : 'Listas prontas' : job.status === 'failed' ? 'Falhou' : ['cancelled', 'interrupted'].includes(job.status) ? 'Execução interrompida' : slow ? `Sem avanço há ${Math.floor(idleTime / 60_000)} min` : active?.id === 'upload' ? 'Aguardando a Fastway confirmar · mantenha o app aberto' : active ? `${active.label} em processamento` : job.stage === 'finalizing' ? 'Finalizando arquivos' : 'Preparando a raiz';
     const health: StageState = !job ? 'ready' : ended ? 'complete' : job.status === 'failed' ? 'failed' : job.status !== 'running' ? 'paused' : slow ? 'slow' : 'active';
     const progressTitle = ended ? 'Fluxo concluído' : active ? `${active.label} · progresso da etapa` : job?.stage === 'finalizing' ? 'Finalização' : 'Preparação';
     const shownPercent = ended ? 100 : progress.percent;

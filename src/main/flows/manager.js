@@ -7,13 +7,20 @@ const { effectiveFlow, validateFlow } = require('./config');
 const { listFormats, getFormat, mapOutputRow } = require('./formats');
 const { validateLayout } = require('./layouts');
 
+/** The Fastway may have imported a file whose answer never arrived, so a resend must be authorized. */
+function interrupted(job) {
+    const updatedAt = new Date().toISOString();
+    if (job.stage !== 'upload') return { ...job, status: 'interrupted', error: 'Execução interrompida. Retome a partir da última etapa confirmada.', updatedAt };
+    return { ...job, status: 'interrupted', error: 'Execução interrompida durante o envio Fastway. Confira o painel antes de retomar: o arquivo pode ter sido recebido.',
+        logs: [...(job.logs || []), 'Envio Fastway sem confirmação. Confira o painel antes de autorizar um reenvio.'].slice(-300), updatedAt };
+}
 function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirectory, getCacheDirectories = () => [getCacheDirectory()], getUser, resolveConnections, resolveRoot, resolveApiSession, resolveFastwayCredentials, onUpdate = () => {}, workerFactory = data => new Worker(path.join(__dirname, '../workers/flowWorker.js'), { workerData: data, resourceLimits: { maxOldGenerationSizeMb: 512 } }) }) {
     const stores = new Map(); let active = null;
     function user() { const current = getUser(); if (!current || current.role !== 'admin') throw new Error('Seu perfil não tem acesso à geração e limpeza de listas.'); return { username: current.username, role: current.role }; }
     function storeFor(owner) {
         if (!stores.has(owner)) {
             const store = createUserStore(baseDirectory, owner);
-            for (const job of store.listJobs()) if (job.status === 'running') store.saveJob({ ...store.getJob(job.id), status: 'interrupted', error: 'Execução interrompida. Retome a partir da última etapa confirmada.', updatedAt: new Date().toISOString() });
+            for (const job of store.listJobs()) if (job.status === 'running') store.saveJob(interrupted(store.getJob(job.id)));
             stores.set(owner, store);
         }
         return stores.get(owner);
@@ -131,7 +138,7 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
     return {
         bootstrap() {
             const current = user(), store = storeFor(current.username);
-            for (const job of store.listJobs()) if (job.status === 'running' && active?.job.id !== job.id) store.saveJob({ ...store.getJob(job.id), status: 'interrupted', error: 'Execução interrompida. Retome a partir da última etapa confirmada.', updatedAt: new Date().toISOString() });
+            for (const job of store.listJobs()) if (job.status === 'running' && active?.job.id !== job.id) store.saveJob(interrupted(store.getJob(job.id)));
             return { user: current, flows: store.listFlows(), jobs: store.listJobs(), formats: listFormats(store.listLayouts()), cacheDirectory: getCacheDirectory() };
         },
         save(input) { const store = storeFor(user().username); const existing = input.id ? store.getFlow(input.id) : null; if (input.id && !existing) throw new Error('Fluxo não encontrado nesta conta.'); return store.saveFlow(validateFlow(input, existing, { resolveFormat: formatResolver(store) })); },
@@ -197,6 +204,7 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
         cancel(id) { const current = user(); if (!active || active.job.id !== id || active.job.owner !== current.username) throw new Error('Execução ativa não encontrada nesta conta.'); cancel(active); },
         cancelActive() { if (active) cancel(active); },
         isBusy: () => Boolean(active),
+        activeStage: () => active?.job.stage || '',
         output(id, filename) { const store = storeFor(user().username), job = store.getJob(id); if (!job || !['completed', 'empty'].includes(job.status) || !job.outputs.some(item => item.path === filename)) throw new Error('Arquivo não pertence a uma execução concluída desta conta.'); if (!fs.existsSync(filename)) throw new Error('Arquivo não está mais disponível nessa pasta.'); return filename; },
     };
 }

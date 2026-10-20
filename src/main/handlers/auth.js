@@ -41,6 +41,33 @@ function createLoginWindow() {
     return state.loginWindow;
 }
 
+let closeAnswer = null;
+// The app modal answers through 'close-during-flow-answer'; a crashed screen falls back to the native dialog.
+function confirmCloseDuringFlow(window) {
+    const uploading = state.flowManager.activeStage() === 'upload';
+    if (window.webContents.isCrashed?.()) return confirmCloseNatively(window, uploading);
+    closeAnswer?.(false);
+    return new Promise(resolve => {
+        closeAnswer = resolve;
+        window.webContents.send('confirm-close-during-flow', { uploading });
+    });
+}
+
+async function confirmCloseNatively(window, uploading) {
+    const { response } = await dialog.showMessageBox(window, {
+        type: 'warning',
+        buttons: ['Manter aberto', 'Fechar mesmo assim'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Fluxo em execução',
+        message: uploading ? 'O envio para a Fastway está em andamento.' : 'Há um fluxo em execução.',
+        detail: uploading
+            ? 'A Fastway só confirma depois de importar o mailing. Se fechar agora, o arquivo pode ser recebido sem confirmação e a execução aparecerá como interrompida.'
+            : 'Se fechar agora, a execução será interrompida e poderá ser retomada da última etapa confirmada.',
+    });
+    return response === 1;
+}
+
 function createMainWindow() {
     const { BrowserWindow, app } = require('electron');
     const { autoUpdater } = require('electron-updater');
@@ -58,7 +85,16 @@ function createMainWindow() {
     });
     state.mainWindow = mainWindow;
 
+    let closeConfirmed = false;
     mainWindow.on('close', async (e) => {
+        if (!closeConfirmed && state.flowManager?.isBusy()) {
+            e.preventDefault();
+            if (await confirmCloseDuringFlow(mainWindow)) {
+                closeConfirmed = true;
+                mainWindow.close();
+            }
+            return;
+        }
         const lockedKeys = getCurrentLockedKeys();
         if (lockedKeys.length > 0) {
             e.preventDefault();
@@ -128,6 +164,12 @@ function register() {
         else window.maximize();
     }));
     ipcMain.on('close-window', () => withMainWindow(window => window.close()));
+    ipcMain.on('close-during-flow-answer', (event, close) => {
+        if (!state.mainWindow || event.sender !== state.mainWindow.webContents) return;
+        const answer = closeAnswer;
+        closeAnswer = null;
+        answer?.(close === true);
+    });
 
     const isLoginSender = event => state.loginWindow && event.sender === state.loginWindow.webContents;
     ipcMain.handle('get-login-database-status', event => {

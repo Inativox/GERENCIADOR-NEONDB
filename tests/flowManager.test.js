@@ -213,6 +213,30 @@ test('failed preparation clears active and restart recovers running history', as
     const restarted = createFlowManager({ baseDirectory: f.directory, getUser: () => ({ username: 'Davi', role: 'admin' }) });
     assert.equal(restarted.bootstrap().jobs[0].status, 'interrupted');
 });
+test('restart during the Fastway send keeps it unconfirmed so resume asks before resending', async t => {
+    const f = fixture(t), m = f.manager;
+    const flow = m.save(defaults()); m.start({ flowId: flow.id, outputDirectory: f.directory });
+    for (let n = 0; n < 100 && !f.workers.length; n++) await tick();
+    f.workers[0].emit('message', { type: 'update', data: { stage: 'upload' } });
+    assert.equal(m.activeStage(), 'upload');
+    const restarted = createFlowManager({ baseDirectory: f.directory, getUser: () => ({ username: 'Davi', role: 'admin' }) });
+    const recovered = restarted.bootstrap().jobs[0];
+    assert.equal(recovered.status, 'interrupted');
+    assert.match(recovered.error, /Fastway/);
+    assert.ok(recovered.logs.some(log => log.includes('Envio Fastway sem confirmação')));
+    f.workers[0].emit('message', { type: 'error', message: 'cancel', code: 'FLOW_CANCELLED' }); await idle(m);
+    assert.equal(m.activeStage(), '');
+});
+test('restart outside the Fastway send keeps the generic interruption', async t => {
+    const f = fixture(t), m = f.manager;
+    const flow = m.save(defaults()); m.start({ flowId: flow.id, outputDirectory: f.directory });
+    for (let n = 0; n < 100 && !f.workers.length; n++) await tick();
+    const restarted = createFlowManager({ baseDirectory: f.directory, getUser: () => ({ username: 'Davi', role: 'admin' }) });
+    const recovered = restarted.bootstrap().jobs[0];
+    assert.equal(recovered.error, 'Execução interrompida. Retome a partir da última etapa confirmada.');
+    assert.ok(!recovered.logs.some(log => log.includes('Fastway')));
+    f.workers[0].emit('message', { type: 'error', message: 'cancel', code: 'FLOW_CANCELLED' }); await idle(m);
+});
 test('expired BQ login leaves a recoverable job and resume clears the auth flag', async t => {
     let expired = true;
     const f = fixture(t, { resolveRoot: async () => {
