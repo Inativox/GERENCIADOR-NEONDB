@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import './fluxos.css';
-type Job = { id: string; owner: string; name: string; status: string; message: string; output: string | null; counts: { processed: number; found: number; notFound: number; invalid: number } };
+type Job = { id: string; owner: string; name: string; status: string; message: string; output: string | null; counts: { processed: number; found: number; notFound: number; invalid: number; removed?: number } };
+// Mesmos valores de KEEP_OPTIONS em src/main/receitaSituacao.js. "outra" (código fora dos
+// cinco da Receita) não tem caixa: acompanha o "Todos" e só sai quando algo é desmarcado.
+type Keep = 'ativa' | 'baixada' | 'inapta' | 'suspensa' | 'nula' | 'outra' | 'nao_encontrado' | 'invalido';
+const KEEP: [Keep, string][] = [['ativa', 'Ativa'], ['baixada', 'Baixada'], ['inapta', 'Inapta'], ['suspensa', 'Suspensa'], ['nula', 'Nula'], ['nao_encontrado', 'Não encontrado'], ['invalido', 'Documento inválido']];
+const ALL: Keep[] = [...KEEP.map(([value]) => value), 'outra'];
+const PRESETS: [string, Keep[]][] = [['Todos', ALL], ['Só ativas', ['ativa']], ['Só baixadas', ['baixada']], ['Sem inaptas', ALL.filter(value => value !== 'inapta')], ['Só problemáticas', ['baixada', 'inapta', 'suspensa', 'nula']]];
+const same = (a: Keep[], b: Keep[]) => a.length === b.length && a.every(value => b.includes(value));
 type Result = Record<string, string | null>;
 type Response = { success: boolean; message?: string; configured?: boolean; job?: Job | null; file?: { id: string; name: string }; found?: boolean; result?: Result | null };
 type API = {
     receitaSituacaoState(): Promise<Response>; receitaSituacaoFile(): Promise<Response>; receitaSituacaoOne(cnpj: string): Promise<Response>;
-    receitaSituacaoStart(fileId: string): Promise<Response>; receitaSituacaoCancel(): Promise<Response>; receitaSituacaoOpen(): Promise<Response>;
+    receitaSituacaoStart(fileId: string, keep: Keep[] | null): Promise<Response>; receitaSituacaoCancel(): Promise<Response>; receitaSituacaoOpen(): Promise<Response>;
     onReceitaSituacaoUpdate(callback: (job: Job) => void): () => void;
 };
 export function ReceitaSituacao() {
     const api = window.electronAPI as unknown as API;
     const [configured, setConfigured] = useState(false), [file, setFile] = useState<Response['file']>(), [job, setJob] = useState<Job | null>(null);
     const [cnpj, setCnpj] = useState(''), [result, setResult] = useState<Result | null>(null), [consulted, setConsulted] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
+    const [keep, setKeep] = useState<Keep[]>(ALL);
+    const toggle = (value: Keep) => setKeep(previous => { const rest = previous.filter(item => item !== value && item !== 'outra'), next = previous.includes(value) ? rest : [...rest, value]; return next.length === KEEP.length ? ALL : next; });
     const locked = useRef(false);
     const running = job?.status === 'running' || job?.status === 'cancelling';
     useEffect(() => {
@@ -42,13 +51,19 @@ export function ReceitaSituacao() {
                 {consulted && (result ? <dl className="receita-situacao-result">{[['CNPJ', result.cnpj], ['Razão social', result.razao_social], ['Situação', `${result.situacao_cadastral_cod} · ${result.situacao_cadastral}`], ['Data da situação', result.situacao_cadastral_data], ['Motivo', result.situacao_motivo], ['Atualização na base', result.ultima_atualizacao]].map(([label, value]) => <div key={label || ''}><dt>{label}</dt><dd>{value || 'Não informado'}</dd></div>)}</dl> : <p role="status">CNPJ não encontrado na base configurada.</p>)}
             </div></section>
             <section className="flow-editor"><header className="flow-editor-heading"><div><h2>Consultar uma lista</h2></div></header><div className="flow-section">
-                <p>Selecione XLSX ou CSV com coluna CNPJ. A primeira aba do XLSX será consultada. Todas as linhas permanecem no resultado, incluindo documentos inválidos ou não encontrados.</p>
+                <p>Selecione XLSX ou CSV com coluna CNPJ. A primeira aba do XLSX será consultada.</p>
                 <div className="flow-actions"><button disabled={busy || running} onClick={() => void action(() => api.receitaSituacaoFile(), response => { if (response.file) setFile(response.file); })}>Selecionar lista</button></div>
                 {file && <p className="flow-explanation">{file.name}</p>}
-                <p>O resultado sai em XLSX na mesma pasta, com as colunas originais e os dados da situação acrescentados. O arquivo original é preservado.</p>
-                <div className="flow-actions"><button className="flow-primary" disabled={busy || running || !file || !configured} onClick={() => file && void action(() => api.receitaSituacaoStart(file.id), response => setJob(response.job || null))}>Consultar lista</button>{running && <button disabled={busy || job?.status === 'cancelling'} onClick={() => void action(() => api.receitaSituacaoCancel(), () => setJob(previous => previous && { ...previous, status: 'cancelling', message: 'Cancelando consulta…' }))}>Cancelar consulta</button>}</div>
+                <fieldset className="flow-field receita-situacao-keep" disabled={busy || running}>
+                    <span>Manter no resultado</span>
+                    <div className="flow-checks">{KEEP.map(([value, label]) => <label key={value} className="flow-check"><input type="checkbox" checked={keep.includes(value)} onChange={() => toggle(value)} />{label}</label>)}</div>
+                    <div className="flow-checks receita-situacao-presets"><span className="flow-explanation">Atalhos:</span>{PRESETS.map(([label, values]) => <button key={label} type="button" className={same(keep, values) ? 'flow-primary' : undefined} onClick={() => setKeep(values)}>{label}</button>)}</div>
+                    {!keep.length && <p role="status" className="flow-notice">Marque ao menos uma situação.</p>}
+                </fieldset>
+                <p>O resultado sai em XLSX na mesma pasta, com as colunas originais e os dados da situação acrescentados; as linhas das situações desmarcadas ficam de fora. O arquivo original é preservado.</p>
+                <div className="flow-actions"><button className="flow-primary" disabled={busy || running || !file || !configured || !keep.length} onClick={() => file && void action(() => api.receitaSituacaoStart(file.id, same(keep, ALL) ? null : keep), response => setJob(response.job || null))}>Consultar lista</button>{running && <button disabled={busy || job?.status === 'cancelling'} onClick={() => void action(() => api.receitaSituacaoCancel(), () => setJob(previous => previous && { ...previous, status: 'cancelling', message: 'Cancelando consulta…' }))}>Cancelar consulta</button>}</div>
             </div></section>
         </div>
-        {job && <section className="flow-job-detail"><h2>{job.name}</h2><p role="status">{job.message}</p><div className="flow-job-counts">{[['Consultados', job.counts.processed], ['Encontrados', job.counts.found], ['Não encontrados', job.counts.notFound], ['Inválidos', job.counts.invalid]].map(([label, value]) => <div key={String(label)}><span>{label}</span><strong>{Number(value).toLocaleString('pt-BR')}</strong></div>)}</div>{job.status === 'completed' && job.output && <div className="flow-actions"><button onClick={() => void action(() => api.receitaSituacaoOpen())}>Abrir resultado</button></div>}</section>}
+        {job && <section className="flow-job-detail"><h2>{job.name}</h2><p role="status">{job.message}</p><div className="flow-job-counts">{[['Consultados', job.counts.processed], ['Encontrados', job.counts.found], ['Não encontrados', job.counts.notFound], ['Inválidos', job.counts.invalid], ...(job.counts.removed ? [['Fora do resultado', job.counts.removed]] : [])].map(([label, value]) => <div key={String(label)}><span>{label}</span><strong>{Number(value).toLocaleString('pt-BR')}</strong></div>)}</div>{job.status === 'completed' && job.output && <div className="flow-actions"><button onClick={() => void action(() => api.receitaSituacaoOpen())}>Abrir resultado</button></div>}</section>}
     </div>;
 }

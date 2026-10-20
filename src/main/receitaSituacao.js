@@ -21,13 +21,34 @@ async function lookup(pool, values, metadata) {
     const quote = value => `"${value.replace(/"/g, '""')}"`;
     const fields = ['cnpj', 'razao_social', 'situacao_cadastral_cod', 'situacao_cadastral', 'situacao_cadastral_data', 'situacao_motivo', 'ultima_atualizacao'];
     const selection = fields.map(field => `${metadata.fields[field] ? `${quote(metadata.fields[field])}::text` : 'NULL::text'} AS ${quote(field)}`).join(', ');
+    // A coluna cnpj da Receita é character(14). Comparada com text[], o Postgres converte a
+    // coluna, perde o índice da chave primária e varre os 65 mi de linhas (estourava os 60 s
+    // até com 1 CNPJ). No tipo da própria coluna, 1.000 CNPJs saem em ~1 s pelo índice.
+    const arrayType = metadata.types?.[metadata.fields.cnpj] === 'character' ? 'bpchar' : 'text';
     let rows;
-    try { rows = (await pool.query(`SELECT ${selection} FROM public.empresas WHERE ${quote(metadata.fields.cnpj)} = ANY($1::text[])`, [documents])).rows; }
+    try { rows = (await pool.query(`SELECT ${selection} FROM public.empresas WHERE ${quote(metadata.fields.cnpj)} = ANY($1::${arrayType}[])`, [documents])).rows; }
     catch { throw error('Não foi possível consultar a situação no banco da Receita. Confira a conexão e tente novamente.'); }
     return new Map(rows.map(row => {
         const code = String(row.situacao_cadastral_cod || '').padStart(2, '0');
-        return [row.cnpj, { ...row, situacao_cadastral_cod: code, situacao_cadastral: row.situacao_cadastral || SITUACOES[code] || 'Não informada' }];
+        return [String(row.cnpj).trim(), { ...row, cnpj: String(row.cnpj).trim(), situacao_cadastral_cod: code, situacao_cadastral: row.situacao_cadastral || SITUACOES[code] || 'Não informada' }];
     }));
+}
+// O que pode ficar na saída. 'outra' é código fora dos cinco da Receita.
+const KEEP_OPTIONS = ['ativa', 'baixada', 'inapta', 'suspensa', 'nula', 'outra', 'nao_encontrado', 'invalido'];
+const CATEGORY_BY_CODE = { '01': 'nula', '02': 'ativa', '03': 'suspensa', '04': 'inapta', '08': 'baixada' };
+function category(cnpj, result) {
+    if (!cnpj) return 'invalido';
+    if (!result) return 'nao_encontrado';
+    return CATEGORY_BY_CODE[result.situacao_cadastral_cod] || 'outra';
+}
+// null = manter tudo. Lista vazia ou só com valores desconhecidos é recusada: gerar uma
+// planilha vazia por engano é pior do que avisar.
+function normalizeKeep(keep) {
+    if (keep == null) return null;
+    if (!Array.isArray(keep)) throw error('Seleção de situações inválida.');
+    const selected = new Set(keep.filter(value => KEEP_OPTIONS.includes(value)));
+    if (!selected.size) throw error('Marque ao menos uma situação para manter no resultado.');
+    return selected.size === KEEP_OPTIONS.length ? null : selected;
 }
 async function* inputRows(filename, signal) {
     if (/\.csv$/i.test(filename)) {
@@ -46,12 +67,15 @@ async function* inputRows(filename, signal) {
         }
     } else throw error('Use uma lista XLSX ou CSV com coluna CNPJ.');
 }
-async function annotateFile({ filename, outputDirectory, pool, signal, onProgress = () => {} }) {
+async function annotateFile({ filename, outputDirectory, pool, signal, keep, onProgress = () => {} }) {
+    const selected = normalizeKeep(keep);
     const metadata = await getReceitaMetadata(pool), checkedAt = new Date().toISOString();
     const output = path.join(outputDirectory || path.dirname(filename), `${path.basename(filename, path.extname(filename))}_situacao_receita_${randomUUID().slice(0, 8)}.xlsx`);
     const temporary = output + '.partial';
     let workbook, sheet, completion, header, column, batch = [];
-    const counts = { processed: 0, found: 0, notFound: 0, invalid: 0 };
+    // processed/found/notFound/invalid medem a lista inteira, antes do filtro; removed é o
+    // que o filtro tirou da saída.
+    const counts = { processed: 0, found: 0, notFound: 0, invalid: 0, removed: 0 };
     const flush = async () => {
         if (!batch.length) return;
         cancelled(signal);
@@ -61,6 +85,7 @@ async function annotateFile({ filename, outputDirectory, pool, signal, onProgres
             const cnpj = document(row[column]), result = results.get(cnpj);
             const status = !cnpj ? 'Documento inválido' : result ? 'Encontrado na base' : 'Não encontrado na base';
             counts.processed++; counts[!cnpj ? 'invalid' : result ? 'found' : 'notFound']++;
+            if (selected && !selected.has(category(cnpj, result))) { counts.removed++; continue; }
             const original = Array.from({ length: header.length }, (_, index) => row[index] || '');
             const extra = [result?.situacao_cadastral_cod, result?.situacao_cadastral, result?.situacao_cadastral_data, result?.situacao_motivo, result?.ultima_atualizacao, status, checkedAt];
             sheet.addRow([...original, ...extra].map(safeCell)).commit();
@@ -99,4 +124,4 @@ async function annotateFile({ filename, outputDirectory, pool, signal, onProgres
         throw cause.code === 'RECEITA_SITUACAO' || cause.code === 'FLOW_VALIDATION' ? cause : error('Não foi possível processar a lista. Confira o formato, a pasta e o espaço disponível. O original foi preservado.');
     }
 }
-module.exports = { lookup, annotateFile, document };
+module.exports = { lookup, annotateFile, document, normalizeKeep, KEEP_OPTIONS };

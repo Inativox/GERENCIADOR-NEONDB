@@ -47,7 +47,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       receitaSituacaoState: () => ipcRenderer.invoke('receita-situacao-state'),
       receitaSituacaoFile: () => ipcRenderer.invoke('receita-situacao-file'),
       receitaSituacaoOne: (cnpj) => ipcRenderer.invoke('receita-situacao-one', { cnpj }),
-      receitaSituacaoStart: (fileId) => ipcRenderer.invoke('receita-situacao-start', { fileId }),
+      receitaSituacaoStart: (fileId, keep) => ipcRenderer.invoke('receita-situacao-start', { fileId, keep }),
       receitaSituacaoCancel: () => ipcRenderer.invoke('receita-situacao-cancel'),
       receitaSituacaoOpen: () => ipcRenderer.invoke('receita-situacao-open'),
       onReceitaSituacaoUpdate: (callback) => {

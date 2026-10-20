@@ -168,6 +168,8 @@
 .main-content:has(#receitaSituacao.active) > .page-header { display: none; }
 .receita-situacao-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0; }
 .receita-situacao-app .flow-section p { color: var(--text-secondary); line-height: 1.6; }
+.receita-situacao-keep { border: 0; padding: 0; margin: 8px 0; min-width: 0; }
+.receita-situacao-presets { margin-top: 10px; gap: 8px; }
 .receita-situacao-result div { padding: 12px 0; border-bottom: 1px solid var(--border-color); }
 .receita-situacao-result dt { color: var(--text-secondary); font-size: 12px; }
 .receita-situacao-result dd { margin: 6px 0 0; overflow-wrap: anywhere; }

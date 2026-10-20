@@ -59,3 +59,25 @@ test('cancel after a completed lookup batch deletes the unfinished XLSX and pres
     await assert.rejects(annotateFile({ filename, pool: poolFixture(), signal: controller.signal, onProgress: () => controller.abort() }), /cancelada/);
     assert.deepEqual(await fs.readdir(dir), ['source.csv']); assert.equal(await fs.readFile(filename, 'utf8'), text);
 });
+
+test('char(14) cnpj column is compared as bpchar[] so the primary key index is used', async () => {
+    const calls = [], pool = { query: async (sql, values) => {
+        if (sql.includes('information_schema')) return { rows: columns.map(column_name => ({ column_name, data_type: column_name === 'cnpj' ? 'character' : 'text' })) };
+        calls.push(sql); return { rows: [] };
+    } };
+    await lookup(pool, ['12ABC34501DE35']);
+    assert.match(calls[0], /= ANY\(\$1::bpchar\[\]\)/);
+});
+test('keep filter drops unselected situations from the output and counts them, never the totals', async t => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'receita-keep-')); t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    const file = path.join(dir, 'lista.csv'); await fs.writeFile(file, 'CNPJ;Nome\n12ABC34501DE35;Baixada\n12345678000190;Fora\n12345678901;CPF');
+    const only = await annotateFile({ filename: file, pool: poolFixture(), keep: ['baixada'] });
+    assert.deepEqual([only.processed, only.found, only.notFound, only.invalid, only.removed], [3, 1, 1, 1, 2]);
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.readFile(only.output); assert.equal(wb.worksheets[0].rowCount, 2);
+    assert.equal(wb.worksheets[0].getCell('B2').value, 'Baixada');
+    const active = await annotateFile({ filename: file, pool: poolFixture(), keep: ['ativa', 'nao_encontrado'] });
+    assert.equal(active.removed, 2);
+    const all = await annotateFile({ filename: file, pool: poolFixture() }); assert.equal(all.removed, 0);
+    await assert.rejects(annotateFile({ filename: file, pool: poolFixture(), keep: [] }), /ao menos uma/);
+    await assert.rejects(annotateFile({ filename: file, pool: poolFixture(), keep: ['lixo'] }), /ao menos uma/);
+});
