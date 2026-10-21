@@ -164,8 +164,61 @@
 @media (max-width: 1100px) { .flows-workspace { grid-template-columns: 185px minmax(0, 1fr); gap: 16px; } .flow-grid--three { grid-template-columns: repeat(2, minmax(0, 1fr)); } .flow-sidebar { padding-right: 12px; } .flow-editor-heading, .flow-section, .flow-run-bar { padding-inline: 18px; } }
 @media (max-width: 760px) { .flows-heading { align-items: start; flex-direction: column; } .flows-workspace { grid-template-columns: 1fr; } .flow-sidebar { position: static; border-right: 0; border-bottom: 1px solid var(--border-color); padding: 0 0 16px; } .flow-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 190px; } .flow-grid, .flow-grid--three, .flow-access-grid { grid-template-columns: 1fr; } .flow-editor-heading, .flow-job-heading { align-items: start; flex-direction: column; } .flow-job-counts { grid-template-columns: repeat(2, 1fr); } .flow-job-counts > div:nth-child(3) { border-left: 0; } .flow-access summary span { display: block; margin: 8px 0 0; } }
 @media (prefers-reduced-motion: reduce) { .flows-app button { transition: none; } }
-#receitaSituacao { overflow-y: auto; }
-.main-content:has(#receitaSituacao.active) > .page-header { display: none; }
+#importarMailing { overflow-y: auto; }
+.main-content:has(#importarMailing.active) > .page-header { display: none; }
+.mailing-app { container-type: inline-size; }
+.mailing-app h2 { padding-bottom: 0; border-bottom: 0; font-size: 13px; font-weight: 600; }
+.mailing-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(290px, 340px); gap: 20px; align-items: start; }
+.mailing-services, .mailing-panel { min-width: 0; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 7px; }
+.mailing-services-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 18px 20px 14px; }
+.mailing-services-heading span { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.mailing-group { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 14px; align-items: start; padding: 12px 20px; border-top: 1px solid var(--border-color); }
+.mailing-group:last-child { padding-bottom: 16px; }
+.mailing-group-name { padding-top: 8px; color: var(--text-secondary); font-size: 11px; font-weight: 600; }
+.mailing-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mailing-chip { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 4px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); font-size: 12px; white-space: nowrap; cursor: pointer; transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out; }
+.mailing-chip input, .mailing-chip input:disabled { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; appearance: none; opacity: 0; cursor: inherit; }
+.mailing-chip-id { min-width: 32px; padding: 3px 6px; border-radius: 4px; background: var(--bg-element); color: var(--text-secondary); font: 500 11px/1.3 var(--font-mono); font-variant-numeric: tabular-nums; text-align: center; transition: inherit; }
+.mailing-chip:hover:not(:has(input:disabled)) { background: var(--bg-element-hover); border-color: var(--border-hover); }
+.mailing-chip:has(input:checked), .mailing-chip:hover:has(input:checked) { background: var(--accent-blue); border-color: var(--accent-blue); color: var(--accent-text); }
+.mailing-chip:has(input:checked) .mailing-chip-id { background: color-mix(in srgb, var(--accent-text) 18%, transparent); color: var(--accent-text); }
+.mailing-chip:has(input:focus-visible) { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.mailing-chip:has(input:disabled) { opacity: .5; cursor: default; }
+.mailing-panel { position: sticky; top: 12px; }
+.mailing-panel-section { padding: 18px 20px; border-bottom: 1px solid var(--border-color); }
+.mailing-panel-section h2 { margin-bottom: 12px; }
+.mailing-hint { color: var(--text-secondary); font-size: 11px; line-height: 1.65; }
+.mailing-hint b { color: var(--text-primary); font-weight: 600; }
+.flows-app button.mailing-file-pick { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; margin-bottom: 10px; background: var(--bg-element); font-size: 12px; }
+.mailing-file-pick svg, .mailing-file svg { flex: 0 0 auto; color: var(--accent-blue); }
+.mailing-file { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-element); }
+.mailing-file strong { display: block; overflow: hidden; font-size: 12px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.mailing-file span { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.mailing-file-error { margin-top: 10px; color: var(--accent-red); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.mailing-destination { display: flex; align-items: center; gap: 12px; animation: mailing-swap 200ms cubic-bezier(.16, 1, .3, 1); }
+.mailing-destination-id { color: var(--accent-blue); font: 600 26px/1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.mailing-destination strong { display: block; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.mailing-destination div span { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 11px; }
+@keyframes mailing-swap { from { opacity: 0; transform: translateY(4px); } }
+.mailing-send-area { padding: 18px 20px 20px; }
+.flows-app button.mailing-send { width: 100%; height: 40px; font-size: 13px; }
+.mailing-missing { margin-top: 10px; color: var(--text-muted); font-size: 11px; text-align: center; }
+.mailing-access { margin-bottom: 14px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent-yellow) 35%, var(--border-color)); border-radius: 6px; background: color-mix(in srgb, var(--accent-yellow) 8%, var(--bg-card)); font-size: 11px; line-height: 1.6; }
+.mailing-confirm p { font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.mailing-confirm-actions { display: flex; gap: 8px; margin-top: 14px; }
+.mailing-confirm-actions button { flex: 1; }
+.mailing-progress, .mailing-result { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: start; }
+.mailing-progress strong, .mailing-result strong { display: block; font-size: 12px; font-weight: 600; }
+.mailing-progress p, .mailing-result p { margin-top: 4px; color: var(--text-secondary); font-size: 11px; line-height: 1.65; overflow-wrap: anywhere; }
+.mailing-result button { margin-top: 12px; }
+.mailing-progress svg, .mailing-file--reading svg { color: var(--accent-blue); animation: mailing-spin 900ms linear infinite; }
+.mailing-file--reading span { white-space: normal; }
+.mailing-result--completed svg { color: var(--accent-green); }
+.mailing-result--failed svg { color: var(--accent-red); }
+@keyframes mailing-spin { to { transform: rotate(360deg); } }
+@container (max-width: 860px) { .mailing-layout { grid-template-columns: 1fr; } .mailing-panel { position: static; } }
+@container (max-width: 480px) { .mailing-group { grid-template-columns: 1fr; gap: 8px; } .mailing-group-name { padding-top: 0; } }
+@media (prefers-reduced-motion: reduce) { .mailing-chip, .mailing-chip-id { transition: none; } .mailing-destination { animation: none; } .mailing-progress svg, .mailing-file--reading svg { animation-duration: 4s; } }
 .receita-situacao-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0; }
 .receita-situacao-app .flow-section p { color: var(--text-secondary); line-height: 1.6; }
 .receita-situacao-keep { border: 0; padding: 0; margin: 8px 0; min-width: 0; }
