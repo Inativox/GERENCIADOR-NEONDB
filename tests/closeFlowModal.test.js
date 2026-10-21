@@ -63,3 +63,11 @@ test('modal de fechamento prende o Tab nos dois botões, clicar fora mantém abe
     f.$('close-flow-confirm').dispatch('click');
     assert.deepEqual(f.answers, [false]);
 });
+
+test('modal de fechamento na importação manual pede para conferir o painel, sem falar em execução interrompida', async () => {
+    const f = await setup();
+    f.request({ uploading: true, mailing: true });
+    assert.match(f.$('close-flow-title').textContent, /Fastway/);
+    assert.match(f.$('close-flow-detail').textContent, /painel/);
+    assert.doesNotMatch(f.$('close-flow-detail').textContent, /interrompida/);
+});
