@@ -79,6 +79,7 @@ app.whenReady().then(async () => {
     ipcMain.handle('flows-receita-options', () => ({ success: true, options: [] }));
     ipcMain.handle('flows-test-bq', () => ({ success: true, message: 'Acesso BQ sintético aprovado.' }));
     ipcMain.handle('receita-situacao-state', () => ({ success: true, job: null, templates: [], configured: false }));
+    ipcMain.handle('mailing-import-state', () => ({ success: true, admin: true, configured: true, maxRows: 250000, job: null, services: [{ id: 63, group: 'Santander', label: 'Santander', name: 'SANTANDER' }] }));
     ipcMain.handle('select-file', () => selectedPaths);
     ipcMain.on('start-limpeza-colunas', (_event, paths) => { startCount++; pathsReceived = paths; });
     window = new BrowserWindow({
@@ -176,6 +177,13 @@ app.whenReady().then(async () => {
     window.webContents.send('update-ready', { version: '2.0.0' });
     await waitFor(`document.getElementById('upd-title').textContent === 'Atualização pronta'`);
     assert.equal(await evaluate(`getComputedStyle(document.getElementById('update-overlay')).pointerEvents`), 'none');
+    await evaluate(`document.querySelector('[data-tab-name="importarMailing"]').click()`);
+    assert.equal(await evaluate(`document.querySelector('[data-tab-name="importarMailing"] span').textContent`), 'Importar Mailing');
+    await waitFor(`!!document.querySelector('#importarMailing .flow-view-switch')`);
+    const visible = selector => `document.querySelector('#importarMailing ${selector}').offsetParent !== null`;
+    assert.equal(await evaluate(`${visible('.mailing-app')} && !(${visible('.receita-situacao-app')})`), true, 'Importar Mailing abre primeiro');
+    await evaluate(`Array.from(document.querySelectorAll('#importarMailing .flow-view-switch button')).find(item => item.textContent === 'Situação Receita').click()`);
+    await waitFor(`${visible('.receita-situacao-app')} && !(${visible('.mailing-app')})`);
     assert.equal(await evaluate(`typeof window.require`), 'undefined');
     assert.deepEqual(errors, []);
     await delay(300);
