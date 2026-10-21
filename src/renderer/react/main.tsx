@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { LimpezaColunas } from './LimpezaColunas';
 import { Fluxos } from './Fluxos';
-import { ReceitaSituacao } from './ReceitaSituacao';
+import { ImportarMailing } from './ImportarMailing';
 import './limpezaColunas.css';
 import './fluxos.css';
 
@@ -21,8 +21,8 @@ function mount() {
     if (element) createRoot(element).render(<ColumnsBoundary><LimpezaColunas /></ColumnsBoundary>);
     const flows = document.getElementById('fluxos-react-root');
     if (flows) createRoot(flows).render(<ColumnsBoundary><Fluxos /></ColumnsBoundary>);
-    const receita = document.getElementById('receita-situacao-react-root');
-    if (receita) createRoot(receita).render(<ColumnsBoundary><ReceitaSituacao /></ColumnsBoundary>);
+    const mailing = document.getElementById('importar-mailing-react-root');
+    if (mailing) createRoot(mailing).render(<ColumnsBoundary><ImportarMailing /></ColumnsBoundary>);
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
