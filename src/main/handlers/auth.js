@@ -43,27 +43,33 @@ function createLoginWindow() {
 
 let closeAnswer = null;
 // The app modal answers through 'close-during-flow-answer'; a crashed screen falls back to the native dialog.
+// A manual import (Importar Mailing tab) has no execution to resume, so it gets its own copy.
 function confirmCloseDuringFlow(window) {
-    const uploading = state.flowManager.activeStage() === 'upload';
-    if (window.webContents.isCrashed?.()) return confirmCloseNatively(window, uploading);
+    const mailing = Boolean(state.mailingUpload);
+    const uploading = mailing || state.flowManager?.activeStage() === 'upload';
+    if (window.webContents.isCrashed?.()) return confirmCloseNatively(window, uploading, mailing);
     closeAnswer?.(false);
     return new Promise(resolve => {
         closeAnswer = resolve;
-        window.webContents.send('confirm-close-during-flow', { uploading });
+        window.webContents.send('confirm-close-during-flow', { uploading, mailing });
     });
 }
 
-async function confirmCloseNatively(window, uploading) {
+function closeDetail(uploading, mailing) {
+    if (mailing) return 'A Fastway só confirma depois de importar o mailing. Se fechar agora, o arquivo pode ser recebido sem confirmação. Confira o painel antes de enviar de novo.';
+    if (uploading) return 'A Fastway só confirma depois de importar o mailing. Se fechar agora, o arquivo pode ser recebido sem confirmação e a execução aparecerá como interrompida.';
+    return 'Se fechar agora, a execução será interrompida e poderá ser retomada da última etapa confirmada.';
+}
+
+async function confirmCloseNatively(window, uploading, mailing) {
     const { response } = await dialog.showMessageBox(window, {
         type: 'warning',
         buttons: ['Manter aberto', 'Fechar mesmo assim'],
         defaultId: 0,
         cancelId: 0,
-        title: 'Fluxo em execução',
+        title: mailing ? 'Importação em andamento' : 'Fluxo em execução',
         message: uploading ? 'O envio para a Fastway está em andamento.' : 'Há um fluxo em execução.',
-        detail: uploading
-            ? 'A Fastway só confirma depois de importar o mailing. Se fechar agora, o arquivo pode ser recebido sem confirmação e a execução aparecerá como interrompida.'
-            : 'Se fechar agora, a execução será interrompida e poderá ser retomada da última etapa confirmada.',
+        detail: closeDetail(uploading, mailing),
     });
     return response === 1;
 }
@@ -87,7 +93,7 @@ function createMainWindow() {
 
     let closeConfirmed = false;
     mainWindow.on('close', async (e) => {
-        if (!closeConfirmed && state.flowManager?.isBusy()) {
+        if (!closeConfirmed && (state.flowManager?.isBusy() || state.mailingUpload)) {
             e.preventDefault();
             if (await confirmCloseDuringFlow(mainWindow)) {
                 closeConfirmed = true;
