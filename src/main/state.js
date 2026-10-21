@@ -8,6 +8,7 @@ const state = {
     loginWindow: null,
     currentUser: null,
     bqRootService: null,
+    mailingUpload: null, // envio manual da aba Importar Mailing; o fechamento do app pede confirmação enquanto existir
 };
 
 module.exports = state;
