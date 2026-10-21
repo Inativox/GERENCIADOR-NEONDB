@@ -34,7 +34,7 @@ const pasteCnaes = value => evaluate(`(() => { const element=document.querySelec
 
 app.whenReady().then(async () => {
     const entry = path.join(taskDir, 'entry.tsx');
-    await fs.writeFile(entry, `import React from ${JSON.stringify(path.join(root, 'node_modules/react/index.js').replaceAll('\\', '/'))}; import {createRoot} from ${JSON.stringify(path.join(root, 'node_modules/react-dom/client.js').replaceAll('\\', '/'))}; import {Fluxos} from ${JSON.stringify(path.join(root, 'src/renderer/react/Fluxos.tsx').replaceAll('\\', '/'))}; createRoot(document.getElementById('root')).render(React.createElement(Fluxos)); import {ReceitaSituacao} from ${JSON.stringify(path.join(root, 'src/renderer/react/ReceitaSituacao.tsx').replaceAll('\\', '/'))}; createRoot(document.getElementById('receita-root')).render(React.createElement(ReceitaSituacao));`);
+    await fs.writeFile(entry, `import React from ${JSON.stringify(path.join(root, 'node_modules/react/index.js').replaceAll('\\', '/'))}; import {createRoot} from ${JSON.stringify(path.join(root, 'node_modules/react-dom/client.js').replaceAll('\\', '/'))}; import {Fluxos} from ${JSON.stringify(path.join(root, 'src/renderer/react/Fluxos.tsx').replaceAll('\\', '/'))}; createRoot(document.getElementById('root')).render(React.createElement(Fluxos)); import {ReceitaSituacao} from ${JSON.stringify(path.join(root, 'src/renderer/react/ReceitaSituacao.tsx').replaceAll('\\', '/'))}; createRoot(document.getElementById('receita-root')).render(React.createElement(ReceitaSituacao)); import {ImportarMailing} from ${JSON.stringify(path.join(root, 'src/renderer/react/ImportarMailing.tsx').replaceAll('\\', '/'))}; createRoot(document.getElementById('mailing-root')).render(React.createElement(ImportarMailing));`);
     // Electron 28 embeds Node 18; the installed Vite is built with the system Node runtime.
     await execFile('node', ['--input-type=module', '-e', `import {build} from ${JSON.stringify(pathToFileURL(path.join(root, 'node_modules/vite/dist/node/index.js')).href)}; await build({configFile:false,logLevel:'error',define:{'process.env.NODE_ENV':'"production"'},root:${JSON.stringify(root)},build:{outDir:${JSON.stringify(path.join(taskDir,'bundle'))},emptyOutDir:true,lib:{entry:${JSON.stringify(entry)},formats:['iife'],name:'Smoke',fileName:()=> 'ui.js'}}});`]);
     const preload = path.join(taskDir, 'preload.cjs');
@@ -52,6 +52,9 @@ receitaSituacaoStart:async id=>{calls.push(['situacao-start',id]);receitaJob={id
 receitaSituacaoOpen:async()=>{calls.push(['situacao-open']);return {success:true};},
 onReceitaSituacaoUpdate:callback=>{receitaCallbacks.push(callback);return ()=>{};},
 emitReceita:job=>{receitaJob=job;receitaCallbacks.forEach(callback=>callback(job));},
+mailingImportState:async()=>({success:true,admin:false,configured:true,maxRows:250000,job:null,services:[{id:63,group:'Santander',label:'Santander',name:'SANTANDER'},{id:139,group:'MP',label:'213 - MP',name:'213 - MP'}]}),
+mailingImportFile:async()=>{calls.push(['mailing-file']);return {success:true,file:{id:'mailing-fixture',name:'mailing.csv',rows:184320}};},
+mailingImportSend:async(fileId,serviceId)=>{calls.push(['mailing-send',fileId,serviceId]);return {success:true,job:{status:'completed',file:'mailing.csv',rows:184320,service:{id:139,group:'MP',label:'213 - MP',name:'213 - MP'},message:'Fastway confirmou 184.320 registros em 139 · 213 - MP.'}};},
 
 flowsBootstrap:async()=>({success:true,user:{username,role},flows,jobs,formats,layoutFields,access,limits:{maxRows:500000}}),
 flowsReceitaOptions:async input=>{calls.push(['options',input]);let options=({uf:[{value:'SP',label:'SP'},{value:'RJ',label:'RJ'}],cidade:[{value:'Campinas',label:'Campinas'},{value:'São Paulo',label:'São Paulo'}],bairro:[{value:'Centro',label:'Centro'},{value:'Cambuí',label:'Cambuí'}],naturezas:[{value:'2062',label:'2062 · Sociedade Empresária Limitada'},{value:'2135',label:'2135 · Empresário Individual'}],cnaes:input.offset?[{value:'4721102',label:'4721102 · Padaria e confeitaria'}]:[{value:'4711302',label:'4711302 · Supermercados'}]})[input.field]||[];if(input.search)options=options.filter(item=>(item.value+' '+item.label).toUpperCase().includes(input.search.toUpperCase()));return {success:true,options,hasMore:input.field==='cnaes'&&!input.offset&&!input.search};},
@@ -80,7 +83,7 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
 }; contextBridge.exposeInMainWorld('electronAPI',api);`);
     const css = fsSync.readdirSync(path.join(taskDir, 'bundle')).find(name => name.endsWith('.css'));
     const html = path.join(taskDir, 'smoke.html');
-    await fs.writeFile(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${path.join(root, 'src/styles/index.css').replaceAll('\\', '/')}"><link rel="stylesheet" href="bundle/${css}"></head><body class="light-theme"><div id="root"></div><div id="receita-root"></div><script src="${path.join(root, 'src/renderer/flowProgress.js').replaceAll('\\', '/')}"></script><script src="bundle/ui.js"></script></body></html>`);
+    await fs.writeFile(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="${path.join(root, 'src/styles/index.css').replaceAll('\\', '/')}"><link rel="stylesheet" href="bundle/${css}"></head><body class="light-theme"><div id="root"></div><div id="receita-root"></div><div id="mailing-root"></div><script src="${path.join(root, 'src/renderer/flowProgress.js').replaceAll('\\', '/')}"></script><script src="bundle/ui.js"></script></body></html>`);
     window = new BrowserWindow({ show: false, width: 1380, height: 1000, webPreferences: { preload, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, offscreen: true } });
     const errors = [];
     window.webContents.on('console-message', (_event, level, message) => { if (level === 3) errors.push(message); });
@@ -271,6 +274,20 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     await waitFor(`document.querySelector('.receita-situacao-app .flow-job-counts')?.textContent.includes('Não encontrados')`);
     await click('Abrir resultado');
     await waitFor(`window.electronAPI.inspect().calls.some(item=>item[0]==='situacao-open')`);
+    await waitFor(`!!document.querySelector('.mailing-app')`);
+    assert.equal(await evaluate(`!!document.querySelector('.importar-mailing .flow-view-switch') || !!document.querySelector('.importar-mailing .receita-situacao-app')`), false, 'quem não é admin não vê a Situação Receita');
+    const sendButton = `Array.from(document.querySelectorAll('.mailing-app button')).find(item=>item.textContent.trim()==='Enviar para a Fastway')`;
+    assert.equal(await evaluate(`${sendButton}.disabled`), true);
+    await click('Selecionar CSV');
+    await waitFor(`document.querySelector('.mailing-file')?.textContent.includes('184.320 linhas')`);
+    await evaluate(`Array.from(document.querySelectorAll('.mailing-chip')).find(item=>item.textContent.includes('213 - MP')).querySelector('input').click()`);
+    await click('Enviar para a Fastway');
+    await waitFor(`document.querySelector('.mailing-confirm')?.textContent.includes('139 · 213 - MP')`);
+    assert.equal(await evaluate(`window.electronAPI.inspect().calls.some(item=>item[0]==='mailing-send')`), false, 'só envia depois de confirmar');
+    await click('Confirmar envio');
+    await waitFor(`document.querySelector('.mailing-result')?.textContent.includes('Fastway confirmou 184.320')`);
+    assert.deepEqual(await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0]==='mailing-send')`), [['mailing-send', 'mailing-fixture', 139]]);
+    assert.equal(await evaluate(`document.querySelector('.mailing-app').scrollWidth<=document.querySelector('.mailing-app').clientWidth+1`), true);
     assert.deepEqual(errors, []);
     console.log('Flow UI smoke passed: CRUD, multiple filters/situations, dirty preservation, policy, history, logs, ownership, actions, masked access and compact layout.');
 }).catch(error => { console.error(error); exitCode = 1; }).finally(async () => {
