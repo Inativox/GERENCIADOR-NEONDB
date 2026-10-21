@@ -57,6 +57,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
           ipcRenderer.on('receita-situacao-update', listener);
           return () => ipcRenderer.removeListener('receita-situacao-update', listener);
       },
+      mailingImportState: () => ipcRenderer.invoke('mailing-import-state'),
+      mailingImportFile: () => ipcRenderer.invoke('mailing-import-file'),
+      mailingImportSend: (fileId, serviceId) => ipcRenderer.invoke('mailing-import-send', { fileId, serviceId }),
     flowsSaveLayout: (layout) => ipcRenderer.invoke('flows-save-layout', layout),
     flowsDeleteLayout: (id) => ipcRenderer.invoke('flows-delete-layout', id),
     flowsPreviewLayout: (input) => ipcRenderer.invoke('flows-preview-layout', input),
