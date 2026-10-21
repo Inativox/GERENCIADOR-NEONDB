@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import './fluxos.css';
 type Job = { id: string; owner: string; name: string; status: string; message: string; output: string | null; counts: { processed: number; found: number; notFound: number; invalid: number; removed?: number } };
 // Mesmos valores de KEEP_OPTIONS em src/main/receitaSituacao.js. "outra" (código fora dos
@@ -15,7 +16,8 @@ type API = {
     receitaSituacaoStart(fileId: string, keep: Keep[] | null): Promise<Response>; receitaSituacaoCancel(): Promise<Response>; receitaSituacaoOpen(): Promise<Response>;
     onReceitaSituacaoUpdate(callback: (job: Job) => void): () => void;
 };
-export function ReceitaSituacao() {
+// `aside` sits at the right of the heading; the Importar Mailing tab passes its section switch there.
+export function ReceitaSituacao({ aside }: { aside?: ReactNode }) {
     const api = window.electronAPI as unknown as API;
     const [configured, setConfigured] = useState(false), [file, setFile] = useState<Response['file']>(), [job, setJob] = useState<Job | null>(null);
     const [cnpj, setCnpj] = useState(''), [result, setResult] = useState<Result | null>(null), [consulted, setConsulted] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState('');
@@ -38,7 +40,7 @@ export function ReceitaSituacao() {
         finally { locked.current = false; setBusy(false); }
     }
     return <div className="flows-app receita-situacao-app" aria-busy={busy}>
-        <header className="flows-heading"><div><h1>Situação Receita</h1><p>Consulte CNPJs ou uma lista própria no banco da Receita, sem depender de um fluxo de geração.</p></div></header>
+        <header className="flows-heading"><div><h1>Situação Receita</h1><p>Consulte CNPJs ou uma lista própria no banco da Receita, sem depender de um fluxo de geração.</p></div>{aside}</header>
         <p className="flow-explanation">A situação corresponde à versão da base configurada. A consulta não atualiza a Receita em tempo real.</p>
         {!configured && <p role="status" className="flow-notice">Configure o banco da Receita na tela de login. O acesso salvo será usado automaticamente nesta consulta.</p>}
         {message && <p role="alert" className="flow-notice flow-notice--error">{message}</p>}
