@@ -35,3 +35,14 @@ test('assinatura de eventos de colunas pode ser removida sem afetar outro consum
     assert.equal(second, 2);
     assert.equal(ipcRenderer.listenerCount('limpeza-colunas-log'), 1);
 });
+
+test('importação de mailing chama os canais do main e envia o arquivo e o serviço escolhidos', async () => {
+    const ipcRenderer = new EventEmitter(), invoked = [];
+    ipcRenderer.invoke = async (...args) => { invoked.push(args); return { success: true }; };
+    let api;
+    loadModule('preload.js', { electron: { ipcRenderer, contextBridge: { exposeInMainWorld: (_, value) => { api = value; } } } });
+    await api.mailingImportState();
+    await api.mailingImportFile();
+    await api.mailingImportSend('arquivo-1', 63);
+    assert.deepEqual(JSON.parse(JSON.stringify(invoked)), [['mailing-import-state'], ['mailing-import-file'], ['mailing-import-send', { fileId: 'arquivo-1', serviceId: 63 }]]);
+});
