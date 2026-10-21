@@ -3,6 +3,10 @@ const COPY = {
         title: 'O envio para a Fastway está em andamento',
         detail: 'A Fastway só confirma depois de importar o mailing, o que pode levar alguns minutos. Se fechar agora, o arquivo pode chegar sem confirmação e a execução vai aparecer como interrompida.',
     },
+    mailing: {
+        title: 'O envio para a Fastway está em andamento',
+        detail: 'A Fastway só confirma depois de importar o mailing, o que pode levar alguns minutos. Se fechar agora, o arquivo pode chegar sem confirmação. Confira o painel antes de enviar de novo.',
+    },
     flow: {
         title: 'Há um fluxo em execução',
         detail: 'Se fechar agora, a execução será interrompida. Depois, você pode retomá-la da última etapa confirmada.',
@@ -31,8 +35,8 @@ export function setupCloseFlowModal(api, root = document) {
         if (event.key === 'Tab') { event.preventDefault(); (root.activeElement === keep ? confirm : keep).focus(); }
     });
 
-    api.onConfirmCloseDuringFlow(({ uploading }) => {
-        const copy = uploading ? COPY.upload : COPY.flow;
+    api.onConfirmCloseDuringFlow(({ uploading, mailing }) => {
+        const copy = mailing ? COPY.mailing : uploading ? COPY.upload : COPY.flow;
         root.getElementById('close-flow-title').textContent = copy.title;
         root.getElementById('close-flow-detail').textContent = copy.detail;
         if (modal.classList.contains('hidden')) returnFocus = root.activeElement;
