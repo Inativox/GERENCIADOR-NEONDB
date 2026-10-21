@@ -103,13 +103,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (role === 'limited' || role === 'master') {
             navLinks.forEach(button => {
                 const tabName = button.dataset.tabName;
-                if (tabName !== 'monitoramento') { // Esta lógica pode ser ajustada se o monitoramento for reativado
+                if (tabName !== 'monitoramento' && tabName !== 'importarMailing') { // Esta lógica pode ser ajustada se o monitoramento for reativado
                     button.parentElement.style.display = 'none';
                 }
             });
-            const monitoringTabButton = document.querySelector('.tab-button[data-tab-name="monitoramento"]');
-            if (monitoringTabButton) {
-                monitoringTabButton.click();
+            // Com o monitoramento oculto, a importação de mailing é a única aba destes perfis.
+            const mailingTabButton = document.querySelector('.tab-button[data-tab-name="importarMailing"]');
+            if (mailingTabButton) {
+                mailingTabButton.click();
             }
 
             // Oculta a aba de monitoramento para todos, por enquanto
@@ -407,9 +408,9 @@ document.addEventListener('DOMContentLoaded', () => {
             title: 'Consulta CNPJ via API',
             description: 'Realize consultas de CNPJ diretamente via API para obter a situação da empresa.'
         },
-        'Situação Receita': {
-            title: 'Consulta de situação cadastral',
-            description: 'Consulte um CNPJ ou uma lista própria no banco da Receita.'
+        'Importar Mailing': {
+            title: 'Importar mailing',
+            description: 'Envie um CSV para um serviço da Fastway ou consulte a situação cadastral na Receita.'
         },
         'Enriquecimento': {
             title: 'Enriquecimento de Dados',
