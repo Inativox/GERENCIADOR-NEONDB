@@ -65,7 +65,7 @@ function closingFixture({ crashed = false } = {}) {
     auth.createMainWindow();
     const window = state.mainWindow;
     return {
-        window, ipcMain, dialogs, setBusy: value => { busy = value; }, prevented: () => prevented,
+        window, ipcMain, dialogs, state, setBusy: value => { busy = value; }, prevented: () => prevented,
         close: () => { window.emit('close', { preventDefault: () => { prevented++; } }); return new Promise(setImmediate); },
         answer: (close, sender = window.webContents) => { ipcMain.emit('close-during-flow-answer', { sender }, close); return new Promise(setImmediate); },
     };
@@ -78,7 +78,7 @@ test('fechar a janela durante um fluxo abre o modal do app e só fecha se o usu�
     f.setBusy(true);
     await f.close();
     assert.equal(f.prevented(), 1);
-    assert.deepEqual(JSON.parse(JSON.stringify(f.window.webContents.sent)), [['confirm-close-during-flow', { uploading: true }]]);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.window.webContents.sent)), [['confirm-close-during-flow', { uploading: true, mailing: false }]]);
     await f.answer(false);
     assert.equal(f.window.closes, 0);
     await f.close();
@@ -101,6 +101,26 @@ test('com a tela travada, o fechamento durante um fluxo usa o diálogo nativo', 
     assert.equal(f.window.closes, 1);
 });
 
+test('fechar a janela durante uma importação manual pede confirmação mesmo sem fluxo rodando', async () => {
+    const f = closingFixture();
+    f.state.mailingUpload = { status: 'running' };
+    await f.close();
+    assert.equal(f.prevented(), 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.window.webContents.sent)), [['confirm-close-during-flow', { uploading: true, mailing: true }]]);
+    await f.answer(true);
+    assert.equal(f.window.closes, 1);
+});
+
+test('com a tela travada, a importação manual usa o diálogo nativo sem falar em execução interrompida', async () => {
+    const f = closingFixture({ crashed: true });
+    f.state.mailingUpload = { status: 'running' };
+    await f.close();
+    assert.match(f.dialogs[0].message, /Fastway/);
+    assert.match(f.dialogs[0].detail, /painel/);
+    assert.doesNotMatch(f.dialogs[0].detail, /interrompida/);
+    assert.equal(f.window.closes, 1);
+});
+
 test('atualização pronta avisa sem forçar encerramento durante tarefa', () => {
     const autoUpdater = new EventEmitter();
     let forcedQuit = 0;
@@ -118,7 +138,7 @@ test('atualização pronta avisa sem forçar encerramento durante tarefa', () =>
         './keyfile': {}, './state': { mainWindow: { webContents: { send: (...args) => messages.push(args) } } },
         './database/cache': noopHandler,
     };
-    for (const name of ['auth', 'files', 'limpeza', 'cnpj', 'enriquecimento', 'blocklist', 'monitoramento', 'relacionamento', 'limpezaColunas', 'fluxos', 'receitaSituacao']) dependencies[`./handlers/${name}`] = noopHandler;
+    for (const name of ['auth', 'files', 'limpeza', 'cnpj', 'enriquecimento', 'blocklist', 'monitoramento', 'relacionamento', 'limpezaColunas', 'fluxos', 'receitaSituacao', 'importarMailing']) dependencies[`./handlers/${name}`] = noopHandler;
     loadModule('src/main/index.js', dependencies);
     autoUpdater.emit('update-downloaded', { version: '2.0.0' });
     assert.equal(forcedQuit, 0);
