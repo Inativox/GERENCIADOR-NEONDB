@@ -33,6 +33,19 @@ test('file selection authorizes one worker, only confirmed output opens, and sta
     f.state.currentUser.username = 'Outro'; assert.equal((await f.invoke('receita-situacao-state')).job, null);
     assert.equal((await f.invoke('receita-situacao-open')).success, false);
 });
+test('remove MEI and additional CSV reach the worker only when switched on, and the result carries both', async t => {
+    const f = fixture(t); let selected = await f.invoke('receita-situacao-file');
+    assert.equal((await f.invoke('receita-situacao-start', { fileId: selected.file.id, removeMei: 'sim', csv: 1 })).success, true);
+    assert.deepEqual([f.workers[0].options.workerData.removeMei, f.workers[0].options.workerData.csv], [false, false]);
+    f.workers[0].emit('message', { type: 'result', result: { processed: 2, found: 2, notFound: 0, invalid: 0, removed: 0, mei: 0, output: 'a.xlsx', csvOutput: null } });
+    selected = await f.invoke('receita-situacao-file');
+    const started = await f.invoke('receita-situacao-start', { fileId: selected.file.id, removeMei: true, csv: true });
+    assert.equal(started.job.counts.mei, 0);
+    assert.deepEqual([f.workers[1].options.workerData.removeMei, f.workers[1].options.workerData.csv], [true, true]);
+    f.workers[1].emit('message', { type: 'result', result: { processed: 3, found: 3, notFound: 0, invalid: 0, removed: 0, mei: 1, output: 'b.xlsx', csvOutput: 'b.csv' } });
+    const { job } = await f.invoke('receita-situacao-state');
+    assert.equal(job.counts.mei, 1); assert.equal(job.csvOutput, 'b.csv'); assert.match(job.message, /CSV/);
+});
 test('manual query never returns results to a session that changed while awaiting SQL', async t => {
     const f = fixture(t); let finish;
     f.setLookup(() => new Promise(resolve => { finish = resolve; }));

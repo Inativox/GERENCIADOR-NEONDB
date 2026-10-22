@@ -24,6 +24,7 @@ test('reabrir janela não duplica controles IPC e janela fechada é ignorada', (
         pg: {}, '../flows/receita': {}, '../flows/postgres': {},
         'electron-updater': { autoUpdater: {} },
         './cnpj': { getCurrentLockedKeys: () => [] },
+        './alertaMailing': { manterNaBandeja: () => false, sincronizar() {} },
     });
     auth.register();
     auth.createMainWindow();
@@ -39,11 +40,12 @@ test('reabrir janela não duplica controles IPC e janela fechada é ignorada', (
     assert.doesNotThrow(() => ipcMain.emit('minimize-window'));
 });
 
-function closingFixture({ crashed = false } = {}) {
+function closingFixture({ crashed = false, naBandeja = false } = {}) {
     const state = {}, ipcMain = new EventEmitter(), dialogs = [];
     ipcMain.handle = () => {};
     class BrowserWindow extends EventEmitter {
-        constructor() { super(); this.webContents = new EventEmitter(); this.webContents.sent = []; this.webContents.send = (...args) => this.webContents.sent.push(args); this.webContents.isCrashed = () => crashed; this.closes = 0; }
+        constructor(options) { super(); this.options = options; this.webContents = new EventEmitter(); this.webContents.sent = []; this.webContents.send = (...args) => this.webContents.sent.push(args); this.webContents.isCrashed = () => crashed; this.closes = 0; this.hides = 0; }
+        hide() { this.hides++; }
         loadFile() {}
         isDestroyed() { return false; }
         close() { this.closes++; }
@@ -58,6 +60,7 @@ function closingFixture({ crashed = false } = {}) {
         pg: {}, '../flows/receita': {}, '../flows/postgres': {},
         'electron-updater': { autoUpdater: {} },
         './cnpj': { getCurrentLockedKeys: () => [] },
+        './alertaMailing': { manterNaBandeja: () => naBandeja, sincronizar() {} },
     });
     let busy = false, prevented = 0;
     state.flowManager = { isBusy: () => busy, activeStage: () => 'upload' };
@@ -138,10 +141,44 @@ test('atualização pronta avisa sem forçar encerramento durante tarefa', () =>
         './keyfile': {}, './state': { mainWindow: { webContents: { send: (...args) => messages.push(args) } } },
         './database/cache': noopHandler,
     };
-    for (const name of ['auth', 'files', 'limpeza', 'cnpj', 'enriquecimento', 'blocklist', 'monitoramento', 'relacionamento', 'limpezaColunas', 'fluxos', 'receitaSituacao', 'importarMailing']) dependencies[`./handlers/${name}`] = noopHandler;
+    for (const name of ['auth', 'files', 'limpeza', 'cnpj', 'enriquecimento', 'blocklist', 'monitoramento', 'relacionamento', 'limpezaColunas', 'fluxos', 'receitaSituacao', 'importarMailing', 'alertaMailing']) dependencies[`./handlers/${name}`] = noopHandler;
     loadModule('src/main/index.js', dependencies);
     autoUpdater.emit('update-downloaded', { version: '2.0.0' });
     assert.equal(forcedQuit, 0);
     assert.equal(messages[0][0], 'update-ready');
     assert.equal(autoUpdater.autoInstallOnAppQuit, true);
+});
+
+test('com o alerta de mailing rodando, fechar só esconde a janela e não pergunta sobre o fluxo', async () => {
+    const f = closingFixture({ naBandeja: true });
+    f.setBusy(true);
+    await f.close();
+    assert.deepEqual([f.prevented(), f.window.hides, f.window.closes], [1, 1, 0]);
+    assert.deepEqual(f.window.webContents.sent, []);
+    assert.equal(f.window.options.show, true);
+});
+
+test('aberta com o Windows pelo alerta, a janela principal nasce escondida na bandeja', () => {
+    const state = {}, ipcMain = new EventEmitter(), opcoes = [];
+    ipcMain.handle = () => {};
+    class BrowserWindow extends EventEmitter {
+        constructor(options) { super(); opcoes.push(options); this.webContents = new EventEmitter(); this.webContents.send = () => {}; }
+        loadFile() {}
+        isDestroyed() { return false; }
+    }
+    const auth = loadModule('src/main/handlers/auth.js', {
+        electron: { ipcMain, BrowserWindow, app: { isPackaged: false }, dialog: {} },
+        fs: { readFileSync: () => '{}' }, path,
+        'electron-store': class {}, '../state': state,
+        '../settingsWriteRetry': require('../src/main/settingsWriteRetry'),
+        '../runtimeConfig': { loadUsers: () => ({}) },
+        '../database/connection': {}, '../database/cache': {}, '../keyfile': {},
+        pg: {}, '../flows/receita': {}, '../flows/postgres': {},
+        'electron-updater': { autoUpdater: {} },
+        './cnpj': { getCurrentLockedKeys: () => [] },
+        './alertaMailing': { manterNaBandeja: () => false, sincronizar() {} },
+    });
+    auth.register();
+    auth.createMainWindow({ hidden: true });
+    assert.equal(opcoes[0].show, false);
 });

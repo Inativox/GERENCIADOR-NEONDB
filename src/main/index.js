@@ -26,6 +26,7 @@ const limpezaColunas = require('./handlers/limpezaColunas');
 const fluxos = require('./handlers/fluxos');
 const receitaSituacao = require('./handlers/receitaSituacao');
 const importarMailing = require('./handlers/importarMailing');
+const alertaMailing = require('./handlers/alertaMailing');
 
 // Cache/BD
 const cache = require('./database/cache');
@@ -70,6 +71,7 @@ limpezaColunas.register();
 fluxos.register();
 receitaSituacao.register();
 importarMailing.register();
+alertaMailing.register();
 cache.register();
 
 // Ciclo de vida do app
@@ -102,7 +104,8 @@ app.whenReady().then(async () => {
                 role: user.role,
                 teamId: user.teamId || null
             };
-            auth.createMainWindow();
+            // --bandeja: aberto com o Windows pelo Alerta de Mailing, começa escondido na bandeja.
+            auth.createMainWindow({ hidden: process.argv.includes('--bandeja') });
         } else {
             console.log('Credenciais salvas inválidas. Abrindo tela de login.');
             auth.createLoginWindow();

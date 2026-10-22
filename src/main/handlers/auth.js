@@ -74,14 +74,16 @@ async function confirmCloseNatively(window, uploading, mailing) {
     return response === 1;
 }
 
-function createMainWindow() {
+function createMainWindow({ hidden = false } = {}) {
     const { BrowserWindow, app } = require('electron');
     const { autoUpdater } = require('electron-updater');
     const { releaseApiLock, getCurrentLockedKeys, setCurrentLockedKeys } = require('./cnpj');
+    const alertaMailing = require('./alertaMailing');
 
     const mainWindow = new BrowserWindow({
         width: 1400,
         height: 950,
+        show: !hidden, // aberto com o Windows: começa na bandeja, com o Alerta de Mailing rodando
         frame: false,
         webPreferences: {
             nodeIntegration: false,
@@ -93,6 +95,11 @@ function createMainWindow() {
 
     let closeConfirmed = false;
     mainWindow.on('close', async (e) => {
+        if (alertaMailing.manterNaBandeja()) { // o alerta segue avisando; sair de verdade é pelo ícone da bandeja
+            e.preventDefault();
+            mainWindow.hide();
+            return;
+        }
         if (!closeConfirmed && (state.flowManager?.isBusy() || state.mailingUpload)) {
             e.preventDefault();
             if (await confirmCloseDuringFlow(mainWindow)) {
@@ -117,6 +124,7 @@ function createMainWindow() {
         if (mainWindow !== state.mainWindow || mainWindow.isDestroyed()) return;
         if (state.currentUser) {
             mainWindow.webContents.send('user-info', state.currentUser);
+            alertaMailing.sincronizar();
 
             if (state.currentUser.role === 'admin') {
                 const dbConnectionString = store.get('db_connection_string');

@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       receitaSituacaoState: () => ipcRenderer.invoke('receita-situacao-state'),
       receitaSituacaoFile: () => ipcRenderer.invoke('receita-situacao-file'),
       receitaSituacaoOne: (cnpj) => ipcRenderer.invoke('receita-situacao-one', { cnpj }),
-      receitaSituacaoStart: (fileId, keep) => ipcRenderer.invoke('receita-situacao-start', { fileId, keep }),
+      receitaSituacaoStart: (fileId, keep, options) => ipcRenderer.invoke('receita-situacao-start', { fileId, keep, removeMei: options?.removeMei, csv: options?.csv }),
       receitaSituacaoCancel: () => ipcRenderer.invoke('receita-situacao-cancel'),
       receitaSituacaoOpen: () => ipcRenderer.invoke('receita-situacao-open'),
       onReceitaSituacaoUpdate: (callback) => {
@@ -59,7 +59,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
       },
       mailingImportState: () => ipcRenderer.invoke('mailing-import-state'),
       mailingImportFile: () => ipcRenderer.invoke('mailing-import-file'),
-      mailingImportSend: (fileId, serviceId) => ipcRenderer.invoke('mailing-import-send', { fileId, serviceId }),
+      mailingImportSend: (fileId, serviceId, fastway) => ipcRenderer.invoke('mailing-import-send', { fileId, serviceId, fastway }),
+      mailingImportForget: () => ipcRenderer.invoke('mailing-import-forget'),
+      alertaMailingState: () => ipcRenderer.invoke('alerta-mailing-state'),
+      alertaMailingVerificar: () => ipcRenderer.invoke('alerta-mailing-verificar'),
+      alertaMailingDispensar: (eventoId) => ipcRenderer.invoke('alerta-mailing-dispensar', { eventoId }),
+      alertaMailingLimparHistorico: () => ipcRenderer.invoke('alerta-mailing-limpar-historico'),
+      alertaMailingReciclador: (ligar) => ipcRenderer.invoke('alerta-mailing-reciclador', { ligar }),
+      alertaMailingServico: (servicoId, parar) => ipcRenderer.invoke('alerta-mailing-servico', { servicoId, parar }),
+      alertaMailingLogin: (login, password) => ipcRenderer.invoke('alerta-mailing-login', { login, password }),
+      onAlertaMailingUpdate: (callback) => {
+          const listener = (_event, painel) => callback(painel);
+          ipcRenderer.on('alerta-mailing-update', listener);
+          return () => ipcRenderer.removeListener('alerta-mailing-update', listener);
+      },
+      onAlertaMailingFoco: (callback) => {
+          const listener = (_event, foco) => callback(foco);
+          ipcRenderer.on('alerta-mailing-foco', listener);
+          return () => ipcRenderer.removeListener('alerta-mailing-foco', listener);
+      },
     flowsSaveLayout: (layout) => ipcRenderer.invoke('flows-save-layout', layout),
     flowsDeleteLayout: (id) => ipcRenderer.invoke('flows-delete-layout', id),
     flowsPreviewLayout: (input) => ipcRenderer.invoke('flows-preview-layout', input),

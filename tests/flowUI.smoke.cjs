@@ -48,13 +48,14 @@ const api={
 receitaSituacaoState:async()=>({success:true,configured:true,job:receitaJob}),
 receitaSituacaoFile:async()=>({success:true,file:{id:'fixture-list',name:'Lista própria.xlsx'}}),
 receitaSituacaoOne:async cnpj=>{calls.push(['situacao-one',cnpj]);return {success:true,found:true,result:{cnpj:'12ABC34501DE35',razao_social:'Empresa fictícia',situacao_cadastral_cod:'04',situacao_cadastral:'Inapta',situacao_cadastral_data:'2026-09-01'}};},
-receitaSituacaoStart:async id=>{calls.push(['situacao-start',id]);receitaJob={id:'situacao-job',owner:username,name:'Lista própria.xlsx',status:'running',message:'Consultando o banco da Receita.',output:null,counts:{processed:0,found:0,notFound:0,invalid:0}};return {success:true,job:receitaJob};},
+receitaSituacaoStart:async(id,keep,options)=>{calls.push(['situacao-start',id,keep,options]);receitaJob={id:'situacao-job',owner:username,name:'Lista própria.xlsx',status:'running',message:'Consultando o banco da Receita.',output:null,counts:{processed:0,found:0,notFound:0,invalid:0}};return {success:true,job:receitaJob};},
 receitaSituacaoOpen:async()=>{calls.push(['situacao-open']);return {success:true};},
 onReceitaSituacaoUpdate:callback=>{receitaCallbacks.push(callback);return ()=>{};},
 emitReceita:job=>{receitaJob=job;receitaCallbacks.forEach(callback=>callback(job));},
-mailingImportState:async()=>({success:true,admin:false,configured:true,maxRows:250000,job:null,services:[{id:63,group:'Santander',label:'Santander',name:'SANTANDER'},{id:139,group:'MP',label:'213 - MP',name:'213 - MP'}]}),
+mailingImportState:async()=>({success:true,admin:false,fastway:{saved:false,login:null,canSave:true},maxRows:250000,job:null,services:[{id:63,group:'Santander',label:'Santander',name:'SANTANDER'},{id:139,group:'MP',label:'213 - MP',name:'213 - MP'}]}),
 mailingImportFile:async()=>{calls.push(['mailing-file']);return {success:true,file:{id:'mailing-fixture',name:'mailing.csv',rows:184320}};},
-mailingImportSend:async(fileId,serviceId)=>{calls.push(['mailing-send',fileId,serviceId]);return {success:true,job:{status:'completed',file:'mailing.csv',rows:184320,service:{id:139,group:'MP',label:'213 - MP',name:'213 - MP'},message:'Fastway confirmou 184.320 registros em 139 · 213 - MP.'}};},
+mailingImportSend:async(fileId,serviceId,fastway)=>{calls.push(['mailing-send',fileId,serviceId,fastway]);return {success:true,fastway:fastway?.save?{saved:true,login:fastway.login,canSave:true}:{saved:false,login:null,canSave:true},job:{status:'completed',file:'mailing.csv',rows:184320,service:{id:139,group:'MP',label:'213 - MP',name:'213 - MP'},message:'Fastway confirmou 184.320 registros em 139 · 213 - MP.'}};},
+mailingImportForget:async()=>{calls.push(['mailing-forget']);return {success:true,fastway:{saved:false,login:null,canSave:true}};},
 
 flowsBootstrap:async()=>({success:true,user:{username,role},flows,jobs,formats,layoutFields,access,limits:{maxRows:500000}}),
 flowsReceitaOptions:async input=>{calls.push(['options',input]);let options=({uf:[{value:'SP',label:'SP'},{value:'RJ',label:'RJ'}],cidade:[{value:'Campinas',label:'Campinas'},{value:'São Paulo',label:'São Paulo'}],bairro:[{value:'Centro',label:'Centro'},{value:'Cambuí',label:'Cambuí'}],naturezas:[{value:'2062',label:'2062 · Sociedade Empresária Limitada'},{value:'2135',label:'2135 · Empresário Individual'}],cnaes:input.offset?[{value:'4721102',label:'4721102 · Padaria e confeitaria'}]:[{value:'4711302',label:'4711302 · Supermercados'}]})[input.field]||[];if(input.search)options=options.filter(item=>(item.value+' '+item.label).toUpperCase().includes(input.search.toUpperCase()));return {success:true,options,hasMore:input.field==='cnaes'&&!input.offset&&!input.search};},
@@ -268,10 +269,18 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     assert.equal(await evaluate(`document.querySelector('.receita-cnae-import').scrollWidth<=document.querySelector('.receita-cnae-import').clientWidth+1`), true);
     await input('CNPJ','12ABC34501DE35'); await click('Consultar situação');
     await waitFor(`document.querySelector('.receita-situacao-result')?.textContent.includes('04 · Inapta')`);
-    await click('Selecionar lista'); await click('Consultar lista');
+    await click('Selecionar lista');
+    const receitaSwitch = label => `Array.from(document.querySelectorAll('.receita-situacao-switch')).find(item=>item.querySelector('.toggle-label').firstChild.textContent===${JSON.stringify(label)}).querySelector('input')`;
+    assert.equal(await evaluate(`${receitaSwitch('Remover MEI')}.checked || ${receitaSwitch('Gerar CSV adicional')}.checked`), false, 'as duas chaves começam desligadas');
+    await evaluate(`${receitaSwitch('Remover MEI')}.click(); ${receitaSwitch('Gerar CSV adicional')}.click()`);
+    await evaluate(`document.querySelector('.receita-situacao-switches').scrollIntoView({ block: 'center' })`); await delay(100);
+    await fs.writeFile(path.join(root, 'out', 'receita-mei-smoke.png'), (await window.webContents.capturePage()).toPNG());
+    await click('Consultar lista');
     await waitFor(`window.electronAPI.inspect().calls.some(item=>item[0]==='situacao-start')`);
-    await evaluate(`window.electronAPI.emitReceita({id:'situacao-job',owner:'Outro',name:'Lista própria.xlsx',status:'completed',message:'Consulta concluída.',output:'fixture.xlsx',counts:{processed:3,found:1,notFound:1,invalid:1}})`);
+    assert.deepEqual(await evaluate(`window.electronAPI.inspect().calls.find(item=>item[0]==='situacao-start').slice(2)`), [null, { removeMei: true, csv: true }]);
+    await evaluate(`window.electronAPI.emitReceita({id:'situacao-job',owner:'Outro',name:'Lista própria.xlsx',status:'completed',message:'Consulta concluída.',output:'fixture.xlsx',counts:{processed:3,found:1,notFound:1,invalid:1,mei:2}})`);
     await waitFor(`document.querySelector('.receita-situacao-app .flow-job-counts')?.textContent.includes('Não encontrados')`);
+    assert.match(await evaluate(`document.querySelector('.receita-situacao-app .flow-job-counts').textContent`), /MEI removidos2/);
     await click('Abrir resultado');
     await waitFor(`window.electronAPI.inspect().calls.some(item=>item[0]==='situacao-open')`);
     await waitFor(`!!document.querySelector('.mailing-app')`);
@@ -281,12 +290,28 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     await click('Selecionar CSV');
     await waitFor(`document.querySelector('.mailing-file')?.textContent.includes('184.320 linhas')`);
     await evaluate(`Array.from(document.querySelectorAll('.mailing-chip')).find(item=>item.textContent.includes('213 - MP')).querySelector('input').click()`);
+    assert.equal(await evaluate(`${sendButton}.disabled`), true, 'sem login digitado não envia');
+    assert.match(await evaluate(`document.querySelector('.mailing-missing').textContent`), /login e a senha/);
+    // Os Fluxos também têm campos de login na mesma página; aqui a busca fica dentro do Importar Mailing.
+    const mailingInput = (label, value) => evaluate(`(() => { const element = Array.from(document.querySelectorAll('.mailing-app .flow-field')).find(item => item.firstElementChild.textContent === ${JSON.stringify(label)}).querySelector('input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+    await mailingInput('Login', 'ana.fastway'); await mailingInput('Senha', 'synthetic-own');
+    await evaluate(`document.querySelector('.mailing-app .flow-check input').click()`);
+    await waitFor(`!${sendButton}.disabled`);
+    await evaluate(`document.querySelector('.mailing-login').scrollIntoView({ block: 'center' })`); await delay(100);
+    await fs.writeFile(path.join(root, 'out', 'mailing-login-smoke.png'), (await window.webContents.capturePage()).toPNG());
     await click('Enviar para a Fastway');
     await waitFor(`document.querySelector('.mailing-confirm')?.textContent.includes('139 · 213 - MP')`);
     assert.equal(await evaluate(`window.electronAPI.inspect().calls.some(item=>item[0]==='mailing-send')`), false, 'só envia depois de confirmar');
     await click('Confirmar envio');
     await waitFor(`document.querySelector('.mailing-result')?.textContent.includes('Fastway confirmou 184.320')`);
-    assert.deepEqual(await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0]==='mailing-send')`), [['mailing-send', 'mailing-fixture', 139]]);
+    assert.deepEqual(await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0]==='mailing-send')`), [['mailing-send', 'mailing-fixture', 139, { login: 'ana.fastway', password: 'synthetic-own', save: true }]]);
+    await waitFor(`document.querySelector('.mailing-login-saved')?.textContent.includes('ana.fastway')`);
+    assert.equal(await evaluate(`document.querySelectorAll('.mailing-app input[type=password]').length`), 0, 'com login salvo a senha não fica na tela');
+    await fs.writeFile(path.join(root, 'out', 'mailing-login-saved-smoke.png'), (await window.webContents.capturePage()).toPNG());
+    await click('Esquecer');
+    await waitFor(`document.querySelectorAll('.mailing-app input[type=password]').length === 1`);
+    assert.equal(await evaluate(`document.querySelector('.mailing-app input[type=password]').value`), '', 'esquecer não deixa a senha antiga no campo');
+    assert.equal(await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0]==='mailing-forget').length`), 1);
     assert.equal(await evaluate(`document.querySelector('.mailing-app').scrollWidth<=document.querySelector('.mailing-app').clientWidth+1`), true);
     assert.deepEqual(errors, []);
     console.log('Flow UI smoke passed: CRUD, multiple filters/situations, dirty preservation, policy, history, logs, ownership, actions, masked access and compact layout.');
