@@ -1,16 +1,64 @@
 /* Workspace operacional: navegação, hierarquia e limpeza sequencial. */
 .window-title { margin-right: auto; padding-left: 16px; font-size: 11px; color: var(--text-secondary); }
 .title-bar { background: var(--bg-sidebar); }
-.sidebar { padding: 20px 14px 14px; }
-.sidebar-header { padding: 10px 12px 24px; margin-bottom: 12px; }
-.sidebar-header > svg { width: 22px; height: 22px; }
+/* Barra lateral: marca MB no topo, ícones de traço de uma família só e o item ativo marcado pelo ícone num bloco indigo. */
+.sidebar { padding: 18px 12px 12px; }
+.sidebar-header { flex-direction: column; align-items: stretch; gap: 4px; padding: 0 8px 16px; margin-bottom: 12px; }
+.nav-item svg, .nav-plate svg, .sidebar-footer svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sidebar-brand { display: grid; gap: 3px; min-width: 0; text-align: center; }
+/* Pilha isométrica: uma placa por seção, na gramática da cena 3D do Gerar listas (faces em tons do tema, borda de 1px, sinal indigo).
+   A placa ativa flutua acima da pilha e deixa vazio o seu lugar; a troca de aba é o único movimento. */
+.nav-stack { --plate: 76px; --gap: 9px; --lift: 20px; --scale: 1; position: relative; height: 146px; pointer-events: none; }
+.nav-stack-world { --plates: 1; position: absolute; left: 50%; top: 64%; width: var(--plate); height: var(--plate); margin: calc(var(--plate) / -2) 0 0 calc(var(--plate) / -2); transform-style: preserve-3d; transform: scale(var(--scale)) rotateX(56deg) rotateZ(-42deg); }
+/* Sombra da pilha no chão e sombra de contato da placa que flutua, projetada no topo da pilha. */
+.nav-stack-world::before, .nav-stack-world::after { content: ''; position: absolute; border-radius: 6px; }
+.nav-stack-world::before { inset: 8px; background: var(--shadow-color); transform: translate3d(10px, 12px, -1px); filter: blur(8px); }
+.nav-stack-world::after { inset: 12px; background: color-mix(in srgb, var(--text-primary) 16%, transparent); transform: translate3d(7px, 8px, calc((var(--plates) - 1) * var(--gap) + 6px)); filter: blur(6px); }
+.nav-plate { --top: color-mix(in srgb, var(--text-muted) 14%, var(--bg-sidebar)); --front: color-mix(in srgb, var(--text-muted) 34%, var(--bg-sidebar)); --side: color-mix(in srgb, var(--text-muted) 52%, var(--bg-sidebar)); --edge: color-mix(in srgb, var(--text-muted) 46%, var(--bg-sidebar)); --tick: var(--edge); --h: 5px; --z: calc(var(--level, 0) * var(--gap)); position: absolute; inset: 0; transform-style: preserve-3d; transform: translate3d(0, 0, var(--z)); transition: transform 300ms cubic-bezier(.16, 1, .3, 1); }
+.dark-theme .nav-plate { --edge: color-mix(in srgb, var(--text-muted) 62%, var(--bg-sidebar)); }
+.nav-plate[hidden] { display: none; }
+.nav-plate > span { position: absolute; display: block; box-sizing: border-box; transition: background-color 220ms ease-out, border-color 220ms ease-out; }
+/* Seletor com o mesmo peso de ".nav-plate > span": sem isso o display: block dele vencia e o ícone ia para o canto. */
+.nav-plate > .nav-plate-top { inset: 0; display: grid; place-items: center; border: 1px solid var(--edge); border-radius: 2px; background: var(--top); transform: translateZ(var(--h)); }
+.nav-plate-front { top: 100%; left: 0; width: 100%; height: var(--h); background: var(--front); transform-origin: top; transform: rotateX(90deg); }
+/* Marcas na frente de cada placa, como as dos volumes da cena do Gerar listas. */
+.nav-plate-front::before { content: ''; position: absolute; left: 7px; top: 1.5px; width: 8px; height: 2px; background: var(--tick); box-shadow: 11px 0 0 var(--tick); opacity: .8; }
+.nav-plate-side { top: 0; left: 100%; width: var(--h); height: 100%; background: var(--side); transform-origin: left; transform: rotateY(-90deg); }
+.nav-plate svg { width: 32px; height: 32px; color: var(--accent-text); opacity: 0; transform: rotateZ(42deg); transition: opacity 180ms ease-out; }
+.nav-plate.is-preview { --edge: color-mix(in srgb, var(--accent-blue) 55%, var(--bg-sidebar)); transform: translate3d(7px, 7px, var(--z)); }
+/* A placa nova acende na hora e sobe logo depois que a anterior começa a descer: nunca há duas placas meio acesas. */
+.nav-plate.is-active { --top: var(--accent-blue); --front: color-mix(in srgb, var(--accent-blue) 72%, black); --side: color-mix(in srgb, var(--accent-blue) 56%, black); --edge: color-mix(in srgb, var(--accent-blue) 82%, black); --tick: color-mix(in srgb, var(--accent-text) 75%, transparent); transform: translate3d(0, 0, calc((var(--plates) - 1) * var(--gap) + var(--lift))); transition-delay: 70ms; }
+.nav-plate.is-active > span, .nav-plate.is-active svg { transition-duration: 0s; }
+.nav-plate.is-active svg { opacity: 1; }
+.nav-plate--slot { --top: transparent; --front: color-mix(in srgb, var(--accent-blue) 38%, transparent); --side: color-mix(in srgb, var(--accent-blue) 28%, transparent); --edge: color-mix(in srgb, var(--accent-blue) 60%, transparent); --tick: transparent; opacity: 0; transition: opacity 220ms ease-out; }
+.nav-plate--slot .nav-plate-top { border-style: dashed; }
+.nav-plate--slot.is-empty { opacity: 1; }
+@media (max-height: 760px) { .nav-stack { height: 112px; --scale: .76; } }
+@media (max-height: 640px) { .nav-stack { height: 84px; --scale: .54; } }
+@media (prefers-reduced-motion: reduce) { .nav-plate, .nav-plate > span, .nav-plate svg { transition: none; } }
+@media (forced-colors: active) { .nav-stack { display: none; } }
+.sidebar-title { font: 700 14px/1.1 var(--font-display); letter-spacing: .02em; }
+.sidebar-subtitle { color: var(--text-muted); font-size: 11px; }
+.sidebar > nav { flex: 1; min-height: 0; overflow-y: auto; }
 .sidebar-nav { padding: 0; }
-.nav-item a { min-height: 42px; padding: 10px 12px; margin-bottom: 5px; border-radius: 6px; }
-.nav-item a.active { font-weight: 600; background: color-mix(in srgb, var(--accent-blue) 9%, var(--bg-sidebar)); }
-.sidebar-footer { text-align: left; padding: 16px 8px 0; }
-.sidebar-footer p { color: var(--text-secondary); padding: 4px 0; }
-.sidebar-footer strong { color: var(--text-primary); font-weight: 600; }
-.changelog-btn { background: transparent; border-color: transparent; padding-left: 0; font-size: 11px; }
+.nav-item a { min-height: 40px; gap: 10px; padding: 6px 10px 6px 6px; margin-bottom: 2px; border-radius: 8px; }
+.nav-item svg { width: 28px; height: 28px; padding: 5px; box-sizing: border-box; border-radius: 7px; transition: background-color 150ms ease-out, color 150ms ease-out; }
+.nav-item a:hover svg { color: var(--accent-blue); }
+.nav-item a.active { background: color-mix(in srgb, var(--accent-blue) 8%, var(--bg-sidebar)); color: var(--text-primary); font-weight: 600; }
+.nav-item a.active svg { background: var(--accent-blue); color: var(--accent-text); }
+.nav-item a:focus-visible { outline-offset: -2px; }
+.sidebar-footer { display: grid; gap: 8px; text-align: left; padding: 12px 0 0; }
+.sidebar .changelog-btn { justify-content: flex-start; gap: 10px; height: 36px; margin: 0; padding: 0 10px; background: transparent; border-color: transparent; border-radius: 8px; font-size: 12px; }
+.sidebar .changelog-btn svg { width: 16px; height: 16px; }
+.changelog-badge { background: var(--accent-red); }
+.sidebar-user { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-element); }
+.sidebar-avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in srgb, var(--accent-blue) 14%, var(--bg-card)); color: color-mix(in srgb, var(--accent-blue) 65%, var(--text-primary)); font-size: 12px; font-weight: 700; }
+.sidebar-avatar:empty { visibility: hidden; }
+.sidebar-user p { display: grid; min-width: 0; margin: 0; padding: 0; color: var(--text-secondary); font-size: 10px; line-height: 1.35; }
+.sidebar-user strong { overflow: hidden; color: var(--text-primary); font-size: 12px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.sidebar .sidebar-logout { gap: 6px; height: 30px; min-height: 30px; margin: 0; padding: 0 9px; background: transparent; border-color: transparent; border-radius: 7px; font-size: 11px; }
+.sidebar .sidebar-logout:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-red) 9%, var(--bg-card)); border-color: color-mix(in srgb, var(--accent-red) 30%, var(--border-color)); color: var(--accent-red); }
+.sidebar .sidebar-logout svg { width: 14px; height: 14px; }
 .page-header { text-align: left; gap: 20px; margin-bottom: 24px; }
 #current-tab-title { font-family: var(--font-sans); font-size: 26px; font-weight: 600; margin-bottom: 8px; padding: 0; border: 0; }
 #current-tab-description { font-size: 13px; line-height: 1.65; color: var(--text-secondary); }
