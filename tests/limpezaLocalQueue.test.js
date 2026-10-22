@@ -35,6 +35,7 @@ function fixture(t, query) {
         '../state': state,
         '../limpezaTelefones': require('../src/main/limpezaTelefones'),
         '../flows/config': require('../src/main/flows/config'),
+        '../flows/pipeline': require('../src/main/flows/pipeline'),
         '../database/connection': { PROHIBITED_CNAES: new Set(), queryWithRetry: async (...args) => { queries++; if (query) return query(...args); throw new Error('Banco não deve ser acessado'); }, logSystemAction() {} },
         './files': {
             readSpreadsheet: async file => {
