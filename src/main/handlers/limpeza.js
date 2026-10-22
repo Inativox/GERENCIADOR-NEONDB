@@ -14,12 +14,32 @@ const { PROHIBITED_CNAES, queryWithRetry, logSystemAction } = require('../databa
 const { readSpreadsheet, writeSpreadsheet } = require('./files');
 const { normalizarTelefone, phoneIndices, createCrossListContext, cruzarECompactar, commitCrossList } = require('../limpezaTelefones');
 const { OPERATIONS } = require('../flows/config');
+const { csvRow } = require('../flows/pipeline');
 
 
 
 const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
 let cleaningSender = null;
 let rootController = null;
+
+// --- CSV ADICIONAL ---
+// Recebe as linhas já limpas e gera o CSV no formato do Importar Mailing (BOM, ";", colunas fixas).
+// Não usa XLSX.sheet_to_csv: ele grava CNPJ numérico como 1.23457E+13 e datas no formato americano.
+async function saveCsvCopy(file, rows, log) {
+    const { dir, name, ext } = path.parse(file);
+    if (ext.toLowerCase() === '.csv') return log(`ℹ️ ${path.basename(file)} já é CSV: o CSV adicional não foi gerado.`);
+    const csvPath = path.join(dir, `${name}.csv`);
+    const width = rows[0].length;
+    const csvValue = value => value instanceof Date ? value.toLocaleDateString('pt-BR') : value;
+    // Array.from preenche células vazias no fim da linha, mantendo todas com a largura do cabeçalho.
+    const lines = rows.map(row => csvRow(Array.from({ length: width }, (_, index) => csvValue(row[index]))));
+    try {
+        await fs.promises.writeFile(csvPath, '\uFEFF' + lines.join(''));
+        log(`📄 CSV adicional salvo: ${csvPath}`);
+    } catch (error) {
+        log(`⚠️ Não foi possível gravar o CSV ${path.basename(csvPath)} (${error.code || error.message}). Feche o arquivo se estiver aberto. O xlsx limpo foi salvo normalmente.`);
+    }
+}
 
 // --- PROCESSAMENTO DE ARQUIVO DE LIMPEZA ---
 async function processFile(fileObj, rootSet, options, event, crossList = createCrossListContext()) {
@@ -28,7 +48,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
     const logBuffer = [];
     const log = (msg) => logBuffer.push(msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
-    const { backup, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, cleaningDate } = options;
+    const { backup, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, generateCsv, cleaningDate } = options;
 
     const cleanClientName = (name) => {
         if (!name || typeof name !== 'string') return name;
@@ -141,13 +161,15 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         cleaned.push(row);
     }
 
-    const saveAdjusted = rows => {
+    const saveAdjusted = async rows => {
         const result = cruzarECompactar(header, rows, foneIdxs, cpfColIdx, crossList);
         const output = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(output, XLSX.utils.aoa_to_sheet(result.rows), wb.SheetNames[0]);
         writeSpreadsheet(output, file);
         // Só reserva as chaves depois de a planilha ter sido gravada.
         commitCrossList(crossList, result);
+        // O CSV sai das mesmas linhas gravadas no xlsx, depois de toda a limpeza.
+        if (generateCsv) await saveCsvCopy(file, result.rows, log);
         progress(100);
         if (!foneIdxs.length) log('Sem colunas fone: ajuste e exclusão de linhas sem contato não foram aplicados.');
         log(`✅ ${path.basename(file)}\n   • Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae} | Blocklist: ${removedByBlocklist}\n   • CNPJs repetidos: ${result.stats.repeatedDocuments} | Telefones repetidos: ${result.stats.repeatedPhones}\n   • Telefones sujos: ${dirtyPhones} | Números inválidos (BD): ${removedInvalidPhonesNumber}\n   • Linhas sem telefone: ${result.stats.withoutPhones} | Fones fixos: ${cleanedPhones} | DDIs removidos: ${removedDdiCount}\n   • Total final: ${result.rows.length - 1}`);
@@ -340,6 +362,7 @@ function register() {
             if(args.checkNumerosInvalidos) log(`Opção "Verificar Números Inválidos" está ATIVADA (consulta via BD).`)
             if (args.fillLivre5) log(`Opção "Preencher Livre5" está ATIVADA. Data da limpeza: ${cleaningDate}.`);
             if (args.removeLandlines) log("Opção \"Remover Fones Fixos\" está ATIVADA.");
+            if (args.generateCsv) log('Opção "Gerar CSV adicional" está ATIVADA. O CSV é salvo ao lado de cada lista limpa.');
             log(`FILTRO DE CNAE PROIBIDO: ATIVADO (Padrão).`);
 
             const fileEvent = { sender: { send } };
