@@ -80,6 +80,15 @@ app.whenReady().then(async () => {
     ipcMain.handle('flows-test-bq', () => ({ success: true, message: 'Acesso BQ sintético aprovado.' }));
     ipcMain.handle('receita-situacao-state', () => ({ success: true, job: null, templates: [], configured: false }));
     ipcMain.handle('mailing-import-state', () => ({ success: true, admin: true, configured: true, maxRows: 250000, job: null, services: [{ id: 63, group: 'Santander', label: 'Santander', name: 'SANTANDER' }] }));
+    // Alerta de Mailing com dados sintéticos: uma lista para trocar, uma acabando, um transbordo e um serviço parado.
+    const linhaAlerta = (servicoId, servico, extra) => ({ servicoId, servico, mailingId: servicoId * 10, arquivo: `lista-${servicoId}.csv`, registros: 10000, restantes: 4000, percentual: 60, situacao: 'OK', acao: 'NADA', reciclagensHoje: 0, limiteReciclagens: 2, minutosRestantes: 95, ritmoPorMinuto: 42, transbordo: false, parado: false, ...extra });
+    const alertaPainel = { configurado: true, login: { saved: true, login: 'synthetic', canSave: true }, reciclador: false, foco: null, conectado: true, erro: null, verificando: false, intervaloMinutos: 3, verificadoEm: new Date().toISOString(),
+        linhas: [linhaAlerta(92, 'PAG CADENCIA', { restantes: 0, percentual: 100, situacao: 'ESGOTADO', acao: 'TROCAR', reciclagensHoje: 2, minutosRestantes: null }),
+            linhaAlerta(87, 'PAG PRINCIPAL', { restantes: 70, percentual: 99.3, situacao: 'QUASE', acao: 'PODE_RECICLAR', reciclagensHoje: 1, minutosRestantes: 2 }),
+            linhaAlerta(120, 'TRANSBORDO LTDA', { transbordo: true }), linhaAlerta(18, 'MP PRINCIPAL', { parado: true, ritmoPorMinuto: 0, minutosRestantes: null })],
+        eventos: [{ id: 'e1', hora: '09:12', tipo: 'TROCAR', servico: 'PAG CADENCIA', texto: 'lista-92.csv já foi reciclada 2x hoje (limite 2). Suba uma lista nova.', servicoId: 92, mailingId: 920, reciclagens: 2, status: 'aberta', motivo: '', horaFim: '', oculto: false },
+            { id: 'e2', hora: '08:40', tipo: 'RECICLADA', servico: 'PAG CADENCIA', texto: 'lista-92.csv · 600 registros voltaram para a discagem · reciclagens hoje 2/2', servicoId: 92, mailingId: 920, reciclagens: 2, status: 'resolvida', motivo: 'reciclagem automática', horaFim: '08:40', oculto: false }] };
+    ipcMain.handle('alerta-mailing-state', () => ({ success: true, painel: alertaPainel }));
     ipcMain.handle('select-file', () => selectedPaths);
     ipcMain.on('start-limpeza-colunas', (_event, paths) => { startCount++; pathsReceived = paths; });
     window = new BrowserWindow({
@@ -102,6 +111,14 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate(`document.getElementById('fluxos').classList.contains('active')`), true);
     window.webContents.send('user-info', { username: 'Outro', role: 'admin' });
     await waitFor(`document.getElementById('checkBlocklistCheckbox').disabled`);
+    // A pilha da barra lateral tem uma placa por seção visível e acende a da aba ativa.
+    const navStack = `(() => { const links = [...document.querySelectorAll('.sidebar-nav .tab-button')], plates = [...document.querySelectorAll('.nav-plate:not(.nav-plate--slot)')];
+        return { visible: links.filter(link => link.parentElement.style.display !== 'none').length, plates: plates.filter(plate => !plate.hidden).length,
+            active: plates.filter(plate => plate.classList.contains('is-active')).map(plate => plate.dataset.plate), current: links.find(link => link.classList.contains('active'))?.dataset.tabName }; })()`;
+    await waitFor(`(${navStack}).active[0] === (${navStack}).current`);
+    const stack = await evaluate(navStack);
+    assert.equal(stack.plates, stack.visible); assert.deepEqual(stack.active, [stack.current]);
+    assert.equal(await evaluate(`document.getElementById('currentUserInitial').textContent`), 'O');
     releaseUiSettings();
     await waitFor(`document.getElementById('log').textContent.includes('Configurações da última sessão foram restauradas')`);
     assert.equal(await evaluate(`document.getElementById('autoRootBtn').dataset.on`), 'true');
@@ -189,6 +206,13 @@ app.whenReady().then(async () => {
     await delay(300);
     await fs.mkdir(path.resolve(__dirname, '../out'), { recursive: true });
     await fs.writeFile(path.resolve(__dirname, '../out/renderer-smoke.png'), (await window.webContents.capturePage()).toPNG());
+    // A aba do Alerta de Mailing abre no serviço mais grave e mostra o que fazer.
+    await evaluate(`document.querySelector('[data-tab-name="alertaMailing"]').click()`);
+    await waitFor(`document.querySelectorAll('#alertaMailing .alerta-item').length === 4`);
+    assert.equal(await evaluate(`document.querySelector('#alertaMailing .alerta-acao strong').textContent`), 'Trocar a lista');
+    assert.equal(await evaluate(`document.querySelector('#alertaMailing .alerta-item[aria-pressed="true"] strong').textContent`), 'PAG CADENCIA');
+    await delay(300);
+    await fs.writeFile(path.resolve(__dirname, '../out/alerta-mailing.png'), (await window.webContents.capturePage()).toPNG());
 
     // A limpeza local usa somente arquivos temporários; nenhum banco real é aberto.
     const localFiles = [path.join(userData, 'lista A.xlsx'), path.join(userData, 'lista B.xlsx')];
@@ -205,9 +229,10 @@ app.whenReady().then(async () => {
     }
     selectedPaths = localFiles;
     await evaluate(`document.getElementById('update-overlay').classList.remove('visible'); document.querySelector('[data-tab-name="local"]').click(); document.getElementById('resetLocalBtn').click()`);
-    await evaluate(`document.getElementById('fillLivre5Checkbox').click(); document.getElementById('backupCheckbox').click()`);
+    await evaluate(`document.getElementById('fillLivre5Checkbox').click(); document.getElementById('generateCsvCheckbox').click(); document.getElementById('backupCheckbox').click()`);
     await waitFor(`document.getElementById('backupCheckbox').checked`);
     assert.equal(savedUiSettings.fillLivre5, true);
+    assert.equal(savedUiSettings.generateCsv, true);
     assert.equal(savedUiSettings.backup, true);
     assert.equal(savedUiSettings.autoAdjust, true);
     assert.equal(Object.hasOwn(savedUiSettings, 'checkDb'), false);
@@ -230,6 +255,11 @@ app.whenReady().then(async () => {
         assert.equal(cleaned.worksheets[0].getCell('C2').value, index === 0 ? 21998364849 : 11987654321);
         assert.equal(cleaned.worksheets[0].getCell('E2').value, null);
         assert.match(cleaned.worksheets[0].getCell('D2').value, /lista [AB] \| \d{2}\/\d{2}\/\d{4}/);
+        // O CSV adicional espelha a lista já limpa.
+        const csvLines = (await fs.readFile(file.replace(/\.xlsx$/, '.csv'), 'utf8')).split('\r\n').filter(Boolean);
+        assert.equal(csvLines[0], '\uFEFF"cnpj";"nome";"fone1";"livre5";"fone2"');
+        assert.equal(csvLines.length, 2);
+        assert.match(csvLines[1], new RegExp(`^"[12]2345678000199";"${index === 0 ? 'Empresa Sol' : 'Empresa Lua'}";"${index === 0 ? 21998364849 : 11987654321}";"lista [AB] \\| \\d{2}/\\d{2}/\\d{4}";""$`));
     }
     // BQ uses a synthetic provider and temporary XLSX files, never Google or Neon.
     const bqFile = path.join(userData, 'lista BQ.xlsx');
