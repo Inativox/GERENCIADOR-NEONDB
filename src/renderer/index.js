@@ -1,8 +1,10 @@
 import { appendBoundedLog } from './boundedLog.mjs';
 import { setupCloseFlowModal } from './closeFlowModal.mjs';
+import { setupNavStack } from './navStack.mjs';
 console.log('--- RENDERER.JS CARREGADO - VERSÃO NOVA ---');
 document.addEventListener('DOMContentLoaded', () => {
     setupCloseFlowModal(window.electronAPI);
+    setupNavStack(document);
     const getBasename = (p) => p.split(/[\\/]/).pop();
 
     // --- SELETORES GLOBAIS ---
@@ -37,6 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentUserSpan) {
             currentUserSpan.textContent = username;
         }
+        // Inicial do usuário no avatar da barra lateral.
+        const currentUserInitial = document.getElementById('currentUserInitial');
+        if (currentUserInitial) currentUserInitial.textContent = (username || '').trim().charAt(0).toUpperCase();
         if (logoutBtn) {
             logoutBtn.style.display = 'inline-flex';
         }
@@ -412,6 +417,10 @@ document.addEventListener('DOMContentLoaded', () => {
             title: 'Importar mailing',
             description: 'Envie um CSV para um serviço da Fastway ou consulte a situação cadastral na Receita.'
         },
+        'Alerta de Mailing': {
+            title: 'Alerta de Mailing',
+            description: 'Acompanhe o mailing ativo de cada serviço da Fastway e receba o aviso antes de a lista acabar.'
+        },
         'Enriquecimento': {
             title: 'Enriquecimento de Dados',
             description: 'Amplie suas bases com informações valiosas, como telefones e outros dados de contato, a partir de fontes confiáveis. Maximize o potencial de suas campanhas.'
@@ -560,6 +569,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //adiciona captura de numeros inválidos
     const checkNumerosInvalidosCheckbox = document.getElementById('checkNumerosInvalidosCheckbox'); //adicionado por Enzo
     const fillLivre5Checkbox = document.getElementById('fillLivre5Checkbox');
+    const generateCsvCheckbox = document.getElementById('generateCsvCheckbox');
     const localCleaningStatus = document.getElementById('localCleaningStatus');
     const cadenceModeFlag = document.getElementById('cadence-mode-flag');
     function updateRootModeIndicator() {
@@ -648,6 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
             checkBlocklist: blocklistRequired || checkBlocklistCheckbox.checked,
             checkNumerosInvalidos: checkNumerosInvalidosCheckbox.checked, // adicionado por Enzo
             fillLivre5: fillLivre5Checkbox.checked,
+            generateCsv: generateCsvCheckbox.checked,
             autoRoot: autoRootBtn.dataset.on === 'true',
             autoRootSource: autoRootSource.value,
             autoRootOperation: autoRootOperation.value,
@@ -704,6 +715,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof settings.checkBlocklist === 'boolean') preferredBlocklist = settings.checkBlocklist;
         applyBlocklistPolicy();
         setChecked(fillLivre5Checkbox, settings.fillLivre5);
+        setChecked(generateCsvCheckbox, settings.generateCsv);
         autoRootSource.value = settings.autoRootSource === 'bq' ? 'bq' : 'neon';
         if (Array.from(autoRootOperation.options).some(option => option.value === settings.autoRootOperation)) autoRootOperation.value = settings.autoRootOperation;
         updateRootModeIndicator();
@@ -822,12 +834,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkNumerosInvalidos: checkNumerosInvalidosCheckbox.checked,
                 autoAdjust: true,
                 checkBlocklist: blocklistRequired || checkBlocklistCheckbox.checked,
-                fillLivre5: fillLivre5Checkbox.checked
+                fillLivre5: fillLivre5Checkbox.checked,
+                generateCsv: generateCsvCheckbox.checked
             });
         });
     }
 
-    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; backupEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) { autoAdjustPhonesCheckbox.checked = true; autoAdjustPhonesCheckbox.disabled = true; } if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkNumerosInvalidosCheckbox) checkNumerosInvalidosCheckbox.checked = false; preferredBlocklist = false; applyBlocklistPolicy(); if (fillLivre5Checkbox) fillLivre5Checkbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } updateRootModeIndicator(); saveCurrentUiSettings(); appendLog('Módulo de Limpeza Local reiniciado.'); });
+    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; backupEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) { autoAdjustPhonesCheckbox.checked = true; autoAdjustPhonesCheckbox.disabled = true; } if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkNumerosInvalidosCheckbox) checkNumerosInvalidosCheckbox.checked = false; preferredBlocklist = false; applyBlocklistPolicy(); if (fillLivre5Checkbox) fillLivre5Checkbox.checked = false; if (generateCsvCheckbox) generateCsvCheckbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } updateRootModeIndicator(); saveCurrentUiSettings(); appendLog('Módulo de Limpeza Local reiniciado.'); });
     if (feedRootBtn) feedRootBtn.addEventListener('click', async () => { appendLog('Selecionando arquivos para alimentar a base Raiz...'); const files = await window.electronAPI.selectFile({ title: 'Selecione planilhas com CNPJs para a Raiz', multi: true }); if (!files || files.length === 0) { appendLog('Nenhum arquivo selecionado. Operação cancelada.'); return; } feedRootBtn.disabled = true; appendLog(`Iniciando o processo de alimentação da Raiz com ${files.length} arquivo(s).`); window.electronAPI.feedRootDatabase(files); });
     window.electronAPI.onRootFeedFinished(() => { if (feedRootBtn) feedRootBtn.disabled = false; appendLog('✅ Processo de alimentação da Raiz finalizado.'); });
     window.electronAPI.onLog((msg) => appendLog(msg));
