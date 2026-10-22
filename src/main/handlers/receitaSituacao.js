@@ -42,19 +42,20 @@ function register() {
         if (active) throw Object.assign(new Error('Uma consulta de situação já está em andamento.'), { code: 'RECEITA_SITUACAO' });
         if (!connection()) throw Object.assign(new Error('Configure o banco da Receita na tela de login.'), { code: 'RECEITA_SITUACAO' });
         const keep = normalizeKeep(input?.keep), keepList = keep ? [...keep] : null;
-        const job = { id: randomUUID(), owner, name: path.basename(selected.filename), status: 'running', counts: { processed: 0, found: 0, notFound: 0, invalid: 0, removed: 0 }, message: 'Consultando o banco da Receita.', output: null };
-        const worker = new Worker(path.join(__dirname, '../workers/receitaSituacaoWorker.js'), { workerData: { filename: selected.filename, connection: connection(), keep: keepList }, resourceLimits: { maxOldGenerationSizeMb: 256 } });
+        const removeMei = input?.removeMei === true, csv = input?.csv === true;
+        const job = { id: randomUUID(), owner, name: path.basename(selected.filename), status: 'running', counts: { processed: 0, found: 0, notFound: 0, invalid: 0, removed: 0, mei: 0 }, message: 'Consultando o banco da Receita.', output: null, csvOutput: null };
+        const worker = new Worker(path.join(__dirname, '../workers/receitaSituacaoWorker.js'), { workerData: { filename: selected.filename, connection: connection(), keep: keepList, removeMei, csv }, resourceLimits: { maxOldGenerationSizeMb: 256 } });
         const context = { worker, job, finished: false }; active = context; latest.set(owner, job);
         const emit = () => { if (state.currentUser?.username === owner && state.currentUser?.role === 'admin' && state.mainWindow?.webContents === sender && !sender.isDestroyed()) sender.send('receita-situacao-update', { ...job }); };
         const finish = (status, message, result) => {
             if (context.finished) return; context.finished = true;
-            Object.assign(job, { status, message }, result ? { counts: { processed: result.processed, found: result.found, notFound: result.notFound, invalid: result.invalid, removed: result.removed }, output: result.output } : {});
+            Object.assign(job, { status, message }, result ? { counts: { processed: result.processed, found: result.found, notFound: result.notFound, invalid: result.invalid, removed: result.removed, mei: result.mei }, output: result.output, csvOutput: result.csvOutput || null } : {});
             if (active === context) active = null; emit();
         };
         worker.on('message', update => {
             if (context.finished) return;
             if (update.type === 'progress') { job.counts = update.counts; emit(); }
-            if (update.type === 'result') finish('completed', 'Consulta concluída. O arquivo original foi preservado.', update.result);
+            if (update.type === 'result') finish('completed', `Consulta concluída. ${update.result.csvOutput ? 'O CSV adicional foi salvo junto do resultado. ' : ''}O arquivo original foi preservado.`, update.result);
             if (update.type === 'error') finish(job.status === 'cancelling' ? 'cancelled' : 'failed', update.message);
         });
         worker.on('error', () => finish('failed', 'O processamento foi interrompido. O arquivo original foi preservado. Tente novamente.'));
