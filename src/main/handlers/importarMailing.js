@@ -6,8 +6,8 @@ const { ipcMain, dialog } = require('electron');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const state = require('../state');
-const privateConfig = require('../runtimeConfig');
 const fastway = require('../flows/fastway');
+const logins = require('../runtimeFastwayLogins');
 
 // Only these services can receive a manual import; a new one needs a code change.
 const SERVICES = [
@@ -31,10 +31,18 @@ const SERVICES = [
 ];
 const validation = message => Object.assign(new Error(message), { code: 'FLOW_VALIDATION' });
 
-/** Each user uploads with their own Fastway logon (the `fastway` block of their entry in users.json / access file). */
-function ownCredentials(owner) {
-    const own = privateConfig.loadUsers()[owner]?.fastway;
-    return typeof own?.login === 'string' && own.login && typeof own.password === 'string' && own.password ? { login: own.login, password: own.password } : null;
+/** Login digitado na tela para este envio. Cada pessoa envia com o próprio login, nunca com o do computador. */
+function typedCredentials(input) {
+    const login = typeof input?.login === 'string' ? input.login.trim() : '';
+    const password = typeof input?.password === 'string' ? input.password : '';
+    if (!login || !password || login.length > 200 || password.length > 300) throw validation('Digite o login e a senha da Fastway.');
+    return { login, password };
+}
+
+// Só guarda depois que a Fastway aceitou o envio, para nunca salvar uma senha errada.
+function rememberLogin(owner, credentials, job) {
+    try { logins.save(owner, credentials); }
+    catch { job.message += ' O login não foi salvo neste computador.'; }
 }
 
 function register() {
@@ -48,7 +56,7 @@ function register() {
             return { success: true, ...result };
         } catch (error) { return { success: false, message: error.code === 'FLOW_VALIDATION' ? error.message : 'Não foi possível concluir a importação. Confira o arquivo e tente novamente.' }; }
     };
-    ipcMain.handle('mailing-import-state', protect((_input, owner) => ({ services: SERVICES, configured: Boolean(ownCredentials(owner)), admin: state.currentUser.role === 'admin', maxRows: fastway.MAX_ROWS, job: latest.get(owner) || null })));
+    ipcMain.handle('mailing-import-state', protect((_input, owner) => ({ services: SERVICES, fastway: logins.summary(owner), admin: state.currentUser.role === 'admin', maxRows: fastway.MAX_ROWS, job: latest.get(owner) || null })));
     ipcMain.handle('mailing-import-file', protect(async (_input, owner) => {
         const selected = await dialog.showOpenDialog(state.mainWindow, { title: 'Mailing para importar na Fastway', properties: ['openFile'], filters: [{ name: 'CSV', extensions: ['csv'] }] });
         if (selected.canceled || !selected.filePaths.length) return { cancelled: true };
@@ -64,19 +72,25 @@ function register() {
         if (!selected || input?.fileId !== selected.id) throw validation('Selecione o CSV antes de enviar.');
         if (!service) throw validation('Escolha um dos serviços da lista.');
         if (state.mailingUpload) throw validation('Já existe um envio para a Fastway em andamento. Aguarde a confirmação.');
-        const credentials = ownCredentials(owner);
-        if (!credentials) throw validation('Seu usuário ainda não tem login Fastway cadastrado. Peça a um admin para incluir no seu acesso.');
+        const typed = input?.fastway === undefined ? null : typedCredentials(input.fastway);
+        const credentials = typed || logins.get(owner);
+        if (!credentials) throw validation('Digite o login e a senha da Fastway para enviar.');
         const job = { status: 'running', file: path.basename(selected.filename), rows: selected.rows, service, message: 'Enviando para a Fastway…' };
         latest.set(owner, job); state.mailingUpload = job;
         try {
             const result = await fastway.upload({ file: selected.filename, campaignId: String(service.id), credentials });
             Object.assign(job, { status: 'completed', rows: result.rows, message: `Fastway confirmou ${result.rows.toLocaleString('pt-BR')} registros em ${service.id} · ${service.name}.` });
             files.delete(owner);
-            return { job };
+            if (typed && input.fastway.save === true) rememberLogin(owner, typed, job);
+            return { job, fastway: logins.summary(owner) };
         } catch (error) {
             Object.assign(job, { status: 'failed', message: error.code === 'FLOW_VALIDATION' ? error.message : 'Não foi possível concluir o envio. Confira o painel da Fastway antes de enviar de novo.' });
             throw validation(job.message);
         } finally { state.mailingUpload = null; }
+    }));
+    ipcMain.handle('mailing-import-forget', protect((_input, owner) => {
+        logins.forget(owner);
+        return { fastway: logins.summary(owner) };
     }));
 }
 module.exports = { register, SERVICES };
