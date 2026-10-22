@@ -15,6 +15,7 @@ Aplicativo desktop (Electron) para gerenciamento e processamento de bases de dad
 | **Limpeza de Colunas** | Padronização de XLSX em NOME, CPF e FONE1, com interface React e processamento em worker |
 | **Gerar listas** | Geração pela Receita, enriquecimento, consulta API opcional, filtros finais e exportação com checkpoints |
 | **Consulta Situação Receita** | Consulta da situação cadastral na base Receita |
+| **Alerta de Mailing** | Só admin: confere a cada 3 min o mailing ativo de cada serviço da Fastway, avisa por notificação do Windows e, no PC com a chave ligada, recicla e para serviços sozinho |
 
 ## Tecnologias
 
@@ -79,6 +80,20 @@ A blocklist remove cada telefone bloqueado e compacta os próximos contatos perm
 Os fluxos salvam um cache privado por lote no diretório da execução dentro do userData. Geração retoma pelo cursor CNPJ; enriquecimento, API e filtros retomam pelo offset do arquivo de entrada. O arquivo parcial é sincronizado antes de confirmar contadores, cursor e reservas de deduplicação em uma transação LMDB. CNPJs e telefones já mantidos ficam em disco, sem um Set crescente no heap do worker. Ao retomar, qualquer cauda não confirmada é truncada. A API conserva também os resultados de cada chave. Na exportação, arquivos completos são preservados e só o arquivo incompleto é refeito.
 
 Use **Retomar execução** no histórico após erro, cancelamento ou interrupção. Configuração, usuário e raiz precisam corresponder à execução original. Uma execução antiga não ganha retroativamente checkpoints por lote: suas etapas concluídas são preservadas, e a etapa interrompida precisa começar novamente uma vez. Resultados de limpeza feitos com a antiga regra de exclusão da empresa pela blocklist são recalculados a partir do enriquecimento/API já salvo.
+
+## Alerta de Mailing
+
+Porte para Node/Electron do antigo app Python `alerta-mailing`, agora dentro do Gerenciador (aba **Alerta de Mailing**, só para admin).
+
+- **Login:** o alerta usa o login Fastway salvo no Gerenciador, o mesmo do Importar Mailing. Não existe `.env`: quem ainda não salvou digita na aba, o login é conferido na API FMI e salvo neste computador com a proteção do Windows (`safeStorage`).
+- **A cada 3 minutos** lê os serviços em execução e o mailing ativo de cada um. Avisa quando a lista chega a 99% (ou vai acabar antes das próximas verificações), esgotou, já foi reciclada 2 vezes hoje ("trocar a lista", lembrete a cada 15 min) ou o serviço ficou sem lista. Clicar na notificação abre a aba no serviço.
+- **Reciclagem e parada automáticas:** chave "Reciclar e parar automaticamente neste PC", desligada por padrão e salva por PC. **Só um PC deve ficar com ela ligada por vez.** Com ela ligada, o PC recicla só os NÃO TABULADOS (até 2 vezes por lista no dia, relendo a lista antes e esperando 10 min entre tentativas) e para o serviço cuja lista acabou sem poder reciclar, uma vez por lista. LTDA (120) e PT2 (62) são transbordo: nunca reciclam nem param sozinhos.
+- **Bandeja:** com o alerta rodando, fechar a janela só esconde o Gerenciador. O ícone perto do relógio mostra a pior situação (verde, âmbar, vermelho; cinza = sem conexão) e tem Verificar agora, a chave automática e **Sair do Gerenciador**. O app passa a abrir com o Windows (`--bandeja`), já escondido.
+- **Estado do dia:** `%APPDATA%/gerenciador-de-bases/alerta-mailing/estado.json` (linhas de base, avisos, pendências e histórico; zera na virada do dia).
+- **Ajuste fino (opcional):** as mesmas variáveis do app original continuam valendo no ambiente: `INTERVALO_MINUTOS`, `LIMITE_RECICLAGENS_DIA`, `LIMIAR_PERCENTUAL`, `ALERTA_MINUTOS_ANTES`, `IGNORAR_SERVICOS` (padrão `TESTE`) e `SERVICOS_TRANSBORDO`.
+- **Convivência com o app Python:** se o `alerta-mailing` antigo continuar instalado, os avisos chegam em dobro. Com a chave automática ligada nos dois, o risco é reciclar a mesma lista duas vezes. Desinstale o antigo ao passar a usar o Gerenciador.
+
+Código em `src/main/alertaMailing/` (regras, cliente FMI, estado, monitor, bandeja) e `src/main/handlers/alertaMailing.js`; os cenários do original foram portados para `tests/alertaMailing*.test.js`.
 
 ## Build / Distribuição
 
