@@ -197,7 +197,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         progress(100);
         if (!foneIdxs.length) log('Sem colunas fone: ajuste e exclusão de linhas sem contato não foram aplicados.');
         log(`✅ ${path.basename(file)}\n   • Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae} | Blocklist: ${removedByBlocklist}${keepCnaes ? ` | Fora da lista de CNAEs: ${removedOutsideCnaes}` : ''}\n   • CNPJs repetidos: ${result.stats.repeatedDocuments} | Telefones repetidos: ${result.stats.repeatedPhones}\n   • Telefones sujos: ${dirtyPhones} | Números inválidos (BD): ${removedInvalidPhonesNumber}\n   • Linhas sem telefone: ${result.stats.withoutPhones} | Fones fixos: ${cleanedPhones} | DDIs removidos: ${removedDdiCount}\n   • Total final: ${result.rows.length - 1}`);
-        return { processed: true, logs: logBuffer };
+        return { processed: true, logs: logBuffer, removedOutsideCnaes };
     };
 
     if ((!checkBlocklist && !checkNumerosInvalidos) || foneIdxs.length === 0) {
@@ -393,11 +393,13 @@ function register() {
             if (keepCnaes) log(`Opção "Manter só estes CNAEs" está ATIVADA: ${keepCnaes.size} CNAE(s) na lista.`);
 
             const fileEvent = { sender: { send } };
+            let removedOutsideCnaesTotal = 0;
             for (let i = 0; i < args.cleanFiles.length; i++) {
                 const file = args.cleanFiles[i];
                 log(`\nPROCESSANDO ${i + 1}/${args.cleanFiles.length}: ${path.basename(file.path)}`);
-                const { processed, logs: fileLogs } = await processFile(file, rootSet, cleaningOptions, fileEvent, crossList);
+                const { processed, logs: fileLogs, removedOutsideCnaes = 0 } = await processFile(file, rootSet, cleaningOptions, fileEvent, crossList);
                 fileLogs.forEach(log);
+                removedOutsideCnaesTotal += removedOutsideCnaes;
                 if (processed) {
                     processados++;
                 } else {
@@ -406,6 +408,7 @@ function register() {
             }
             success = processados > 0 && pulados === 0;
             log(`\n${success ? '✅ Processo concluído para todos os arquivos.' : 'Limpeza finalizada com avisos.'} Processados: ${processados} | Pulados: ${pulados}.`);
+            if (keepCnaes) log(`Fora da lista de CNAEs no lote: ${removedOutsideCnaesTotal.toLocaleString('pt-BR')} linhas.`);
         } catch (err) {
             log(`❌ Erro inesperado no processo de limpeza: ${err.message}`);
             console.error(err);
