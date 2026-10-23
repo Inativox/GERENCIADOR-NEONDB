@@ -5,12 +5,22 @@ const { Worker } = require('node:worker_threads');
 const { Pool } = require('pg');
 const Store = require('electron-store');
 const state = require('../state');
-const { lookup, document, normalizeKeep } = require('../receitaSituacao');
+const { lookup, lookupCnaes, document, normalizeKeep } = require('../receitaSituacao');
 const { readOnlyPoolOptions } = require('../flows/postgres');
 function register() {
     const store = new (require('../settingsWriteRetry')(Store))(), files = new Map(), latest = new Map();
     let active = null;
     const connection = () => store.get('receita_connection_string') || process.env.RECEITA_DATABASE_URL;
+    // O "Manter só estes CNAEs" da Limpeza Local confere o CNAE principal pela mesma conexão de leitura.
+    state.receitaCnaeService = {
+        configured: () => Boolean(connection()),
+        async lookupCnaes(documents, options) {
+            const pool = new Pool(readOnlyPoolOptions(connection(), { max: 1, timeout: 60000 }));
+            pool.on('error', () => {});
+            try { return await lookupCnaes(pool, documents, options); }
+            finally { await pool.end(); }
+        }
+    };
     const protect = action => async (event, input) => {
         if (!state.currentUser || state.currentUser.role !== 'admin' || event.sender !== state.mainWindow?.webContents) return { success: false, message: 'Acesso negado.' };
         const owner = state.currentUser.username;
