@@ -294,3 +294,30 @@ for (const username of ['Outro', 'Davi']) {
         ]);
     });
 }
+
+test('lista de CNAEs com código inválido é recusada antes de abrir qualquer planilha', async t => {
+    const f = fixture(t);
+    const original = fs.readFileSync(f.files[0].path);
+    await f.start({ keepCnaesText: '4781400\n47' });
+    assert.equal(f.reads.length, 0);
+    assert.deepEqual(fs.readFileSync(f.files[0].path), original);
+    const logs = f.messages.filter(m => m.channel === 'log').map(m => m.payload);
+    assert.ok(logs.some(log => log.includes('CNAEs inválidos: 47')));
+    assert.equal(f.messages.at(-1).channel, 'cleaning-finished');
+    assert.equal(f.messages.at(-1).payload.success, false);
+});
+
+test('lista de CNAEs colada chega à limpeza de cada planilha', async t => {
+    const f = fixture(t);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+        ['cnpj', 'fone1', 'cnae'], ['12345678000199', '21998364849', '4781-4/00'], ['22345678000199', '11987654321', '4711302']
+    ]), 'Base');
+    XLSX.writeFile(workbook, f.files[0].path);
+    await f.start({ cleanFiles: [f.files[0]], keepCnaesText: '4781400' });
+    assert.equal(f.messages.at(-1).payload.success, true);
+    const result = XLSX.readFile(f.files[0].path);
+    assert.deepEqual(XLSX.utils.sheet_to_json(result.Sheets.Base, { header: 1 }), [
+        ['cnpj', 'fone1', 'cnae'], ['12345678000199', 21998364849, '4781-4/00']
+    ]);
+});
