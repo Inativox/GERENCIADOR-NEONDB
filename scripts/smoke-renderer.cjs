@@ -261,12 +261,15 @@ app.whenReady().then(async () => {
         assert.equal(csvLines.length, 2);
         assert.match(csvLines[1], new RegExp(`^"[12]2345678000199";"${index === 0 ? 'Empresa Sol' : 'Empresa Lua'}";"${index === 0 ? 21998364849 : 11987654321}";"lista [AB] \\| \\d{2}/\\d{2}/\\d{4}";""$`));
     }
-    // "Manter só estes CNAEs": a chave mostra a caixa, a lista colada é salva e só o CNAE listado fica.
+    // "Manter só estes CNAEs": a chave mostra a caixa, a lista colada é salva e só fica o CNPJ
+    // cujo CNAE principal está na lista. A Receita é sintética; a planilha não tem coluna de CNAE.
+    const receitaCnaes = { '12345678000199': '4781400', '22345678000199': '4711302' };
+    mainState.receitaCnaeService = { configured: () => true, async lookupCnaes(documents) { return new Map(documents.filter(cnpj => receitaCnaes[cnpj]).map(cnpj => [cnpj, receitaCnaes[cnpj]])); } };
     const cnaeFile = path.join(userData, 'lista CNAE.xlsx');
     const cnaeWorkbook = new ExcelJS.Workbook(), cnaeSheet = cnaeWorkbook.addWorksheet('Base');
-    cnaeSheet.addRow(['cnpj', 'nome', 'fone1', 'cnae']);
-    cnaeSheet.addRow(['12345678000199', 'Fica', '21998364849', '4781400']);
-    cnaeSheet.addRow(['22345678000199', 'Sai', '11987654321', '4711302']);
+    cnaeSheet.addRow(['cnpj', 'nome', 'fone1']);
+    cnaeSheet.addRow(['12345678000199', 'Fica', '21998364849']);
+    cnaeSheet.addRow(['22345678000199', 'Sai', '11987654321']);
     await cnaeWorkbook.xlsx.writeFile(cnaeFile);
     selectedPaths = [cnaeFile];
     await evaluate(`document.getElementById('resetLocalBtn').click()`);
