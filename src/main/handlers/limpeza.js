@@ -41,6 +41,20 @@ async function saveCsvCopy(file, rows, log) {
     }
 }
 
+// --- MANTER SÓ ESTES CNAES ---
+// Mesmo formato do "Colar lista de CNAEs" do Gerar Listas: 7 dígitos ou 4781-4/00.
+const CNAE_PATTERN = /^(\d{7}|\d{4}-\d\/\d{2})$/;
+// O Excel perde o zero inicial de CNAEs numéricos (0111301 vira 111301).
+const cnaeKey = value => String(value).replace(/\D/g, '').padStart(7, '0');
+
+function parseKeepCnaes(text) {
+    const tokens = String(text ?? '').trim().split(/[\s,;]+/).filter(Boolean);
+    if (!tokens.length) throw new Error('Cole ao menos um CNAE para usar "Manter só estes CNAEs".');
+    const invalid = tokens.filter(token => !CNAE_PATTERN.test(token));
+    if (invalid.length) throw new Error(`CNAEs inválidos: ${invalid.slice(0, 5).join(', ')}${invalid.length > 5 ? '…' : ''}. Use 7 dígitos ou o formato 4781-4/00.`);
+    return new Set(tokens.map(cnaeKey));
+}
+
 // --- PROCESSAMENTO DE ARQUIVO DE LIMPEZA ---
 async function processFile(fileObj, rootSet, options, event, crossList = createCrossListContext()) {
     const file = fileObj.path;
@@ -48,7 +62,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
     const logBuffer = [];
     const log = (msg) => logBuffer.push(msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
-    const { backup, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, generateCsv, cleaningDate } = options;
+    const { backup, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, keepCnaes, cleaningDate } = options;
 
     const cleanClientName = (name) => {
         if (!name || typeof name !== 'string') return name;
@@ -84,6 +98,11 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         log(`❌ ERRO: A coluna "cpf" ou "cnpj" não foi encontrada em ${path.basename(file)}. Pulando este arquivo.`);
         return { processed: false, logs: logBuffer };
     }
+    // Sem a coluna, o filtro devolveria a lista inteira: a planilha é pulada sem alteração.
+    if (keepCnaes && cnaeColIdx === -1) {
+        log(`❌ ERRO: "Manter só estes CNAEs" está ativo, mas ${path.basename(file)} não tem a coluna "cnae" ou "livre3". Pulando este arquivo.`);
+        return { processed: false, logs: logBuffer };
+    }
     if (nomeColIdx === -1) {
         log(`⚠️ AVISO: Nenhuma coluna "nome" encontrada em ${path.basename(file)}. A limpeza de nomes será ignorada para este arquivo.`);
     }
@@ -107,6 +126,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
     const cleaned = [header];
     let removedByRoot = 0;
     let removedByCnae = 0;
+    let removedOutsideCnaes = 0;
     let removedByBlocklist = 0;
     let removedInvalidPhonesNumber = 0; // adicionado por enzo
     let removedDdiCount = 0;
@@ -132,6 +152,10 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
             const cnaeValue = row[cnaeColIdx] ? String(row[cnaeColIdx]).replace(/\D/g, "").trim() : "";
             if (cnaeValue && PROHIBITED_CNAES.has(cnaeValue)) {
                 removedByCnae++;
+                continue;
+            }
+            if (keepCnaes && !(cnaeValue && keepCnaes.has(cnaeKey(cnaeValue)))) {
+                removedOutsideCnaes++;
                 continue;
             }
         }
@@ -168,11 +192,11 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         writeSpreadsheet(output, file);
         // Só reserva as chaves depois de a planilha ter sido gravada.
         commitCrossList(crossList, result);
-        // O CSV sai das mesmas linhas gravadas no xlsx, depois de toda a limpeza.
-        if (generateCsv) await saveCsvCopy(file, result.rows, log);
+        // O CSV sai sempre, das mesmas linhas gravadas no xlsx, depois de toda a limpeza.
+        await saveCsvCopy(file, result.rows, log);
         progress(100);
         if (!foneIdxs.length) log('Sem colunas fone: ajuste e exclusão de linhas sem contato não foram aplicados.');
-        log(`✅ ${path.basename(file)}\n   • Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae} | Blocklist: ${removedByBlocklist}\n   • CNPJs repetidos: ${result.stats.repeatedDocuments} | Telefones repetidos: ${result.stats.repeatedPhones}\n   • Telefones sujos: ${dirtyPhones} | Números inválidos (BD): ${removedInvalidPhonesNumber}\n   • Linhas sem telefone: ${result.stats.withoutPhones} | Fones fixos: ${cleanedPhones} | DDIs removidos: ${removedDdiCount}\n   • Total final: ${result.rows.length - 1}`);
+        log(`✅ ${path.basename(file)}\n   • Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae} | Blocklist: ${removedByBlocklist}${keepCnaes ? ` | Fora da lista de CNAEs: ${removedOutsideCnaes}` : ''}\n   • CNPJs repetidos: ${result.stats.repeatedDocuments} | Telefones repetidos: ${result.stats.repeatedPhones}\n   • Telefones sujos: ${dirtyPhones} | Números inválidos (BD): ${removedInvalidPhonesNumber}\n   • Linhas sem telefone: ${result.stats.withoutPhones} | Fones fixos: ${cleanedPhones} | DDIs removidos: ${removedDdiCount}\n   • Total final: ${result.rows.length - 1}`);
         return { processed: true, logs: logBuffer };
     };
 
@@ -298,6 +322,8 @@ function register() {
                 if (selectedPaths.has(key)) throw new Error(`Arquivo repetido no lote: ${path.basename(file.path)}. Selecione cada lista apenas uma vez.`);
                 selectedPaths.add(key);
             }
+            // A tela só envia o texto com a chave ligada; a lista é validada aqui, antes de abrir qualquer planilha.
+            const keepCnaes = args.keepCnaesText == null ? null : parseKeepCnaes(args.keepCnaesText);
             const rootSource = args.autoRootSource ?? 'neon';
             if (args.isAutoRoot && !['neon', 'bq'].includes(rootSource)) throw new Error('Escolha Banco de Dados ou BigQuery como fonte do Auto Raiz.');
             const operation = args.isAutoRoot && rootSource === 'bq' ? OPERATIONS.find(item => item.id === args.autoRootOperation) : null;
@@ -308,7 +334,7 @@ function register() {
             const cleaningDate = new Intl.DateTimeFormat('pt-BR', {
                 timeZone: 'America/Sao_Paulo'
             }).format(new Date());
-            const cleaningOptions = { ...args, cleaningDate };
+            const cleaningOptions = { ...args, cleaningDate, keepCnaes };
             const crossList = createCrossListContext();
             log('Cruzamento do lote ativo: mantém a primeira ocorrência de CNPJ/telefone. Ajuste de fones obrigatório.');
             logSystemAction(state.currentUser.username, 'Limpeza Local', `Iniciou limpeza de ${args.cleanFiles.length} arquivos.`);
@@ -362,8 +388,9 @@ function register() {
             if(args.checkNumerosInvalidos) log(`Opção "Verificar Números Inválidos" está ATIVADA (consulta via BD).`)
             if (args.fillLivre5) log(`Opção "Preencher Livre5" está ATIVADA. Data da limpeza: ${cleaningDate}.`);
             if (args.removeLandlines) log("Opção \"Remover Fones Fixos\" está ATIVADA.");
-            if (args.generateCsv) log('Opção "Gerar CSV adicional" está ATIVADA. O CSV é salvo ao lado de cada lista limpa.');
+            log('CSV adicional: salvo ao lado de cada lista limpa.');
             log(`FILTRO DE CNAE PROIBIDO: ATIVADO (Padrão).`);
+            if (keepCnaes) log(`Opção "Manter só estes CNAEs" está ATIVADA: ${keepCnaes.size} CNAE(s) na lista.`);
 
             const fileEvent = { sender: { send } };
             for (let i = 0; i < args.cleanFiles.length; i++) {
@@ -462,4 +489,4 @@ function register() {
     });
 }
 
-module.exports = { register, processFile, isCleaning: () => Boolean(cleaningSender) };
+module.exports = { register, processFile, parseKeepCnaes, isCleaning: () => Boolean(cleaningSender) };
