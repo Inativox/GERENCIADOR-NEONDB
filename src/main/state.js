@@ -8,6 +8,7 @@ const state = {
     loginWindow: null,
     currentUser: null,
     bqRootService: null,
+    receitaCnaeService: null, // CNAE principal por CNPJ, criado pelo handler da Situação Receita
     mailingUpload: null, // envio manual da aba Importar Mailing; o fechamento do app pede confirmação enquanto existir
 };
 
