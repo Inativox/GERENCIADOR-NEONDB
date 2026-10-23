@@ -44,7 +44,19 @@ function existingCredentials(keyFile, environment = process.env) {
     if (!['service_account', 'authorized_user'].includes(content.type)) throw new Error('Tipo de acesso BQ não suportado. Importe uma credencial local ou configure ADC.');
     return content;
 }
-function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southamerica-east1', http = axios, credentialsProvider = existingCredentials, commandRunner } = {}) {
+const RESULT_ATTEMPTS = 3;
+const RESULT_RETRY_DELAYS_MS = [1000, 4000];
+function bytesLimitExceeded(details) {
+    const reasons = [details?.reason, ...(details?.errors || []).map(item => item?.reason)];
+    return reasons.includes('bytesBilledLimitExceeded');
+}
+function pause(ms, signal) {
+    return new Promise(resolve => {
+        const timer = setTimeout(resolve, ms);
+        signal?.addEventListener?.('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+}
+function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southamerica-east1', http = axios, credentialsProvider = existingCredentials, commandRunner, retryDelaysMs = RESULT_RETRY_DELAYS_MS, sleep = pause } = {}) {
     let token, validUntil = 0, mode = 'gcloud';
     const accessToken = async () => {
         if (token && Date.now() < validUntil) return token;
@@ -92,53 +104,94 @@ function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southa
                 throw authRequired(mode);
             }
             if (error.response?.status === 403) throw Object.assign(new Error('Sua conta Google não tem permissão para consultar o BQ. Verifique o acesso aos dados e ao projeto de consultas.'), { code: 'BQ_FORBIDDEN' });
-            throw new Error('Falha ao consultar o BQ. Verifique conexão, schema e limite de bytes.');
+            if (bytesLimitExceeded(error.response?.data?.error)) throw Object.assign(new Error('A consulta BQ passou do limite de bytes configurado.'), { code: 'BQ_BYTES_LIMIT' });
+            // 5xx or no response at all (network drop, timeout): transient, may be retried.
+            const status = error.response?.status;
+            const retryable = status >= 500 || (!error.response && error.code !== 'ERR_CANCELED');
+            throw Object.assign(new Error('Falha ao consultar o BQ. Verifique conexão, schema e limite de bytes.'), { retryable });
+        }
+    };
+    // Result-page GETs only: up to RESULT_ATTEMPTS tries on transient errors, never on 400/401/403 or abort.
+    const getWithRetry = async (url, options) => {
+        for (let attempt = 1; ; attempt++) {
+            try { return await request('GET', url, options); } catch (error) {
+                if (!error.retryable || attempt >= RESULT_ATTEMPTS || options.signal?.aborted) throw error;
+                await sleep(retryDelaysMs[Math.min(attempt - 1, retryDelaysMs.length - 1)], options.signal);
+                if (options.signal?.aborted) throw new Error('Consulta BQ cancelada.');
+            }
+        }
+    };
+    const toObjects = (fields, rows) => rows.map(row => Object.fromEntries((row.f || []).map((cell, index) => [fields[index]?.name ?? String(index), cell?.v ?? null])));
+    const cancelJob = jobId => request('POST', `/projects/${project}/jobs/${jobId}/cancel`, { params: { location } }).catch(() => {});
+    const runPages = async ({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs }, state) => {
+        const body = { query, useLegacySql: false, location, parameterMode: 'NAMED', queryParameters: params, maximumBytesBilled: String(maxBytesBilled), timeoutMs: 10000, maxResults: pageSize };
+        // Let submission finish so an aborted local request does not lose the remote job ID.
+        let result = await request('POST', `/projects/${project}/queries`, { data: { ...body, jobTimeoutMs: String(jobTimeoutMs) } });
+        const started = Date.now();
+        state.reference = result.jobReference;
+        while (true) {
+            if (signal?.aborted) throw new Error('Consulta BQ cancelada.');
+            if (result.errors?.length) {
+                if (result.errors.some(item => bytesLimitExceeded(item))) throw Object.assign(new Error('A consulta BQ passou do limite de bytes configurado.'), { code: 'BQ_BYTES_LIMIT' });
+                throw new Error('A consulta BQ falhou. Verifique o schema e as permissões.');
+            }
+            if (!result.jobComplete) {
+                if (!state.reference?.jobId || Date.now() - started > waitMs) throw new Error('Consulta BQ demorou demais. Tente novamente.');
+                result = await getWithRetry(`/projects/${project}/queries/${state.reference.jobId}`, { signal, params: { location, timeoutMs: 10000, maxResults: pageSize } });
+                continue;
+            }
+            const rows = toObjects(result.schema?.fields || [], result.rows || []);
+            state.rows += rows.length; state.bytes = Number(result.totalBytesProcessed || state.bytes);
+            await onPage(rows);
+            if (!result.pageToken) break;
+            result = await getWithRetry(`/projects/${project}/queries/${state.reference.jobId}`, { signal, params: { location, pageToken: result.pageToken, maxResults: pageSize } });
+        }
+    };
+    const queryPages = async ({ query, params = [], signal, pageSize = 50000, onPage = async () => {}, maxBytesBilled = '1000000000', jobTimeoutMs = '180000', waitMs = 180000 } = {}) => {
+        if (signal?.aborted) throw new Error('Consulta BQ cancelada.');
+        const state = { rows: 0, bytes: 0, reference: undefined };
+        let complete = false;
+        try {
+            await runPages({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs }, state);
+            complete = true;
+            return { rows: state.rows, jobId: state.reference?.jobId, bytes: state.bytes };
+        } catch (error) {
+            if (error.code === 'BQ_FORBIDDEN') throw Object.assign(new Error('Sem acesso à Receita no BigQuery. Use a fonte Neon neste fluxo ou peça acesso ao dataset receita.'), { code: 'FLOW_VALIDATION' });
+            throw error;
+        } finally {
+            if (!complete && state.reference?.jobId) await cancelJob(state.reference.jobId);
         }
     };
     const loadRoot = async (pipelines, { signal, onProgress = () => {} } = {}) => {
         if (!Array.isArray(pipelines) || !pipelines.length || pipelines.some(id => !Number.isSafeInteger(id) || id < 1)) throw new Error('Pipelines inválidos para raiz BQ.');
-        const body = { query: ROOT_SQL, useLegacySql: false, location, parameterMode: 'NAMED', queryParameters: [{ name: 'pipelines', parameterType: { type: 'ARRAY', arrayType: { type: 'INT64' } }, parameterValue: { arrayValues: pipelines.map(value => ({ value: String(value) })) } }], maximumBytesBilled: '1000000000', timeoutMs: 10000, maxResults: 10000 };
-        const estimate = await request('POST', `/projects/${project}/queries`, { data: { ...body, dryRun: true }, signal });
+        const queryParameters = [{ name: 'pipelines', parameterType: { type: 'ARRAY', arrayType: { type: 'INT64' } }, parameterValue: { arrayValues: pipelines.map(value => ({ value: String(value) })) } }];
+        const estimate = await request('POST', `/projects/${project}/queries`, { data: { query: ROOT_SQL, useLegacySql: false, location, parameterMode: 'NAMED', queryParameters, maximumBytesBilled: '1000000000', dryRun: true }, signal });
         const bytes = Number(estimate.totalBytesProcessed || 0);
         if (bytes > 1000000000) throw new Error('Consulta da raiz excede o limite de 1 GB. Revise a fonte antes de executar.');
         if (signal?.aborted) throw new Error('Consulta BQ cancelada.');
-        let reference;
-        let complete = false;
-        try {
-        // Let submission finish so an aborted local request does not lose the remote job ID.
-        // The server also bounds its execution if the network fails before returning the ID.
-        let result = await request('POST', `/projects/${project}/queries`, { data: { ...body, jobTimeoutMs: '180000' } });
-        reference = result.jobReference;
-        const documents = new Set(); let skipped = 0, restored = 0;
-        const started = Date.now();
-        while (true) {
-            if (signal?.aborted) {
-                throw new Error('Consulta BQ cancelada.');
-            }
-            if (result.errors?.length) throw new Error('A consulta da raiz BQ falhou. Verifique o schema e as permissões.');
-            if (!result.jobComplete) {
-                if (!reference?.jobId || Date.now() - started > 180000) throw new Error('Consulta da raiz BQ demorou demais. Tente novamente.');
-                result = await request('GET', `/projects/${project}/queries/${reference.jobId}`, { signal, params: { location, timeoutMs: 10000, maxResults: 10000 } });
-                continue;
-            }
-            for (const row of result.rows || []) {
-                const raw = row.f?.[0]?.v;
+        const documents = new Set(); let skipped = 0, restored = 0, jobId;
+        const onPage = async rows => {
+            for (const row of rows) {
+                const raw = row.document ?? Object.values(row)[0];
                 const normalized = restoreCnpj(raw);
                 if (normalized) { documents.add(normalized); if (String(raw).length < 14) restored++; } else skipped++;
                 if (documents.size > 1000000) throw new Error('A raiz BQ excede 1 milhão de documentos. Revise a fonte antes de executar.');
             }
             onProgress({ documents: documents.size });
-            if (!result.pageToken) break;
-            result = await request('GET', `/projects/${project}/queries/${reference.jobId}`, { signal, params: { location, pageToken: result.pageToken, maxResults: 10000 } });
+        };
+        try {
+            ({ jobId } = await queryPages({ query: ROOT_SQL, params: queryParameters, signal, pageSize: 10000, onPage }));
+        } catch (error) {
+            if (error.code === 'FLOW_VALIDATION') throw Object.assign(new Error('Sua conta Google não tem permissão para consultar o BQ. Verifique o acesso aos dados e ao projeto de consultas.'), { code: 'BQ_FORBIDDEN' });
+            throw error;
         }
-        if (!documents.size) throw new Error('A raiz BQ não retornou documentos utilizáveis. A limpeza foi interrompida.');
-        complete = true;
-        return { documents: [...documents], info: { source: 'bq', pipelines, queriedAt: new Date().toISOString(), count: documents.size, skipped, restored, estimatedBytes: bytes, jobId: reference?.jobId, coverage: 'histórico disponível de negócios e fases; documentos ausentes não podem ser recuperados' } };
-        } finally {
-            if (!complete && reference?.jobId) await request('POST', `/projects/${project}/jobs/${reference.jobId}/cancel`, { params: { location } }).catch(() => {});
+        if (!documents.size) {
+            if (jobId) await cancelJob(jobId);
+            throw new Error('A raiz BQ não retornou documentos utilizáveis. A limpeza foi interrompida.');
         }
+        return { documents: [...documents], info: { source: 'bq', pipelines, queriedAt: new Date().toISOString(), count: documents.size, skipped, restored, estimatedBytes: bytes, jobId, coverage: 'histórico disponível de negócios e fases; documentos ausentes não podem ser recuperados' } };
     };
-    return { loadRoot, test: async () => {
+    return { loadRoot, queryPages, test: async () => {
         await request('GET', '/projects/mbtech-bronze/datasets/bitrix/tables/deals');
         await request('GET', '/projects/mbtech-bronze/datasets/bitrix/tables/stage_history');
         const estimate = await request('POST', `/projects/${project}/queries`, { data: { query: ROOT_SQL, useLegacySql: false, location, dryRun: true, parameterMode: 'NAMED', queryParameters: [{ name: 'pipelines', parameterType: { type: 'ARRAY', arrayType: { type: 'INT64' } }, parameterValue: { arrayValues: [{ value: '90' }] } }] } });

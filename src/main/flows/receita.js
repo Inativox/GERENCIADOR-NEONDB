@@ -211,6 +211,19 @@ async function* iterateReceita({ pool, filters = {}, batchSize = 2000, afterCnpj
     }
 }
 
+// Shared by the Neon and BigQuery generators: same columns, phones and situation.
+// Returns null for CNPJs already saved in a resumed generation.
+function generationRow(record, isSaved = () => false) {
+    const row = Object.fromEntries(Object.keys(FIELD_ALIASES).map(name => [name, record[name] == null ? '' : String(record[name])]));
+    if (!CNPJ_FORMAT.test(row.cnpj)) fail('Base Receita incompatível: CNPJ inválido.');
+    if (isSaved(row.cnpj)) return null;
+    row.telefone_principal = telefoneParaGeracao(row.telefone_principal);
+    row.telefone_secundario = telefoneParaGeracao(row.telefone_secundario);
+    row.situacao_cadastral_cod = row.situacao_cadastral_cod.padStart(2, '0');
+    if (!row.situacao_cadastral) row.situacao_cadastral = SITUACOES[row.situacao_cadastral_cod] || '';
+    return row;
+}
+
 // One unordered SELECT, with row events instead of buffering the whole result.
 // Socket backpressure bounds pending batches without using a server-side cursor
 // (which prevents the parallel scan used by the Hub).
@@ -250,13 +263,8 @@ async function* iterateReceitaFast({ pool, filters = {}, batchSize = 50000, save
             const source = ready.length ? ready.shift() : pending.splice(0);
             for (const record of source) {
                 checkCancelled(signal);
-                const row = Object.fromEntries(Object.keys(FIELD_ALIASES).map(name => [name, record[name] == null ? '' : String(record[name])]));
-                if (!CNPJ_FORMAT.test(row.cnpj)) fail('Base Receita incompatível: CNPJ inválido.');
-                if (isSaved(row.cnpj)) continue;
-                row.telefone_principal = telefoneParaGeracao(row.telefone_principal);
-                row.telefone_secundario = telefoneParaGeracao(row.telefone_secundario);
-                row.situacao_cadastral_cod = row.situacao_cadastral_cod.padStart(2, '0');
-                if (!row.situacao_cadastral) row.situacao_cadastral = SITUACOES[row.situacao_cadastral_cod] || '';
+                const row = generationRow(record, isSaved);
+                if (!row) continue;
                 output.push(row);
                 if (remaining !== null) remaining--;
                 if (output.length === batchSize || remaining === 0) { yield { rows: output }; output = []; }
@@ -277,4 +285,4 @@ async function* iterateReceitaFast({ pool, filters = {}, batchSize = 50000, save
     }
 }
 
-module.exports = { iterateReceita, iterateReceitaFast, getReceitaMetadata, MAX_ROWS, MAX_BATCH_SIZE, FIELD_ALIASES };
+module.exports = { iterateReceita, iterateReceitaFast, getReceitaMetadata, normalizeFilters, generationRow, fail, checkCancelled, MAX_ROWS, MAX_BATCH_SIZE, FIELD_ALIASES };

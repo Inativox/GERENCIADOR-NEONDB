@@ -300,3 +300,26 @@ test('window observer errors are isolated and disk failure in worker update clea
     for (let n = 0; n < 15 && f.workers.length < 2; n++) await tick();
     f.workers[1].emit('message', { type: 'result', data: { status: 'empty', outputs: [] } }); await idle(m);
 });
+
+test('Receita source defaults to BigQuery, keeps Neon and replaces invalid values', () => {
+    assert.equal(defaults().generation.source, 'bq');
+    const input = { ...defaults(), generation: {} };
+    assert.equal(validateFlow(input).generation.source, 'bq');
+    assert.equal(validateFlow({ ...input, generation: { source: 'neon' } }).generation.source, 'neon');
+    assert.equal(validateFlow({ ...input, generation: { source: 'mysql' } }).generation.source, 'bq');
+    const saved = validateFlow(defaults()); delete saved.generation.source;
+    assert.equal(effectiveFlow(saved, { username: 'Outro' }).generation.source, 'bq');
+    assert.equal(effectiveFlow({ ...saved, generation: { ...saved.generation, source: 'neon' } }, { username: 'Outro' }).generation.source, 'neon');
+});
+
+test('expired Google login inside the BigQuery generation worker keeps the renew code on the job', async t => {
+    const f = fixture(t), m = f.manager;
+    const flow = m.save(defaults());
+    m.start({ flowId: flow.id, outputDirectory: f.directory });
+    for (let n = 0; n < 15 && !f.workers.length; n++) await tick();
+    assert.equal(f.workers[0].data.flow.generation.source, 'bq');
+    f.workers[0].emit('message', { type: 'error', message: 'Seu login Google precisa ser renovado. Entre pelo navegador e depois retome a execução.', code: 'BQ_AUTH_REQUIRED' });
+    await idle(m);
+    const job = m.bootstrap().jobs[0];
+    assert.equal(job.errorCode, 'BQ_AUTH_REQUIRED'); assert.match(job.error, /login Google/);
+});

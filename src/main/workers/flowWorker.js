@@ -23,7 +23,12 @@ function apiRequest(action, type = 'api-request') {
     });
 }
 runFlow({ ...workerData, cachePolicy: { compressed: true, prune: true }, processingPolicy: { batchSize: 100000 }, signal: controller.signal,
-    providers: { async acquireApi() {
+    providers: { iterateReceitaBq(args) {
+        // Workers cannot share the main-process client; this one reads the same local credential.
+        const { createBqClient } = require('../flows/bq');
+        const bq = createBqClient({ keyFile: workerData.connections?.bq?.keyFile || null, project: workerData.connections?.bq?.project || 'mbtech-bronze' });
+        return require('../flows/receitaBq').iterateReceitaBq({ ...args, bq });
+    }, async acquireApi() {
         const session = await apiRequest('acquire');
         const client = require('../flows/disponibilidadeApi').createApiClient({ credentials: session.credentials });
         return { ...client, nextAllowedAt: session.nextAllowedAt, assert: () => apiRequest('assert'), release: () => controller.signal.aborted ? Promise.resolve() : apiRequest('release') };
@@ -35,5 +40,5 @@ runFlow({ ...workerData, cachePolicy: { compressed: true, prune: true }, process
     onUpdate: data => parentPort.postMessage({ type: 'update', data }) })
     .then(data => parentPort.postMessage({ type: 'result', data }))
     .catch(error => parentPort.postMessage({ type: 'error', message: error.message,
-        code: ['FLOW_CANCELLED', 'FLOW_DISK_FULL', 'FLOW_VALIDATION'].includes(error.code) ? error.code : 'FLOW_FAILED' }))
+        code: ['FLOW_CANCELLED', 'FLOW_DISK_FULL', 'FLOW_VALIDATION', 'BQ_AUTH_REQUIRED', 'BQ_CREDENTIAL_INVALID'].includes(error.code) ? error.code : 'FLOW_FAILED' }))
     .finally(() => parentPort.close());

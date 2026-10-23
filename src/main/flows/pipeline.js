@@ -34,7 +34,8 @@ function friendly(stage, error) {
         cancelled.code = 'FLOW_CANCELLED';
         return cancelled;
     }
-    if (error.code === 'FLOW_VALIDATION') return error;
+    // An expired Google login keeps its message and code so the user can renew it and resume.
+    if (['FLOW_VALIDATION', 'BQ_AUTH_REQUIRED', 'BQ_CREDENTIAL_INVALID'].includes(error.code)) return error;
     if (['ENOSPC', 'EDQUOT', 'FLOW_DISK_FULL'].includes(error.code)) {
         return Object.assign(new Error('Não há espaço disponível para continuar. Libere espaço no disco do cache ou da saída e retome do último lote confirmado.'), { code: 'FLOW_DISK_FULL' });
     }
@@ -287,8 +288,12 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             stage = 'generation';
             checkpoint.counts = { generated: 0 };
             update({ status: 'running', log: 'Gerando base da Receita.' });
-            const iterate = providers.iterateReceita || require('./receita').iterateReceitaFast;
-            const pool = providers.iterateReceita && !connections.receita ? undefined : await poolFor('receita');
+            // Only an explicit 'bq' reads BigQuery: snapshots saved before the switch existed resume on Neon.
+            const fromBq = flow.generation?.source === 'bq';
+            const iterate = fromBq
+                ? providers.iterateReceitaBq || (args => require('./receitaBq').iterateReceitaBq({ ...args, bq: require('./bq').createBqClient(connections.bq || {}) }))
+                : providers.iterateReceita || require('./receita').iterateReceitaFast;
+            const pool = fromBq || (providers.iterateReceita && !connections.receita) ? undefined : await poolFor('receita');
             await jsonlStage(stage, async (emit, cache) => {
                 const filters = generationFilters(flow.generation);
                 if (filters.limit != null && cache.state.processed >= filters.limit) return;

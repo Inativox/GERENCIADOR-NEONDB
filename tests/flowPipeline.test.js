@@ -389,7 +389,7 @@ for (const address of [{ cidade: '', bairro: '' }, { cidade: 'Campinas', bairro:
     test(`validated editor generation integrates real Receita iterator: ${address.cidade || 'defaults'}`, async t => {
         const jobDir = await setup(t);
         const { defaults, validateFlow, effectiveFlow } = require('../src/main/flows/config');
-        const input = defaults(); input.api.enabled = false; Object.assign(input.generation, address);
+        const input = defaults(); input.api.enabled = false; Object.assign(input.generation, address, { source: 'neon' });
         const user = { username: 'Operador' }; const config = effectiveFlow(validateFlow(input), user);
         const columns = { cnpj: 'text', razao_social: 'text', situacao_cadastral_cod: 'text',
             telefone_principal: 'text', telefone_secundario: 'text', cidade: 'text', bairro: 'text', natureza_juridica_cod: 'text' };
@@ -463,4 +463,38 @@ test('alphanumeric documents remain intact through cleanup, deduplication and XL
     const sheet = await readXlsx(result.outputs.find(item => item.kind === 'xlsx').path);
     assert.equal(sheet.getCell('A2').value, alpha); assert.equal(sheet.getCell('A3').value, '00000123450135');
     assert.ok((await fs.readFile(result.outputs.find(item => item.kind === 'csv').path, 'utf8')).includes(alpha));
+});
+
+test('Receita source bq reads BigQuery without opening the Receita pool; neon keeps the Postgres path', async t => {
+    const jobDir = await setup(t);
+    const config = flow(); config.generation.source = 'bq'; config.generation.availability = 'available';
+    const pools = [];
+    let bqCalls = 0;
+    const fake = providers([]); const neon = fake.iterateReceita; delete fake.iterateReceita;
+    fake.createPool = settings => { pools.push(settings); throw new Error('Receita pool must not open'); };
+    fake.iterateReceitaBq = async function* (args) {
+        bqCalls++;
+        assert.equal(args.pool, undefined);
+        assert.equal(args.filters.availability, 'available');
+        yield { rows: [row(1, ['11999990001']), row(2, ['11999990002'])] };
+    };
+    const result = await runFlow({ flow: config, user: { username: 'Operador' }, jobDir, connections: { receita: 'postgres://synthetic' }, providers: fake });
+    assert.equal(result.counts.generated, 2); assert.equal(bqCalls, 1); assert.deepEqual(pools, []);
+    // Source is part of the checkpoint identity: a resume never mixes sources.
+    const switched = flow(); switched.generation.source = 'neon'; switched.generation.availability = 'available';
+    await assert.rejects(runFlow({ flow: switched, user: { username: 'Operador' }, jobDir, providers: { ...fake, iterateReceita: neon } }), /configuração do fluxo mudou/);
+
+    const neonDir = await setup(t);
+    const neonFake = providers([row(3, ['11999990003'])]);
+    neonFake.iterateReceitaBq = () => { throw new Error('BigQuery must not be used'); };
+    const neonResult = await runFlow({ flow: { ...flow(), generation: { ...flow().generation, source: 'neon' } }, user: { username: 'Operador' }, jobDir: neonDir, providers: neonFake });
+    assert.equal(neonResult.counts.generated, 1);
+});
+
+test('expired Google login during BigQuery generation keeps its code and friendly message', async t => {
+    const jobDir = await setup(t);
+    const config = flow(); config.generation.source = 'bq';
+    const fake = providers([]); delete fake.iterateReceita;
+    fake.iterateReceitaBq = async function* () { throw Object.assign(new Error('Seu login Google precisa ser renovado. Entre pelo navegador e depois retome a execução.'), { code: 'BQ_AUTH_REQUIRED' }); };
+    await assert.rejects(runFlow({ flow: config, user: { username: 'Operador' }, jobDir, providers: fake }), { code: 'BQ_AUTH_REQUIRED', message: /login Google/ });
 });

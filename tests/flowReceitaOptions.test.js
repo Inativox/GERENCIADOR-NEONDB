@@ -173,3 +173,39 @@ test('oversized catalogs fail without caching or returning incomplete results', 
     }, end: async () => {} }) });
     await assert.rejects(service.load({ field: 'uf' }), /carregar/); await service.close();
 });
+
+test('BigQuery source reads empresas_opcoes once per scope, keeps the legal-nature allow-list and never opens Neon', async () => {
+    const queries = [];
+    const bq = { async queryPages({ query, params, onPage }) {
+        queries.push({ query, params });
+        // Rows as the SELECT aliases them (valor AS value).
+        const campo = params.find(item => item.name === 'campo').parameterValue.value;
+        const rows = { naturezas: [{ value: '2062', label: 'Sociedade Empresária Limitada', uf: '' }, { value: '1015', label: 'Órgão Público', uf: '' }],
+            cidade: [{ value: 'CAMPINAS', label: 'Campinas', uf: 'SP' }, { value: 'NITEROI', label: 'Niterói', uf: 'RJ' }],
+            bairro: [{ value: 'CENTRO', label: 'Centro', uf: 'SP' }] }[campo] || [];
+        await onPage(rows);
+        return { rows: rows.length };
+    } };
+    const service = createReceitaOptions({ getConnection: () => { throw new Error('Neon must not be read'); }, poolFactory: () => { throw new Error('Neon pool must not open'); }, queryBq: action => action(bq) });
+    const naturezas = await service.load({ field: 'naturezas', source: 'bq' });
+    assert.deepEqual(naturezas.options, [{ value: '2062', label: '2062 · Sociedade Empresária Limitada' }]);
+    assert.match(queries[0].query, /mbtech-bronze\.receita\.empresas_opcoes/);
+    await service.load({ field: 'naturezas', source: 'bq', search: 'limitada' });
+    assert.equal(queries.length, 1);
+    assert.deepEqual((await service.load({ field: 'cidade', source: 'bq', uf: ['RJ'] })).options.map(item => item.value), ['NITEROI']);
+    assert.deepEqual((await service.load({ field: 'cidade', source: 'bq', uf: ['SP'] })).options.map(item => item.value), ['CAMPINAS']);
+    assert.equal(queries.length, 2);
+    await service.load({ field: 'bairro', source: 'bq', uf: ['sp'], cidade: ['Campinas'] });
+    const bairro = queries.at(-1);
+    assert.deepEqual(bairro.params.find(item => item.name === 'cidade').parameterValue.arrayValues.map(item => item.value), ['CAMPINAS']);
+    assert.doesNotMatch(bairro.query, /CAMPINAS/);
+    assert.throws(() => validateRequest({ field: 'uf', source: 'mysql' }), /inválid/);
+    await service.close();
+});
+
+test('BigQuery options keep the Google login code so the app can ask for a new login', async () => {
+    const expired = Object.assign(new Error('Seu login Google precisa ser renovado.'), { code: 'BQ_AUTH_REQUIRED' });
+    const service = createReceitaOptions({ getConnection: () => null, poolFactory: () => { throw new Error('no'); }, queryBq: async () => { throw expired; } });
+    await assert.rejects(service.load({ field: 'uf', source: 'bq' }), { code: 'BQ_AUTH_REQUIRED' });
+    await assert.rejects(createReceitaOptions({ getConnection: () => null, poolFactory: () => {}, queryBq: async () => { throw new Error('private detail'); } }).load({ field: 'uf', source: 'bq' }), error => !error.message.includes('private') && /opções/.test(error.message));
+});

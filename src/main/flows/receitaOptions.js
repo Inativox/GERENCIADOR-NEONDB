@@ -9,6 +9,10 @@ const CACHE_TTL = 24 * 60 * 60000;
 const PERSISTENT_CATALOGS = new Set(['naturezas']);
 const CATALOG_LIMITS = { uf: 100, cnaes: 10000, naturezas: 2000, cidade: 30000, bairro: 50000 };
 const FIELDS = { uf: ['estado'], cidade: ['cidade'], bairro: ['bairro'], cnaes: ['atividade_principal_cod', 'atividade_principal'], naturezas: ['natureza_juridica_cod', 'natureza_juridica'] };
+const SOURCES = ['neon', 'bq'];
+const BQ_OPTIONS_TABLE = '`mbtech-bronze.receita.empresas_opcoes`';
+// BigQuery errors whose message is already safe and actionable for the user.
+const BQ_VISIBLE_ERRORS = ['BQ_AUTH_REQUIRED', 'BQ_CREDENTIAL_INVALID', 'FLOW_VALIDATION'];
 const normalize = value => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
 function validateRequest(input) {
     if (!input || !Object.hasOwn(FIELDS, input.field)) throw new Error('Campo de opções Receita inválido.');
@@ -21,7 +25,8 @@ function validateRequest(input) {
     const offset = input.offset ?? 0;
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw new Error('Página Receita inválida.');
     if (input.refresh != null && typeof input.refresh !== 'boolean') throw new Error('Atualização de opções Receita inválida.');
-    return { field: input.field, search: normalize(input.search || ''), offset, uf, cidade, refresh: input.refresh === true };
+    if (input.source != null && !SOURCES.includes(input.source)) throw new Error('Fonte de opções Receita inválida.');
+    return { field: input.field, search: normalize(input.search || ''), offset, uf, cidade, refresh: input.refresh === true, source: input.source || 'neon' };
 }
 function buildOptionsQuery(metadata, input, { catalog = false } = {}) {
     const request = validateRequest(input), values = [], bind = value => { values.push(value); return `$${values.length}`; };
@@ -67,7 +72,21 @@ function buildOptionsQuery(metadata, input, { catalog = false } = {}) {
     }
     return { text: `SELECT ${exact ? '' : 'DISTINCT '}${value} AS value, ${label} AS label FROM public.empresas e WHERE ${where.join(' AND ')} ${exact ? '' : 'ORDER BY value, label '}LIMIT ${exact ? 1 : 51} OFFSET ${bind(request.offset)}::integer`, values };
 }
-function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, now = Date.now }) {
+// One small catalog read per field and scope; values only as named parameters.
+function buildBqOptionsQuery(scope) {
+    const text = (name, value) => ({ name, parameterType: { type: 'STRING' }, parameterValue: { value } });
+    const list = (name, values) => ({ name, parameterType: { type: 'ARRAY', arrayType: { type: 'STRING' } }, parameterValue: { arrayValues: values.map(value => ({ value })) } });
+    const fold = column => `TRANSLATE(UPPER(TRIM(COALESCE(${column}, ''))), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC')`;
+    const params = [text('campo', scope.field)];
+    const where = ['campo = @campo', "TRIM(COALESCE(valor, '')) <> ''"];
+    if (scope.field === 'bairro') {
+        if (scope.uf.length) { where.push(`${fold('uf')} IN UNNEST(@uf)`); params.push(list('uf', scope.uf)); }
+        if (scope.cidade.length) { where.push(`${fold('cidade')} IN UNNEST(@cidade)`); params.push(list('cidade', scope.cidade)); }
+    }
+    const query = `SELECT TRIM(valor) AS value, COALESCE(NULLIF(TRIM(label), ''), TRIM(valor)) AS label, TRIM(COALESCE(uf, '')) AS uf FROM ${BQ_OPTIONS_TABLE} WHERE ${where.join(' AND ')} ORDER BY value LIMIT ${CATALOG_LIMITS[scope.field] + 1}`;
+    return { query, params };
+}
+function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, queryBq, now = Date.now }) {
     let source, pool, metadata;
     const cache = new Map(), pending = new Map();
     let active = 0;
@@ -75,16 +94,21 @@ function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, now 
         const request = validateRequest(input);
         // Neighborhood searches require a location; avoid a nationwide scan while the dropdown opens.
         if (request.field === 'bairro' && !request.cidade.length) return { options: [], hasMore: false, message: 'Selecione uma ou mais cidades para buscar bairros.' };
-        const connection = getConnection();
-        if (!connection) throw new Error('Configure a fonte Receita antes de consultar as opções.');
-        if (connection !== source) {
-            const previous = pool; source = connection; pool = poolFactory(connection); metadata = null; cache.clear(); pending.clear();
-            const created = pool;
-            created.on?.('error', () => { if (pool === created) metadata = null; });
-            if (previous) void previous.end().catch(() => {});
+        const fromBq = request.source === 'bq';
+        if (fromBq && typeof queryBq !== 'function') throw new Error('Configure o acesso ao BigQuery antes de consultar as opções.');
+        if (!fromBq) {
+            const connection = getConnection();
+            if (!connection) throw new Error('Configure a fonte Receita antes de consultar as opções.');
+            if (connection !== source) {
+                const previous = pool; source = connection; pool = poolFactory(connection); metadata = null; cache.clear(); pending.clear();
+                const created = pool;
+                created.on?.('error', () => { if (pool === created) metadata = null; });
+                if (previous) void previous.end().catch(() => {});
+            }
         }
         const scope = { field: request.field, uf: request.field === 'bairro' ? request.uf : [], cidade: request.field === 'bairro' ? request.cidade : [] };
-        const key = JSON.stringify(scope);
+        // Neon keys stay as before so saved catalogs keep working; BigQuery has its own entries.
+        const key = (fromBq ? 'bq:' : '') + JSON.stringify(scope);
         const persistent = PERSISTENT_CATALOGS.has(request.field);
         const page = rows => {
             const filtered = rows.filter(row => (request.field !== 'naturezas' || isAllowedNatureza(row.value)) && (request.field !== 'cidade' || !request.uf.length || request.uf.includes(normalize(row.uf || ''))) && (!request.search || normalize(row.value).includes(request.search) || normalize(row.label).includes(request.search)));
@@ -95,7 +119,8 @@ function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, now 
         if (!request.refresh && cached && (persistent || now() - cached.at < CACHE_TTL)) return page(cached.rows);
         if (pending.has(key)) return page(await pending.get(key));
         if (active >= 2) throw new Error('Aguarde a consulta de opções Receita em andamento e tente novamente.');
-        const currentPool = pool, currentSource = source;
+        const currentPool = pool, currentSource = fromBq ? 'bigquery' : source;
+        const isCurrent = () => fromBq || source === currentSource;
         const hash = createHash('sha256').update(currentSource + key).digest('hex');
         const filename = cacheDirectory && path.join(cacheDirectory, hash + (persistent ? '.catalog.json' : '.json'));
         const legacyFilename = persistent && cacheDirectory && path.join(cacheDirectory, hash + '.json');
@@ -126,7 +151,7 @@ function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, now 
                             if (stat.size <= 20 * 1024 * 1024 && (persistent || now() - stat.mtimeMs < CACHE_TTL)) {
                                 const rows = JSON.parse(await fs.readFile(candidate, 'utf8'));
                                 if (validRows(rows)) {
-                                    if (source === currentSource) cache.set(key, { at: now(), rows });
+                                    if (isCurrent()) cache.set(key, { at: now(), rows });
                                     if (candidate === legacyFilename) await saveCatalog(rows);
                                     return rows;
                                 }
@@ -134,25 +159,42 @@ function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, now 
                         } catch { /* An absent or damaged local cache is rebuilt from SQL. */ }
                     }
                 }
-                if (!metadata) metadata = getReceitaMetadata(currentPool).then(async result => {
-                    const indexes = await currentPool.query("SELECT a.attname AS column_name FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_class idx ON idx.oid = i.indexrelid JOIN pg_am am ON am.oid = idx.relam JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = i.indkey[0] WHERE n.nspname = 'public' AND t.relname = 'empresas' AND i.indisvalid AND i.indpred IS NULL AND am.amname = 'btree'");
-                    return { ...result, indexedFields: (indexes.rows || []).map(row => row.column_name).filter(Boolean) };
-                });
-                const currentMetadata = await metadata;
-                const query = buildOptionsQuery(currentMetadata, scope, { catalog: true });
-                const result = await currentPool.query(query.text, query.values);
-                const rows = result.rows || [];
-                if (!validRows(rows)) throw new Error();
-                const clean = rows.map(row => ({ value: row.value.trim(), label: row.label.trim(), ...(request.field === 'cidade' ? { uf: (row.uf || '').trim() } : {}) })).filter(row => row.value).sort((a, b) => a.value.localeCompare(b.value, 'pt-BR'));
-                if (source === currentSource) { if (cache.size >= 100) cache.delete(cache.keys().next().value); cache.set(key, { at: now(), rows: clean }); }
+                const clean = fromBq ? await readBq() : await readNeon();
+                if (isCurrent()) { if (cache.size >= 100) cache.delete(cache.keys().next().value); cache.set(key, { at: now(), rows: clean }); }
                 await saveCatalog(clean);
                 return clean;
-            } catch { if (source === currentSource) metadata = null; throw new Error('Não foi possível carregar as opções da Receita. Tente novamente ou refine a busca e a localização.'); }
+            } catch (error) {
+                if (fromBq && BQ_VISIBLE_ERRORS.includes(error?.code)) throw error;
+                if (!fromBq && source === currentSource) metadata = null;
+                throw new Error('Não foi possível carregar as opções da Receita. Tente novamente ou refine a busca e a localização.');
+            }
             finally { active--; if (pending.get(key) === promise) pending.delete(key); }
         })();
         pending.set(key, promise);
         return page(await promise);
+        async function readBq() {
+            const { query, params } = buildBqOptionsQuery(scope), rows = [];
+            await queryBq(client => client.queryPages({ query, params, pageSize: 50000, onPage: async page => {
+                rows.push(...page);
+                if (rows.length > CATALOG_LIMITS[request.field]) throw new Error('Catálogo de opções acima do limite.');
+            } }));
+            const mapped = rows.map(row => ({ value: String(row.value ?? '').trim(), label: String(row.label ?? row.value ?? '').trim(), ...(request.field === 'cidade' ? { uf: String(row.uf ?? '').trim() } : {}) })).filter(row => row.value);
+            if (!validRows(mapped)) throw new Error('Catálogo de opções inválido.');
+            return mapped.sort((a, b) => a.value.localeCompare(b.value, 'pt-BR'));
+        }
+        async function readNeon() {
+            if (!metadata) metadata = getReceitaMetadata(currentPool).then(async result => {
+                const indexes = await currentPool.query("SELECT a.attname AS column_name FROM pg_index i JOIN pg_class t ON t.oid = i.indrelid JOIN pg_namespace n ON n.oid = t.relnamespace JOIN pg_class idx ON idx.oid = i.indexrelid JOIN pg_am am ON am.oid = idx.relam JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = i.indkey[0] WHERE n.nspname = 'public' AND t.relname = 'empresas' AND i.indisvalid AND i.indpred IS NULL AND am.amname = 'btree'");
+                return { ...result, indexedFields: (indexes.rows || []).map(row => row.column_name).filter(Boolean) };
+            });
+            const currentMetadata = await metadata;
+            const query = buildOptionsQuery(currentMetadata, scope, { catalog: true });
+            const result = await currentPool.query(query.text, query.values);
+            const rows = result.rows || [];
+            if (!validRows(rows)) throw new Error();
+            return rows.map(row => ({ value: row.value.trim(), label: row.label.trim(), ...(request.field === 'cidade' ? { uf: (row.uf || '').trim() } : {}) })).filter(row => row.value).sort((a, b) => a.value.localeCompare(b.value, 'pt-BR'));
+        }
     }
     return { load, close: async () => { if (pool) await pool.end(); } };
 }
-module.exports = { validateRequest, buildOptionsQuery, createReceitaOptions };
+module.exports = { validateRequest, buildOptionsQuery, buildBqOptionsQuery, createReceitaOptions };

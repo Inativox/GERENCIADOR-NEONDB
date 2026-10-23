@@ -338,6 +338,13 @@ app.whenReady().then(async () => {
     await waitFor(`document.querySelector('#fluxos-react-root .flow-progress progress').value === 75`);
     await delay(250);
     assert.equal(await evaluate(`document.getElementById('fluxos-react-root').textContent.includes('Telefones removidos pela blocklist')`), true);
+    assert.equal(await evaluate(`document.getElementById('fluxos-react-root').textContent.includes('Fonte da Receita: BigQuery')`), true);
+    const legacySnapshot = { ...syntheticJob.flowSnapshot, generation: { ...syntheticJob.flowSnapshot.generation } };
+    delete legacySnapshot.generation.source;
+    window.webContents.send('flow-update', { ...syntheticJob, flowSnapshot: legacySnapshot, progress: { stage: 'cleaning', processed: 750, total: 1000 }, counts: { generated: 1000, kept: 300, blockedPhones: 450 } });
+    await waitFor(`document.getElementById('fluxos-react-root').textContent.includes('Fonte da Receita: Neon')`);
+    window.webContents.send('flow-update', { ...syntheticJob, progress: { stage: 'cleaning', processed: 750, total: 1000 }, counts: { generated: 1000, kept: 300, blockedPhones: 450 } });
+    await waitFor(`document.getElementById('fluxos-react-root').textContent.includes('Fonte da Receita: BigQuery')`);
     assert.equal(await evaluate(`document.getElementById('fluxos-react-root').scrollWidth <= document.getElementById('fluxos-react-root').clientWidth + 1`), true);
     await fs.writeFile(path.resolve(__dirname, '../out/flow-progress-smoke.png'), (await window.webContents.capturePage()).toPNG());
     const generationJob = { ...syntheticJob, stage: 'generation', progress: { stage: 'generation', processed: 9460000, total: null }, counts: { generated: 9460000 } };

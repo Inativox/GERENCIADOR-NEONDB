@@ -1,5 +1,6 @@
 export type Operation = 'c6' | 'santander' | 'pagbank' | 'mercadopago';
 export type RootSource = 'bq' | 'neon' | 'file' | 'none';
+export type ReceitaSource = 'bq' | 'neon';
 export interface Flow {
     id: string;
     name: string;
@@ -11,6 +12,7 @@ export interface Flow {
         dateFrom: string; dateTo: string; mei: 'all' | 'yes' | 'no';
         phone: 'all' | 'with' | 'without'; email: 'all' | 'with' | 'without'; situacoes: string[];
         availability?: 'all' | 'available';
+        source?: ReceitaSource;
     };
     enrichment: { enabled: boolean; strategy: 'append' | 'overwrite' | 'ignore'; fillCpf: boolean };
     api?: { enabled: boolean; keyMode: 'dupla'; delayMs: 60000 };
@@ -47,7 +49,7 @@ export interface FlowBootstrap {
 }
 export interface FlowResult { success: boolean; message?: string; flow?: Flow; job?: FlowJob }
 export interface ReceitaOption { value: string; label: string }
-export interface ReceitaOptionsInput { field: 'uf' | 'cidade' | 'bairro' | 'cnaes' | 'naturezas'; search?: string; offset?: number; uf?: string[]; cidade?: string[]; refresh?: boolean }
+export interface ReceitaOptionsInput { field: 'uf' | 'cidade' | 'bairro' | 'cnaes' | 'naturezas'; search?: string; offset?: number; uf?: string[]; cidade?: string[]; refresh?: boolean; source?: ReceitaSource }
 export interface ReceitaOptionsResult extends FlowResult { options?: ReceitaOption[]; hasMore?: boolean }
 export interface FlowAPI {
     flowsBootstrap(): Promise<FlowBootstrap>;

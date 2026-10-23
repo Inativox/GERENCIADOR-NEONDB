@@ -102,7 +102,7 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
                         if (message.type === 'api-request' || message.type === 'upload-request') { void apiMessage(message); return; }
                         if (message.type === 'update') saveUpdate(context, message.data || {});
                         if (message.type === 'result') { saveUpdate(context, { ...message.data, status: message.data?.status || 'completed' }); finished = true; resolve(); }
-                        if (message.type === 'error') { finished = true; reject(Object.assign(new Error(message.code === 'FLOW_CANCELLED' ? 'Execução cancelada.' : (message.message || 'Falha na execução do fluxo.')), { code: ['FLOW_DISK_FULL', 'FLOW_CANCELLED', 'FLOW_VALIDATION'].includes(message.code) ? message.code : '' })); }
+                        if (message.type === 'error') { finished = true; reject(Object.assign(new Error(message.code === 'FLOW_CANCELLED' ? 'Execução cancelada.' : (message.message || 'Falha na execução do fluxo.')), { code: ['FLOW_DISK_FULL', 'FLOW_CANCELLED', 'FLOW_VALIDATION', 'BQ_AUTH_REQUIRED', 'BQ_CREDENTIAL_INVALID'].includes(message.code) ? message.code : '' })); }
                     } catch { finished = true; reject(new Error('Não foi possível salvar o histórico. Verifique o espaço disponível e retome a execução.')); }
                 });
                 worker.on('error', () => { if (!finished) { finished = true; reject(new Error('O processamento foi interrompido. Retome a etapa; reduza o volume se o problema persistir.')); } });

@@ -19,7 +19,7 @@ function fixture(t, environment = {}) {
     class Pool { constructor(config) { this.config = config; pools.push(this); } async end() { this.ended = true; } }
     const filename = path.resolve('src/main/handlers/fluxos.js'), actual = createRequire(filename), module = { exports: {} };
     const mocks = { electron: { ipcMain: { handle: (name, fn) => handlers.set(name, fn), on: (name, fn) => events.set(name, fn) }, app: { getPath: () => directory, on() {} }, shell: { openPath: async () => '' }, dialog: { showOpenDialog: async () => ({ canceled: !dialogPaths.length, filePaths: dialogPaths.splice(0) }) } },
-        'electron-store': Store, pg: { Pool }, '../state': state, './limpeza': { isCleaning: () => cleaning },
+        'electron-store': Store, pg: { Pool }, '../state': state, '../runtimeConfig': { getFastwayCredentials: () => null, fastwayStatus: () => false, saveFastway() {} }, './limpeza': { isCleaning: () => cleaning },
         '../flows/manager': { createFlowManager: value => { options = value; return manager; } },
         '../flows/receita': { getReceitaMetadata: async pool => { assert.ok(pool.config.connectionString); return {}; } },
         '../flows/receitaOptions': { createReceitaOptions: () => ({ load: input => loadOptions(input), close: async () => {} }) },
@@ -134,4 +134,16 @@ test('cancelled root lookup never launches a new Google login', async t => {
     const controller = new AbortController(); controller.abort();
     await assert.rejects(f.options().resolveRoot({ pipelines: [90], cleaning: { enabled: true, rootSource: 'bq' } }, { signal: controller.signal }), error => error.code === 'BQ_AUTH_REQUIRED');
     assert.equal(f.renewals(), 0);
+});
+
+test('BigQuery Receita source needs no Receita database and hands the worker only the local credential path', async t => {
+    const f = fixture(t, { RECEITA_DATABASE_URL: '', BQ_PROJECT: 'synthetic-project' });
+    f.settings.set('db_connection_string', 'postgresql://synthetic/login-neon');
+    f.settings.set('flow_bq_key_file', 'C:/private/flow-bq-access.json');
+    const flow = { generation: { source: 'bq' }, enrichment: { enabled: true }, cleaning: { blocklist: true, enabled: true } };
+    const connections = f.options().resolveConnections(flow);
+    assert.deepEqual(JSON.parse(JSON.stringify(connections)), { enrichment: 'postgresql://synthetic/login-neon', bq: { keyFile: 'C:/private/flow-bq-access.json', project: 'synthetic-project' } });
+    assert.throws(() => f.options().resolveConnections({ ...flow, generation: { source: 'neon' } }), /base da Receita/);
+    f.settings.delete('db_connection_string');
+    assert.throws(() => f.options().resolveConnections(flow), /enriquecimento/);
 });

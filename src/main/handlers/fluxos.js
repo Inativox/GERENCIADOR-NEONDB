@@ -51,7 +51,9 @@ function register() {
     const cacheDirectory = () => store.get('flow_cache_directory') || path.join(app.getPath('userData'), 'flows');
     const cacheDirectories = () => [...new Set([cacheDirectory(), ...(Array.isArray(store.get('flow_cache_directories')) ? store.get('flow_cache_directories') : [])])].filter(directory => typeof directory === 'string' && path.isAbsolute(directory));
     const config = () => ({ receita: store.get('receita_connection_string') || process.env.RECEITA_DATABASE_URL, enrichment: state.pool?.options?.connectionString || store.get('db_connection_string') || process.env.DATABASE_URL });
-    const receitaOptions = createReceitaOptions({ getConnection: () => config().receita, cacheDirectory: path.join(app.getPath('userData'), 'receita-options'), poolFactory: connection => new Pool(readOnlyPoolOptions(connection, { max: 1, timeout: 180000, connectionTimeout: 10000 })) });
+    const receitaOptions = createReceitaOptions({ getConnection: () => config().receita, cacheDirectory: path.join(app.getPath('userData'), 'receita-options'), poolFactory: connection => new Pool(readOnlyPoolOptions(connection, { max: 1, timeout: 180000, connectionTimeout: 10000 })),
+        // BigQuery options go through the shared client, so an expired login can start the renewal.
+        queryBq: action => queryBq(action) });
     const bq = () => createBqClient({ keyFile: store.get('flow_bq_key_file'), project: process.env.BQ_PROJECT || 'mbtech-bronze' });
     const login = createBqLogin({
         getMode: () => loginModeFor(store.get('flow_bq_key_file')),
@@ -85,9 +87,12 @@ function register() {
         getCacheDirectories: cacheDirectories,
         resolveConnections(flow) {
             const connections = config();
-            if (!connections.receita) throw new Error('Configure a base da Receita na tela de login.');
+            const fromBq = flow.generation?.source === 'bq';
+            if (!fromBq && !connections.receita) throw new Error('Configure a base da Receita na tela de login.');
             if ((flow.enrichment.enabled || flow.cleaning.blocklist || (flow.cleaning.enabled && flow.cleaning.invalidPhones)) && !connections.enrichment) throw new Error('Configure o banco do Gerenciador para enriquecimento e filtros de telefone.');
-            return connections;
+            if (!fromBq) return connections;
+            // The worker builds its own BigQuery client from this local credential path; the Receita pool is not needed.
+            return { enrichment: connections.enrichment, bq: { keyFile: store.get('flow_bq_key_file') || null, project: process.env.BQ_PROJECT || 'mbtech-bronze' } };
         },
         async resolveRoot(flow, options) {
             const source = flow.cleaning.enabled ? flow.cleaning.rootSource : 'none';

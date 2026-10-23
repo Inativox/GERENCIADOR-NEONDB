@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { FlowAPI, ReceitaOption, ReceitaOptionsInput } from './flowTypes';
+import type { FlowAPI, ReceitaOption, ReceitaOptionsInput, ReceitaSource } from './flowTypes';
 
-export function ReceitaSelect({ label, field, values, uf = [], cidade = [], disabled, api, onChange }: {
-    label: string; field: ReceitaOptionsInput['field']; values: string[]; uf?: string[]; cidade?: string[];
+export function ReceitaSelect({ label, field, values, uf = [], cidade = [], source = 'bq', disabled, api, onChange }: {
+    label: string; field: ReceitaOptionsInput['field']; values: string[]; uf?: string[]; cidade?: string[]; source?: ReceitaSource;
     disabled?: boolean; api: FlowAPI; onChange: (values: string[]) => void;
 }) {
     const id = useId(), root = useRef<HTMLDivElement>(null), searchInput = useRef<HTMLInputElement>(null);
@@ -12,7 +12,7 @@ export function ReceitaSelect({ label, field, values, uf = [], cidade = [], disa
     const [bulkResult, setBulkResult] = useState<{ message: string; error: boolean } | null>(null);
     const refreshRequested = useRef(false);
     const [offset, setOffset] = useState(0), [hasMore, setHasMore] = useState(false), [loading, setLoading] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
-    const filtersKey = JSON.stringify({ uf: field === 'cidade' || field === 'bairro' ? uf : [], cidade: field === 'bairro' ? cidade : [] });
+    const filtersKey = JSON.stringify({ uf: field === 'cidade' || field === 'bairro' ? uf : [], cidade: field === 'bairro' ? cidade : [], source });
     const sequence = useRef(0);
     useEffect(() => { setOffset(0); setOptions([]); sequence.current++; }, [search, filtersKey]);
     useEffect(() => {
