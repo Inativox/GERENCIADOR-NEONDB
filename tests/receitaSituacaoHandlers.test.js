@@ -6,15 +6,17 @@ function fixture(t) {
     const handlers = new Map(), workers = [], opened = [], sent = [];
     const sender = { isDestroyed: () => false, send: (_channel, value) => sent.push(value) }, state = { currentUser: { username: 'Davi', role: 'admin' }, mainWindow: { webContents: sender } };
     let lookup = async () => new Map([['12ABC34501DE35', { cnpj: '12ABC34501DE35', situacao_cadastral_cod: '02' }]]);
+    let lookupCnaes = async () => new Map();
+    const pools = [];
     class Worker extends EventEmitter { constructor(file, options) { super(); this.options = options; workers.push(this); } postMessage(value) { this.lastMessage = value; } }
-    class Pool { on() {} async end() {} }
+    class Pool { constructor(options) { this.options = options; pools.push(this); } on() {} async end() { this.ended = true; } }
     const filename = path.resolve('src/main/handlers/receitaSituacao.js'), actual = createRequire(filename), module = { exports: {} };
     const mocks = { electron: { app: { on() {} }, ipcMain: { handle: (name, handler) => handlers.set(name, handler), on() {} }, dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [path.join(directory, 'lista.xlsx')] }) }, shell: { openPath: async value => { opened.push(value); return ''; } } },
         '../state': state, pg: { Pool }, 'node:worker_threads': { Worker }, 'electron-store': class { get() { return 'postgresql://synthetic/private'; } },
-        '../receitaSituacao': { ...actual('../receitaSituacao'), lookup: (...args) => lookup(...args) } };
+        '../receitaSituacao': { ...actual('../receitaSituacao'), lookup: (...args) => lookup(...args), lookupCnaes: (...args) => lookupCnaes(...args) } };
     vm.runInNewContext(fs.readFileSync(filename, 'utf8'), { require: name => mocks[name] || actual(name), module, __dirname: path.dirname(filename), process: { env: {} } }, { filename });
     module.exports.register();
-    return { handlers, workers, opened, sent, state, invoke: (name, input, origin = sender) => handlers.get(name)({ sender: origin }, input), setLookup: value => { lookup = value; } };
+    return { handlers, workers, opened, sent, state, pools, invoke: (name, input, origin = sender) => handlers.get(name)({ sender: origin }, input), setLookup: value => { lookup = value; }, setLookupCnaes: value => { lookupCnaes = value; } };
 }
 test('all situation IPCs enforce role and originating renderer before reading data', async t => {
     const f = fixture(t); for (const [name] of f.handlers) assert.equal((await f.invoke(name, {}, {})).success, false);
@@ -52,4 +54,22 @@ test('manual query never returns results to a session that changed while awaitin
     const pending = f.invoke('receita-situacao-one', { cnpj: '12ABC34501DE35' });
     f.state.currentUser.username = 'Outro'; finish(new Map([['12ABC34501DE35', { cnpj: '12ABC34501DE35' }]]));
     assert.equal((await pending).success, false); assert.equal((await pending).result, undefined);
+});
+test('Limpeza Local consulta CNAEs pela conexão de leitura da Receita e fecha a conexão ao terminar', async t => {
+    const f = fixture(t), calls = [], onProgress = () => {};
+    f.setLookupCnaes(async (pool, documents, options) => { calls.push({ pool, documents, options }); return new Map([['12345678000199', '4781400']]); });
+    assert.equal(f.state.receitaCnaeService.configured(), true);
+    const result = await f.state.receitaCnaeService.lookupCnaes(['12345678000199'], { onProgress });
+    assert.deepEqual([...result], [['12345678000199', '4781400']]);
+    assert.equal(calls[0].pool, f.pools[0]);
+    assert.deepEqual(calls[0].documents, ['12345678000199']);
+    assert.equal(calls[0].options.onProgress, onProgress);
+    assert.match(f.pools[0].options.options, /default_transaction_read_only=on/);
+    assert.equal(f.pools[0].ended, true);
+});
+test('falha na consulta de CNAEs também fecha a conexão da Receita', async t => {
+    const f = fixture(t);
+    f.setLookupCnaes(async () => { throw new Error('Não foi possível consultar o CNAE no banco da Receita.'); });
+    await assert.rejects(f.state.receitaCnaeService.lookupCnaes(['12345678000199']), /consultar o CNAE/);
+    assert.equal(f.pools[0].ended, true);
 });
