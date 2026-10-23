@@ -10,7 +10,7 @@ const company = (index, matches = false) => ({ cnpj: code(index), razao_social: 
 function fixturePool(source, { failAt, onRead } = {}) {
     const calls = [];
     return { calls, async query(sql, values) {
-        if (sql.includes('information_schema.columns')) return { rows: ['cnpj','razao_social','situacao_cadastral_cod','atividade_principal_cod','opcao_mei','data_abertura','telefone_principal'].map(column_name => ({ column_name, data_type: column_name === 'cnpj' ? 'character' : column_name === 'data_abertura' ? 'date' : 'text' })) };
+        if (sql.includes('information_schema.columns')) return { rows: ['cnpj','razao_social','situacao_cadastral_cod','natureza_juridica_cod','atividade_principal_cod','opcao_mei','data_abertura','telefone_principal'].map(column_name => ({ column_name, data_type: column_name === 'cnpj' ? 'character' : column_name === 'data_abertura' ? 'date' : 'text' })) };
         const candidates = source.filter(row => row.cnpj > values[0]);
         if (sql.includes('__scan_end')) {
             const selected = candidates.slice(0, values.at(-1));

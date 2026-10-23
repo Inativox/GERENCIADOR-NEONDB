@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto');
 const { PROHIBITED_CNAES } = require('../database/connection');
 const { validateOutputName, resolveOutputName } = require('./outputNames');
+const { isAllowedNatureza } = require('./naturezas');
 const MAX_ROWS = Number.MAX_SAFE_INTEGER;
 const OPERATIONS = [
     { id: 'c6', name: 'C6 — Abertura', pipelines: [90] },
@@ -46,7 +47,7 @@ function validateFlow(input, existing, { resolveFormat = require('./formats').ge
     if (rootSource === 'file' && c.enabled !== false && !/\.(xlsx|csv)$/i.test(rootFile)) throw new Error('Selecione um arquivo raiz XLSX ou CSV.');
     resolveFormat(o.formatId, { includeSituacao: o.includeSituacao !== false });
     return { id, revision: (existing?.revision || 0) + 1, name, operation, pipelines,
-        generation: { limit: g.limit == null || g.limit === '' ? null : number(g.limit, 1, MAX_ROWS), uf: list(g.uf, /^[A-Z]{2}$/i).map(value => value.toUpperCase()), cidade: locations(g.cidade), bairro: locations(g.bairro), cnaes: list(g.cnaes, /^\d{1,7}$/, 500), naturezas: list(g.naturezas, /^\d{1,4}$/, 500), dateFrom: from, dateTo: to,
+        generation: { limit: g.limit == null || g.limit === '' ? null : number(g.limit, 1, MAX_ROWS), uf: list(g.uf, /^[A-Z]{2}$/i).map(value => value.toUpperCase()), cidade: locations(g.cidade), bairro: locations(g.bairro), cnaes: list(g.cnaes, /^\d{1,7}$/, 500), naturezas: list(g.naturezas, /^\d{1,4}$/, 500).filter(isAllowedNatureza), dateFrom: from, dateTo: to,
             mei: option(g.mei, ['all', 'yes', 'no']), phone: option(g.phone, ['all', 'with', 'without']), email: option(g.email, ['all', 'with', 'without']), situacoes, availability: option(g.availability, ['all', 'available']) },
         enrichment: { enabled: e.enabled === true, strategy: option(e.strategy, ['append', 'overwrite', 'ignore']), fillCpf: e.fillCpf === true },
         api: { enabled: operation === 'c6' && (input.api?.enabled == null || input.api.enabled === true), keyMode: 'dupla', delayMs: 60000 },

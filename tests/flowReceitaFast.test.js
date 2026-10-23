@@ -9,7 +9,7 @@ function fixture(source, { fail = false } = {}) {
         setImmediate(() => { for (const row of source) query.emit('row', row); query.emit(fail ? 'error' : 'end', fail ? new Error('private') : {}); });
     } };
     return { calls, get released() { return released; }, async connect() { return client; }, async query() {
-        return { rows: ['cnpj', 'razao_social', 'situacao_cadastral_cod'].map(column_name => ({ column_name, data_type: 'text' })) };
+        return { rows: ['cnpj', 'razao_social', 'situacao_cadastral_cod', 'natureza_juridica_cod'].map(column_name => ({ column_name, data_type: 'text' })) };
     } };
 }
 const row = n => ({ cnpj: String(n).padStart(14, '0'), razao_social: 'Sintética', situacao_cadastral_cod: '02' });

@@ -1,5 +1,6 @@
 'use strict';
 const { getReceitaMetadata } = require('./receita');
+const { isAllowedNatureza } = require('./naturezas');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
@@ -86,7 +87,7 @@ function createReceitaOptions({ getConnection, poolFactory, cacheDirectory, now 
         const key = JSON.stringify(scope);
         const persistent = PERSISTENT_CATALOGS.has(request.field);
         const page = rows => {
-            const filtered = rows.filter(row => (request.field !== 'cidade' || !request.uf.length || request.uf.includes(normalize(row.uf || ''))) && (!request.search || normalize(row.value).includes(request.search) || normalize(row.label).includes(request.search)));
+            const filtered = rows.filter(row => (request.field !== 'naturezas' || isAllowedNatureza(row.value)) && (request.field !== 'cidade' || !request.uf.length || request.uf.includes(normalize(row.uf || ''))) && (!request.search || normalize(row.value).includes(request.search) || normalize(row.label).includes(request.search)));
             const options = [...new Map(filtered.map(row => [row.value, row])).values()];
             return { options: options.slice(request.offset, request.offset + 50).map(row => ({ value: row.value, label: row.label === row.value ? row.value : `${row.value} · ${row.label}` })), hasMore: options.length > request.offset + 50 };
         };

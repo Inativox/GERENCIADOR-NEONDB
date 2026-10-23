@@ -165,6 +165,53 @@ test('export failure preserves confirmed parts and retries without regenerating 
     assert.equal(maps, 3); assert.ok(confirmed.every(file => result.outputs.some(output => path.basename(output.path) === file)));
 });
 
+test('uncertain Fastway upload resumes at the pending file without regenerating or resending confirmed parts', async t => {
+    const jobDir = await setup(t); const config = flow(); config.output.rowsPerFile = 1;
+    config.output.fileName = 'lista rca'; config.fastway = { enabled: true, campaignId: '120' };
+    let generationCalls = 0; let fail = true; const sent = [];
+    const fake = providers([row(1, ['11999990001']), row(2, ['11999990002'])]);
+    const iterate = fake.iterateReceita;
+    fake.iterateReceita = args => { generationCalls++; return iterate(args); };
+    fake.uploadMailing = async ({ file }) => {
+        if (fail && sent.length === 1) throw new Error('socket hang up');
+        sent.push(path.basename(file)); return { rows: 1 };
+    };
+    const args = { flow: config, user: { username: 'Davi' }, jobDir, providers: fake, cachePolicy: { prune: true } };
+    await assert.rejects(runFlow(args));
+    assert.deepEqual(sent, ['lista rca parte1.csv']);
+    await assert.rejects(runFlow(args), error => error.code === 'FLOW_VALIDATION' && /não confirmou lista rca parte2\.csv/.test(error.message));
+    fail = false; const result = await runFlow({ ...args, retryUncertainUpload: true });
+    assert.equal(result.status, 'completed'); assert.equal(generationCalls, 1);
+    assert.deepEqual(sent, ['lista rca parte1.csv', 'lista rca parte2.csv']);
+});
+test('rejected Fastway login waits and resends the same file without stopping the flow', async t => {
+    const jobDir = await setup(t); const config = flow(); config.output.rowsPerFile = 1;
+    config.output.fileName = 'lista rca'; config.fastway = { enabled: true, campaignId: '120' };
+    const attempts = []; const waits = []; const logs = [];
+    const fake = providers([row(1, ['11999990001']), row(2, ['11999990002'])]);
+    fake.wait = async ms => { waits.push(ms); };
+    fake.uploadMailing = async ({ file }) => {
+        attempts.push(path.basename(file));
+        if (attempts.length === 2) throw Object.assign(new Error('HTTP 481'), { code: 'FLOW_VALIDATION', loginRejected: true });
+        return { rows: 1 };
+    };
+    const result = await runFlow({ flow: config, user: { username: 'Davi' }, jobDir, providers: fake, onUpdate: data => data.log && logs.push(data.log) });
+    assert.equal(result.status, 'completed'); assert.deepEqual(waits, [60000]);
+    assert.deepEqual(attempts, ['lista rca parte1.csv', 'lista rca parte2.csv', 'lista rca parte2.csv']);
+    assert.ok(logs.some(log => /recusou o login ao enviar lista rca parte2\.csv \(tentativa 1\)/.test(log)));
+});
+test('Fastway login rejected beyond the retry limit stops with the file pending', async t => {
+    const jobDir = await setup(t); const config = flow(); config.output.rowsPerFile = 2;
+    config.output.fileName = 'lista rca'; config.fastway = { enabled: true, campaignId: '120' };
+    let attempts = 0;
+    const fake = providers([row(1, ['11999990001'])]);
+    fake.wait = async () => {};
+    fake.uploadMailing = async () => { attempts++; throw Object.assign(new Error('HTTP 481'), { code: 'FLOW_VALIDATION', loginRejected: true }); };
+    await assert.rejects(runFlow({ flow: config, user: { username: 'Davi' }, jobDir, providers: fake }), /HTTP 481/);
+    assert.equal(attempts, 6);
+    const checkpoint = JSON.parse(await fs.readFile(path.join(jobDir, 'checkpoint.json'), 'utf8'));
+    assert.equal(path.basename(checkpoint.stages.upload.pending), 'lista rca parte1.csv');
+});
 test('generation reads up to 50000 rows without query timeouts and exports the returned company', async t => {
     const jobDir = await setup(t);
     const ConnectionParameters = require('pg/lib/connection-parameters');
@@ -178,7 +225,7 @@ test('generation reads up to 50000 rows without query timeouts and exports the r
             return { on() {}, async end() {}, async query(sql) {
                 if (sql.includes('information_schema')) return { rows: [
                     {column_name:'cnpj',data_type:'text'}, {column_name:'razao_social',data_type:'text'},
-                    {column_name:'situacao_cadastral_cod',data_type:'text'}, {column_name:'telefone_principal',data_type:'text'}
+                    {column_name:'situacao_cadastral_cod',data_type:'text'}, {column_name:'natureza_juridica_cod',data_type:'text'}, {column_name:'telefone_principal',data_type:'text'}
                 ] };
                 return { rows: [{cnpj:'00000000000001',razao_social:'Sintetica',situacao_cadastral_cod:'02',telefone_principal:'11999990001'}] };
             } };
@@ -345,7 +392,7 @@ for (const address of [{ cidade: '', bairro: '' }, { cidade: 'Campinas', bairro:
         const input = defaults(); input.api.enabled = false; Object.assign(input.generation, address);
         const user = { username: 'Operador' }; const config = effectiveFlow(validateFlow(input), user);
         const columns = { cnpj: 'text', razao_social: 'text', situacao_cadastral_cod: 'text',
-            telefone_principal: 'text', telefone_secundario: 'text', cidade: 'text', bairro: 'text' };
+            telefone_principal: 'text', telefone_secundario: 'text', cidade: 'text', bairro: 'text', natureza_juridica_cod: 'text' };
         const calls = [];
         const pool = { async connect() {
             return { connection: { stream: { pause() {}, resume() {} } }, release() {}, query(query) {
@@ -374,7 +421,7 @@ for (const address of [{ cidade: '', bairro: '' }, { cidade: 'Campinas', bairro:
 test('unordered generation resumes confirmed files even when the next scan changes order', async t => {
     const jobDir = await setup(t); const config = flow(); config.generation.limit = 4;
     const controller = new AbortController(); let order = [9, 1, 7, 3];
-    const pool = { async query() { return { rows: ['cnpj','razao_social','situacao_cadastral_cod','telefone_principal'].map(column_name => ({ column_name, data_type: 'text' })) }; }, async connect() {
+    const pool = { async query() { return { rows: ['cnpj','razao_social','situacao_cadastral_cod','natureza_juridica_cod','telefone_principal'].map(column_name => ({ column_name, data_type: 'text' })) }; }, async connect() {
         return { connection: { stream: { pause() {}, resume() {}, destroy() {} } }, release() {}, query(query) {
             assert.doesNotMatch(query.text, /ORDER BY|OFFSET|"cnpj" >/);
             setImmediate(() => { for (const n of order) query.emit('row', { cnpj: String(n).padStart(14,'0'), razao_social: 'Synthetic', situacao_cadastral_cod: '02', telefone_principal: `1199999000${n}` }); query.emit('end', {}); });

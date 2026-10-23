@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { iterateReceita, getReceitaMetadata, MAX_ROWS } = require('../src/main/flows/receita');
+const { ALLOWED_NATUREZAS } = require('../src/main/flows/naturezas');
 
 const COLUMNS = {
     cnpj: 'character varying', razao_social: 'text', situacao_cadastral_cod: 'text', situacao_cadastral: 'text',
@@ -47,8 +48,8 @@ test('saved availability excludes clients, unknown and missing results before co
     assert.deepEqual(pages.map(page => page.rows.map(item => item.cnpj)), [[row(3).cnpj, row(6).cnpj], [row(7).cnpj]]);
     const reads = pool.calls.filter(call => !call.sql.includes('information_schema'));
     assert.equal(pool.calls.filter(call => call.values[1] === 'limpeza_api').length, 1);
-    assert.deepEqual(reads.map(call => call.values), [['', ['02'], 'disponivel', 2], [row(6).cnpj, ['02'], 'disponivel', 1]]);
-    assert.match(reads[0].sql, /EXISTS \(SELECT 1 FROM "public"\."limpeza_api" a WHERE a\."cnpj" = e\."cnpj"::bpchar AND a\."status" = \$3::varchar\).*LIMIT \$4::integer/);
+    assert.deepEqual(reads.map(call => call.values), [['', ['02'], 'disponivel', [...ALLOWED_NATUREZAS], 2], [row(6).cnpj, ['02'], 'disponivel', [...ALLOWED_NATUREZAS], 1]]);
+    assert.match(reads[0].sql, /EXISTS \(SELECT 1 FROM "public"\."limpeza_api" a WHERE a\."cnpj" = e\."cnpj"::bpchar AND a\."status" = \$3::varchar\).*LIMIT \$5::integer/);
     assert.doesNotMatch(reads[0].sql, /a\."cnpj"::|disponivel|JOIN/);
     const resumed = await collect({ pool: fixturePool({ rows, saved }), filters: { availability: 'available' }, afterCnpj: pages[0].cursor, batchSize: 2 });
     assert.deepEqual(resumed.flatMap(page => page.rows.map(item => item.cnpj)), [row(7).cnpj, row(9).cnpj]);
@@ -167,7 +168,7 @@ test('Receita metadata rejects missing required and numeric CNPJ columns with fr
 });
 
 test('Receita adapts optional situation aliases, derives description and preserves date and reason', async () => {
-    const columns = { cnpj: 'text', razao_social: 'text', codigo_situacao_cadastral: 'integer', data_situacao_cadastral: 'date', motivo_situacao_cadastral: 'text' };
+    const columns = { cnpj: 'text', razao_social: 'text', codigo_situacao_cadastral: 'integer', data_situacao_cadastral: 'date', motivo_situacao_cadastral: 'text', natureza_juridica_cod: 'text' };
     const pool = fixturePool({ columns, rows: [{ ...row(1), situacao_cadastral_cod: 8, situacao_cadastral_data: '2026-09-01', situacao_motivo: 'Encerramento' }] });
     const metadata = await getReceitaMetadata(pool);
     assert.equal(metadata.fields.situacao_cadastral_data, 'data_situacao_cadastral');
@@ -181,7 +182,7 @@ test('Receita adapts optional situation aliases, derives description and preserv
 });
 
 test('Receita refuses a requested filter whose optional column is missing', async () => {
-    const columns = { cnpj: 'text', razao_social: 'text', situacao_cadastral_cod: 'text' };
+    const columns = { cnpj: 'text', razao_social: 'text', situacao_cadastral_cod: 'text', natureza_juridica_cod: 'text' };
     await assert.rejects(collect({ pool: fixturePool({ columns }), filters: { cidade: ['Campinas'] } }), /coluna Receita ausente: cidade/);
     await assert.rejects(collect({ pool: fixturePool({ columns }), filters: { phone: 'without' } }), /colunas Receita ausentes: telefone_principal, telefone_secundario/);
 });

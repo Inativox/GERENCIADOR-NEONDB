@@ -15,6 +15,7 @@ function poolFixture({ cnpjType = 'character', situationType = 'character', erro
                 { column_name: 'cnpj', data_type: cnpjType },
                 { column_name: 'razao_social', data_type: 'text' },
                 { column_name: 'situacao_cadastral_cod', data_type: situationType },
+                { column_name: 'natureza_juridica_cod', data_type: 'text' },
             ] };
             queries.push({ text, values });
             if (error) throw error;

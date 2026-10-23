@@ -1,6 +1,7 @@
 'use strict';
 const { CNPJ_FORMAT } = require('../documentos');
 const { telefoneParaGeracao } = require('./telefones');
+const { ALLOWED_NATUREZAS, isAllowedNatureza } = require('./naturezas');
 
 const MAX_ROWS = Number.MAX_SAFE_INTEGER;
 const MAX_BATCH_SIZE = 100000;
@@ -83,6 +84,11 @@ function mode(value, name, values) {
     if (!values.includes(selected)) fail(`Filtro Receita inválido: ${name}.`);
     return selected;
 }
+function allowedNaturezas(selected) {
+    const blocked = selected.filter(code => !isAllowedNatureza(code));
+    if (blocked.length) fail(`Natureza jurídica não permitida: ${blocked.join(', ')}. Use apenas ${ALLOWED_NATUREZAS.join(', ')}.`);
+    return selected.length ? selected : [...ALLOWED_NATUREZAS];
+}
 function normalizeFilters(filters) {
     if (!filters || typeof filters !== 'object' || Array.isArray(filters)) fail('Filtros Receita inválidos.');
     const limit = filters.limit == null || filters.limit === '' ? null : filters.limit;
@@ -92,7 +98,7 @@ function normalizeFilters(filters) {
     const normalized = {
         limit, situacoes, uf: textList(filters.uf, 'uf').map(normalizeText),
         cidade: textList(filters.cidade, 'cidade').map(normalizeText), bairro: textList(filters.bairro, 'bairro').map(normalizeText),
-        cnaes: textList(filters.cnaes, 'cnaes'), naturezas: textList(filters.naturezas, 'naturezas'),
+        cnaes: textList(filters.cnaes, 'cnaes'), naturezas: allowedNaturezas(textList(filters.naturezas, 'naturezas')),
         dateFrom: isoDate(filters.dateFrom, 'dateFrom'), dateTo: isoDate(filters.dateTo, 'dateTo'),
         mei: mode(filters.mei, 'mei', ['all', 'yes', 'no']),
         availability: mode(filters.availability, 'availability', ['all', 'available']),
