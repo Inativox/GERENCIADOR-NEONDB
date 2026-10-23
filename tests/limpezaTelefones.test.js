@@ -28,6 +28,7 @@ function isolatedProcessor(query, write = (wb, file) => XLSX.writeFile(wb, file)
         electron: {}, path, fs, xlsx: XLSX, exceljs: {}, '../state': {},
         '../flows/config': require('../src/main/flows/config'),
         '../flows/pipeline': require('../src/main/flows/pipeline'),
+        '../receitaSituacao': require('../src/main/receitaSituacao'),
         '../database/connection': { PROHIBITED_CNAES: new Set(), queryWithRetry: query },
         './files': { readSpreadsheet: async file => XLSX.readFile(file), writeSpreadsheet: write },
         '../limpezaTelefones': require('../src/main/limpezaTelefones')
