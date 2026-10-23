@@ -14,25 +14,44 @@ const SITUACOES = { '01': 'Nula', '02': 'Ativa', '03': 'Suspensa', '04': 'Inapta
 function error(message) { return Object.assign(new Error(message), { code: 'RECEITA_SITUACAO' }); }
 function cancelled(signal) { if (signal?.aborted) throw error('Consulta cancelada. O arquivo original foi preservado.'); }
 function document(value) { return cnpjText(value) || restoreCnpj(value); }
+const quote = value => `"${value.replace(/"/g, '""')}"`;
+// A coluna cnpj da Receita é character(14). Comparada com text[], o Postgres converte a
+// coluna, perde o índice da chave primária e varre os 65 mi de linhas (estourava os 60 s
+// até com 1 CNPJ). No tipo da própria coluna, 1.000 CNPJs saem em ~1 s pelo índice.
+function byCnpj(metadata) {
+    const arrayType = metadata.types?.[metadata.fields.cnpj] === 'character' ? 'bpchar' : 'text';
+    return `${quote(metadata.fields.cnpj)} = ANY($1::${arrayType}[])`;
+}
 async function lookup(pool, values, metadata) {
     const documents = [...new Set(values.map(document).filter(Boolean))];
     if (values.length > 1000) throw error('Consulte até 1.000 CNPJs por lote.');
     if (!documents.length) return new Map();
     metadata ||= await getReceitaMetadata(pool);
-    const quote = value => `"${value.replace(/"/g, '""')}"`;
     const fields = ['cnpj', 'razao_social', 'situacao_cadastral_cod', 'situacao_cadastral', 'situacao_cadastral_data', 'situacao_motivo', 'ultima_atualizacao', 'opcao_mei'];
     const selection = fields.map(field => `${metadata.fields[field] ? `${quote(metadata.fields[field])}::text` : 'NULL::text'} AS ${quote(field)}`).join(', ');
-    // A coluna cnpj da Receita é character(14). Comparada com text[], o Postgres converte a
-    // coluna, perde o índice da chave primária e varre os 65 mi de linhas (estourava os 60 s
-    // até com 1 CNPJ). No tipo da própria coluna, 1.000 CNPJs saem em ~1 s pelo índice.
-    const arrayType = metadata.types?.[metadata.fields.cnpj] === 'character' ? 'bpchar' : 'text';
     let rows;
-    try { rows = (await pool.query(`SELECT ${selection} FROM public.empresas WHERE ${quote(metadata.fields.cnpj)} = ANY($1::${arrayType}[])`, [documents])).rows; }
+    try { rows = (await pool.query(`SELECT ${selection} FROM public.empresas WHERE ${byCnpj(metadata)}`, [documents])).rows; }
     catch { throw error('Não foi possível consultar a situação no banco da Receita. Confira a conexão e tente novamente.'); }
     return new Map(rows.map(row => {
         const code = String(row.situacao_cadastral_cod || '').padStart(2, '0');
         return [String(row.cnpj).trim(), { ...row, cnpj: String(row.cnpj).trim(), situacao_cadastral_cod: code, situacao_cadastral: row.situacao_cadastral || SITUACOES[code] || 'Não informada' }];
     }));
+}
+// CNAE principal de cada CNPJ, para o "Manter só estes CNAEs" da Limpeza Local. Lotes de 1.000 pela chave primária.
+async function lookupCnaes(pool, values, { onProgress = () => {} } = {}) {
+    const documents = [...new Set(values.map(document).filter(Boolean))], cnaes = new Map();
+    if (!documents.length) return cnaes;
+    const metadata = await getReceitaMetadata(pool), cnae = metadata.fields.atividade_principal_cod;
+    if (!cnae) throw error('A base da Receita não tem a coluna atividade_principal_cod. O filtro de CNAEs não pode ser aplicado.');
+    for (let start = 0; start < documents.length; start += 1000) {
+        const batch = documents.slice(start, start + 1000);
+        let rows;
+        try { rows = (await pool.query(`SELECT ${quote(metadata.fields.cnpj)}::text AS cnpj, ${quote(cnae)}::text AS cnae FROM public.empresas WHERE ${byCnpj(metadata)}`, [batch])).rows; }
+        catch { throw error('Não foi possível consultar o CNAE no banco da Receita. Confira a conexão e tente novamente.'); }
+        rows.forEach(row => cnaes.set(String(row.cnpj).trim(), String(row.cnae ?? '').trim()));
+        onProgress(start + batch.length);
+    }
+    return cnaes;
 }
 // O que pode ficar na saída. 'outra' é código fora dos cinco da Receita.
 const KEEP_OPTIONS = ['ativa', 'baixada', 'inapta', 'suspensa', 'nula', 'outra', 'nao_encontrado', 'invalido'];
@@ -150,4 +169,4 @@ async function annotateFile({ filename, outputDirectory, pool, signal, keep, rem
         throw cause.code === 'RECEITA_SITUACAO' || cause.code === 'FLOW_VALIDATION' ? cause : error('Não foi possível processar a lista. Confira o formato, a pasta e o espaço disponível. O original foi preservado.');
     }
 }
-module.exports = { lookup, annotateFile, document, normalizeKeep, KEEP_OPTIONS };
+module.exports = { lookup, lookupCnaes, annotateFile, document, normalizeKeep, KEEP_OPTIONS };
