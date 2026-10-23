@@ -160,11 +160,11 @@
                                 <label class="cleaning-option toggle-switch"><span>Verificar blocklist<small>Remove linhas com telefones bloqueados. Obrigatório, exceto para Davi.</small></span><span class="switch"><input type="checkbox" id="checkBlocklistCheckbox" checked disabled><span class="slider"></span></span></label>
                                 <label class="cleaning-option toggle-switch"><span>Verificar números inválidos<small>Consulta o filtro de números do banco.</small></span><span class="switch"><input type="checkbox" id="checkNumerosInvalidosCheckbox"><span class="slider"></span></span></label>
                                 <label class="cleaning-option toggle-switch"><span>Preencher Livre5<small>Nome da lista e data da limpeza.</small></span><span class="switch"><input type="checkbox" id="fillLivre5Checkbox"><span class="slider"></span></span></label>
-                                <label class="cleaning-option toggle-switch"><span>Manter só estes CNAEs<small>Remove as linhas cujo CNAE não está na lista colada.</small></span><span class="switch"><input type="checkbox" id="keepCnaesCheckbox" aria-controls="keepCnaesField"><span class="slider"></span></span></label>
+                                <label class="cleaning-option toggle-switch"><span>Manter só estes CNAEs<small>Confere o CNAE principal de cada CNPJ na Receita e remove os que não estão na lista.</small></span><span class="switch"><input type="checkbox" id="keepCnaesCheckbox" aria-controls="keepCnaesField"><span class="slider"></span></span></label>
                                 <div id="keepCnaesField" class="keep-cnaes-field" hidden>
                                     <label for="keepCnaesInput">CNAEs que ficam na lista</label>
                                     <textarea id="keepCnaesInput" rows="4" spellcheck="false" placeholder="Ex:&#10;4781-4/00&#10;5611201, 4711302" aria-describedby="keepCnaesHint"></textarea>
-                                    <small id="keepCnaesHint">Separe por linhas, espaços, vírgulas ou ponto e vírgula. Use 7 dígitos ou o formato 4781-4/00. A planilha precisa da coluna cnae ou livre3.</small>
+                                    <small id="keepCnaesHint">Separe por linhas, espaços, vírgulas ou ponto e vírgula. Use 7 dígitos ou o formato 4781-4/00. CNPJ fora da Receita também sai da lista.</small>
                                 </div>
                             </div>
                         </details>
