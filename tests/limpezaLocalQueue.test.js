@@ -321,3 +321,27 @@ test('lista de CNAEs colada chega à limpeza de cada planilha', async t => {
         ['cnpj', 'fone1', 'cnae'], ['12345678000199', 21998364849, '4781-4/00']
     ]);
 });
+
+test('fim do lote soma as linhas fora da lista de CNAEs de todas as planilhas', async t => {
+    const f = fixture(t);
+    const sheets = [
+        [['cnpj', 'fone1', 'cnae'], ['12345678000199', '21998364849', '4781400'], ['22345678000199', '11987654321', '4711302']],
+        [['cnpj', 'fone1', 'livre3'], ['32345678000199', '21998364848', '5611201'], ['42345678000199', '11987654322', ''], ['52345678000199', '11987654323', '4781400']]
+    ];
+    sheets.forEach((rows, index) => {
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), 'Base');
+        XLSX.writeFile(workbook, f.files[index].path);
+    });
+    await f.start({ keepCnaesText: '4781400' });
+    const logs = f.messages.filter(m => m.channel === 'log').map(m => m.payload);
+    assert.ok(logs.some(log => log.includes('Fora da lista de CNAEs no lote: 3 linhas')));
+});
+
+test('sem a lista de CNAEs o fim do lote não mostra o total de CNAEs', async t => {
+    const f = fixture(t);
+    await f.start();
+    const logs = f.messages.filter(m => m.channel === 'log').map(m => m.payload);
+    assert.equal(f.messages.at(-1).payload.success, true);
+    assert.equal(logs.some(log => log.includes('Fora da lista de CNAEs no lote')), false);
+});
