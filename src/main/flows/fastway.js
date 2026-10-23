@@ -99,6 +99,8 @@ async function upload({ file, campaignId, credentials, signal }) {
         return { rows: converted.rows, file: path.basename(file) };
     } catch (error) {
         if (error.code === 'FLOW_CANCELLED' || error.name === 'AbortError' || signal?.aborted) throw Object.assign(new Error('Envio cancelado.'), { code: 'FLOW_CANCELLED' });
+        // HTTP 481 is the Fastway login rejection: the mailing is not imported.
+        if (error.response?.status === 481) throw Object.assign(safeError(`A Fastway recusou o login (HTTP 481)${answerExcerpt(error.response.data, credentials.password)}. O arquivo não foi importado.`), { loginRejected: true });
         if (error.response) throw safeError(`A Fastway respondeu HTTP ${error.response.status}${answerExcerpt(error.response.data, credentials.password)}. Confirme no painel se o mailing foi recebido antes de retomar para evitar duplicidade.`);
         if (error.code === 'FLOW_VALIDATION') throw error;
         throw safeError('Não foi possível confirmar a resposta da Fastway. Confira o painel antes de retomar, pois o servidor pode ter recebido o arquivo.');

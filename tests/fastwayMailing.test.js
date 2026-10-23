@@ -40,6 +40,7 @@ test('erro HTTP da Fastway mostra o que ela respondeu, sem HTML e sem a senha', 
     const fastway = fastwayAnswering(async () => { throw Object.assign(new Error('Request failed'), { response: { status: 481, data: '<html><b>Logon   synthetic-user</b> sem permissão (senha synthetic-pass)</html>' } }); });
     await assert.rejects(fastway.upload({ file, campaignId: '63', credentials: { login: 'synthetic-user', password: 'synthetic-pass' } }), error => {
         assert.equal(error.code, 'FLOW_VALIDATION');
+        assert.equal(error.loginRejected, true);
         assert.match(error.message, /HTTP 481/); assert.match(error.message, /Logon synthetic-user sem permissão/);
         assert.doesNotMatch(error.message, /synthetic-pass|<b>/);
         return true;

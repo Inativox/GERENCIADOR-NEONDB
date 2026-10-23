@@ -8,6 +8,7 @@ const { records, entries } = require('./jsonl');
 const { openStageCache } = require('./stageCache');
 const { createPackedWriter, writeBuffered } = require('./packedJsonl');
 const { finished } = require('node:stream/promises');
+const { setTimeout: wait } = require('node:timers/promises');
 const ExcelJS = require('exceljs');
 const { readOnlyPoolOptions } = require('./postgres');
 const { normalizarDocumento } = require('../limpezaTelefones');
@@ -17,6 +18,9 @@ const { resolveOutputName } = require('./outputNames');
 
 const BATCH_SIZE = 2000;
 const STAGES = ['generation', 'enrichment', 'api', 'cleaning', 'export', 'upload'];
+// A rejected Fastway login means the file was not received, so the same file can be sent again.
+const FASTWAY_LOGIN_RETRIES = 5;
+const FASTWAY_LOGIN_WAIT_MS = 60000;
 function abort(signal) {
     if (signal?.aborted) {
         const error = new Error('Execução cancelada.');
@@ -275,8 +279,9 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         abort(signal);
         await cleanupRetiredStages().catch(() => {});
         // Every retained checkpoint points to a stage file confirmed by atomic rename.
+        // Export keeps outputs instead of a stage file; they are checked before upload.
         for (const name of STAGES.slice(0, -1)) {
-            if (checkpoint.stages[name] && !checkpoint.stages[name].retired) await fsp.access(checkpoint.stages[name].file);
+            if (checkpoint.stages[name]?.file && !checkpoint.stages[name].retired) await fsp.access(checkpoint.stages[name].file);
         }
         if (!checkpoint.stages.generation) {
             stage = 'generation';
@@ -461,7 +466,7 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                 update({ log: `Enviando ${path.basename(output.path)} para a Fastway.` });
                 const before = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed], pending: output.path } } };
                 await atomicJson(checkpointPath, before); checkpoint = before;
-                const result = await providers.uploadMailing({ file: output.path, campaignId: flow.fastway.campaignId, signal });
+                const result = await uploadWithLoginRetry({ providers, file: output.path, campaignId: flow.fastway.campaignId, signal, update });
                 confirmed.add(output.path);
                 const next = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed], last: { file: path.basename(output.path), rows: result.rows } } } };
                 await atomicJson(checkpointPath, next);
@@ -480,6 +485,19 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         if (checkpoint) update({ status: friendly(stage, error).code === 'FLOW_CANCELLED' ? 'cancelled' : 'failed', log: stage === 'upload' && checkpoint.stages.upload?.pending ? 'Envio Fastway sem confirmação. Confira o painel antes de autorizar um reenvio.' : friendly(stage, error).message });
         throw friendly(stage, error);
     } finally { await Promise.allSettled(ownedPools.map(pool => pool.end())); }
+}
+
+async function uploadWithLoginRetry({ providers, file, campaignId, signal, update }) {
+    const sleep = providers.wait || ((ms, abortSignal) => wait(ms, undefined, { signal: abortSignal }));
+    for (let attempt = 1; ; attempt++) {
+        try { return await providers.uploadMailing({ file, campaignId, signal }); }
+        catch (error) {
+            if (!error.loginRejected || attempt > FASTWAY_LOGIN_RETRIES) throw error;
+            update({ log: `A Fastway recusou o login ao enviar ${path.basename(file)} (tentativa ${attempt}); o arquivo não foi recebido. Nova tentativa em 1 minuto.` });
+            await sleep(FASTWAY_LOGIN_WAIT_MS, signal);
+            abort(signal);
+        }
+    }
 }
 
 async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPerFile, commit, update, onProgress }) {
