@@ -26,7 +26,6 @@ function opcoes(overrides = {}) {
         removeLandlines: false,
         checkNumerosInvalidos: false,
         fillLivre5: false,
-        generateCsv: false,
         cleaningDate: '22/10/2026',
         isAutoRoot: true,
         ...overrides
@@ -46,7 +45,7 @@ test('gera o csv com as linhas ja limpas, ao lado do xlsx', async (t) => {
     const resultado = await processFile(
         { path: caminho, id: 'arquivo-1' },
         new Set(['98765432000188']),
-        opcoes({ generateCsv: true }),
+        opcoes(),
         event
     );
 
@@ -64,20 +63,20 @@ test('o csv gerado passa na validacao do Importar Mailing', async (t) => {
         ['11222333000144', 'Empresa "B"', '11977776666', '1133334444', 'obs']
     ]);
 
-    await processFile({ path: caminho, id: 'arquivo-2' }, new Set(), opcoes({ generateCsv: true }), event);
+    await processFile({ path: caminho, id: 'arquivo-2' }, new Set(), opcoes(), event);
 
     assert.deepEqual(await inspectCsv(caminhoCsv(caminho)), { rows: 2 });
 });
 
-test('nao gera csv quando a opcao esta desligada', async (t) => {
-    const caminho = criarPlanilha(t, 'sem_csv.xlsx', [
+test('gera o csv em toda limpeza, mesmo com a opcao antiga desligada', async (t) => {
+    const caminho = criarPlanilha(t, 'sempre_csv.xlsx', [
         ['cpf', 'nome', 'fone1'],
         ['01234567000199', 'Empresa A', '11999998888']
     ]);
 
-    await processFile({ path: caminho, id: 'arquivo-3' }, new Set(), opcoes(), event);
+    await processFile({ path: caminho, id: 'arquivo-3' }, new Set(), opcoes({ generateCsv: false }), event);
 
-    assert.equal(fs.existsSync(caminhoCsv(caminho)), false);
+    assert.equal(fs.readFileSync(caminhoCsv(caminho), 'utf8').slice(1), '"cpf";"nome";"fone1"\r\n"01234567000199";"Empresa A";"11999998888"\r\n');
 });
 
 test('lista que ja e csv nao ganha um segundo csv', async (t) => {
@@ -86,7 +85,7 @@ test('lista que ja e csv nao ganha um segundo csv', async (t) => {
         ['01234567000199', 'Empresa A', '11999998888']
     ]);
 
-    const resultado = await processFile({ path: caminho, id: 'arquivo-5' }, new Set(), opcoes({ generateCsv: true }), event);
+    const resultado = await processFile({ path: caminho, id: 'arquivo-5' }, new Set(), opcoes(), event);
 
     assert.deepEqual(fs.readdirSync(path.dirname(caminho)), ['ja_csv.csv']);
     assert.ok(resultado.logs.some(log => log.includes('já é CSV')));
@@ -100,7 +99,7 @@ test('falha ao gravar o csv nao desfaz a limpeza do xlsx', async (t) => {
     // Uma pasta com o nome do CSV simula o arquivo travado (ex.: aberto no Excel).
     fs.mkdirSync(caminhoCsv(caminho));
 
-    const resultado = await processFile({ path: caminho, id: 'arquivo-4' }, new Set(), opcoes({ generateCsv: true }), event);
+    const resultado = await processFile({ path: caminho, id: 'arquivo-4' }, new Set(), opcoes(), event);
 
     assert.ok(resultado.processed);
     const dados = XLSX.utils.sheet_to_json(XLSX.readFile(caminho).Sheets.Base, { header: 1 });
