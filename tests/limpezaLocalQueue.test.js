@@ -36,7 +36,8 @@ function fixture(t, query) {
         '../limpezaTelefones': require('../src/main/limpezaTelefones'),
         '../flows/config': require('../src/main/flows/config'),
         '../flows/pipeline': require('../src/main/flows/pipeline'),
-        '../database/connection': { PROHIBITED_CNAES: new Set(), queryWithRetry: async (...args) => { queries++; if (query) return query(...args); throw new Error('Banco não deve ser acessado'); }, logSystemAction() {} },
+        '../receitaSituacao': require('../src/main/receitaSituacao'),
+        '../database/connection': { PROHIBITED_CNAES: new Set(['4731800']), queryWithRetry: async (...args) => { queries++; if (query) return query(...args); throw new Error('Banco não deve ser acessado'); }, logSystemAction() {} },
         './files': {
             readSpreadsheet: async file => {
                 reads.push(path.basename(file));
@@ -307,35 +308,68 @@ test('lista de CNAEs com código inválido é recusada antes de abrir qualquer p
     assert.equal(f.messages.at(-1).payload.success, false);
 });
 
-test('lista de CNAEs colada chega à limpeza de cada planilha', async t => {
-    const f = fixture(t);
+// CNAE principal na Receita, consultado pelo serviço que o handler da Situação Receita registra.
+function receita(f, cnaes) {
+    const calls = [];
+    f.state.receitaCnaeService = {
+        configured: () => true,
+        lookupCnaes: async (documents, options) => { calls.push({ documents, options }); return new Map(documents.filter(cnpj => cnaes[cnpj] !== undefined).map(cnpj => [cnpj, cnaes[cnpj]])); }
+    };
+    return calls;
+}
+function writeSheet(file, rows) {
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-        ['cnpj', 'fone1', 'cnae'], ['12345678000199', '21998364849', '4781-4/00'], ['22345678000199', '11987654321', '4711302']
-    ]), 'Base');
-    XLSX.writeFile(workbook, f.files[0].path);
-    await f.start({ cleanFiles: [f.files[0]], keepCnaesText: '4781400' });
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), 'Base');
+    XLSX.writeFile(workbook, file);
+}
+const logsOf = f => f.messages.filter(m => m.channel === 'log').map(m => m.payload);
+
+test('sem a conexão da Receita, o filtro de CNAEs é recusado antes de abrir qualquer planilha', async t => {
+    const f = fixture(t);
+    await f.start({ keepCnaesText: '4781400' });
+    assert.equal(f.reads.length, 0);
+    assert.ok(logsOf(f).some(log => log.includes('Configure o banco da Receita')));
+    assert.equal(f.messages.at(-1).payload.success, false);
+});
+
+test('lista de CNAEs colada filtra a planilha pelo CNAE principal de cada CNPJ na Receita', async t => {
+    const f = fixture(t);
+    const calls = receita(f, { '12345678000199': '4781400', '22345678000199': '4711302' });
+    writeSheet(f.files[0].path, [['cnpj', 'fone1'], ['12345678000199', '21998364849'], ['22345678000199', '11987654321']]);
+    await f.start({ cleanFiles: [f.files[0]], keepCnaesText: '4781-4/00' });
     assert.equal(f.messages.at(-1).payload.success, true);
+    assert.deepEqual(calls.map(call => [...call.documents]), [['12345678000199', '22345678000199']]);
+    assert.equal(typeof calls[0].options.onProgress, 'function');
     const result = XLSX.readFile(f.files[0].path);
-    assert.deepEqual(XLSX.utils.sheet_to_json(result.Sheets.Base, { header: 1 }), [
-        ['cnpj', 'fone1', 'cnae'], ['12345678000199', 21998364849, '4781-4/00']
-    ]);
+    assert.deepEqual(XLSX.utils.sheet_to_json(result.Sheets.Base, { header: 1 }), [['cnpj', 'fone1'], ['12345678000199', 21998364849]]);
+});
+
+test('CNAE proibido colado é ignorado e avisado, e essas empresas saem da lista', async t => {
+    const f = fixture(t);
+    receita(f, { '12345678000199': '4731800', '22345678000199': '4781400' });
+    writeSheet(f.files[0].path, [['cnpj', 'fone1'], ['12345678000199', '21998364849'], ['22345678000199', '11987654321']]);
+    await f.start({ cleanFiles: [f.files[0]], keepCnaesText: '4731-8/00 4781400' });
+    assert.ok(logsOf(f).some(log => log.includes('CNAEs proibidos ignorados: 4731800')));
+    const result = XLSX.readFile(f.files[0].path);
+    assert.deepEqual(XLSX.utils.sheet_to_json(result.Sheets.Base, { header: 1 }), [['cnpj', 'fone1'], ['22345678000199', 11987654321]]);
+});
+
+test('lista só com CNAEs proibidos é recusada antes de abrir qualquer planilha', async t => {
+    const f = fixture(t);
+    receita(f, {});
+    await f.start({ keepCnaesText: '4731800' });
+    assert.equal(f.reads.length, 0);
+    assert.ok(logsOf(f).some(log => log.includes('Todos os CNAEs colados são proibidos')));
+    assert.equal(f.messages.at(-1).payload.success, false);
 });
 
 test('fim do lote soma as linhas fora da lista de CNAEs de todas as planilhas', async t => {
     const f = fixture(t);
-    const sheets = [
-        [['cnpj', 'fone1', 'cnae'], ['12345678000199', '21998364849', '4781400'], ['22345678000199', '11987654321', '4711302']],
-        [['cnpj', 'fone1', 'livre3'], ['32345678000199', '21998364848', '5611201'], ['42345678000199', '11987654322', ''], ['52345678000199', '11987654323', '4781400']]
-    ];
-    sheets.forEach((rows, index) => {
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), 'Base');
-        XLSX.writeFile(workbook, f.files[index].path);
-    });
+    receita(f, { '12345678000199': '4781400', '22345678000199': '4711302', '32345678000199': '5611201', '52345678000199': '4781400' });
+    writeSheet(f.files[0].path, [['cnpj', 'fone1'], ['12345678000199', '21998364849'], ['22345678000199', '11987654321']]);
+    writeSheet(f.files[1].path, [['cnpj', 'fone1'], ['32345678000199', '21998364848'], ['42345678000199', '11987654322'], ['52345678000199', '11987654323']]);
     await f.start({ keepCnaesText: '4781400' });
-    const logs = f.messages.filter(m => m.channel === 'log').map(m => m.payload);
-    assert.ok(logs.some(log => log.includes('Fora da lista de CNAEs no lote: 3 linhas')));
+    assert.ok(logsOf(f).some(log => log.includes('Fora da lista de CNAEs no lote: 3 linhas')));
 });
 
 test('sem a lista de CNAEs o fim do lote não mostra o total de CNAEs', async t => {
