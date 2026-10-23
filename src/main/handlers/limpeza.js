@@ -15,6 +15,7 @@ const { readSpreadsheet, writeSpreadsheet } = require('./files');
 const { normalizarTelefone, phoneIndices, createCrossListContext, cruzarECompactar, commitCrossList } = require('../limpezaTelefones');
 const { OPERATIONS } = require('../flows/config');
 const { csvRow } = require('../flows/pipeline');
+const { document: receitaCnpj } = require('../receitaSituacao');
 
 
 
@@ -55,6 +56,23 @@ function parseKeepCnaes(text) {
     return new Set(tokens.map(cnaeKey));
 }
 
+const PROHIBITED_KEYS = new Set([...PROHIBITED_CNAES].map(cnaeKey));
+// Proibidos colados saem da lista: essas empresas são removidas como qualquer CNAE fora dela.
+function withoutProhibited(keepCnaes) {
+    const ignored = [...keepCnaes].filter(code => PROHIBITED_KEYS.has(code));
+    ignored.forEach(code => keepCnaes.delete(code));
+    if (!keepCnaes.size) throw new Error('Todos os CNAEs colados são proibidos. Nenhuma linha ficaria na lista.');
+    return ignored;
+}
+
+// Uma consulta por planilha: cada CNPJ válido vai uma vez à Receita, que devolve o CNAE principal.
+async function loadReceitaCnaes(rows, column, findCnaes, log, progress) {
+    const documents = [...new Set(rows.map(row => receitaCnpj(row[column])).filter(Boolean))];
+    const cnaes = await findCnaes(documents, done => progress(Math.floor((done / documents.length) * 100)));
+    log(`🔎 CNAE principal na Receita: ${cnaes.size.toLocaleString('pt-BR')} de ${documents.length.toLocaleString('pt-BR')} CNPJs encontrados.`);
+    return cnaes;
+}
+
 // --- PROCESSAMENTO DE ARQUIVO DE LIMPEZA ---
 async function processFile(fileObj, rootSet, options, event, crossList = createCrossListContext()) {
     const file = fileObj.path;
@@ -62,7 +80,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
     const logBuffer = [];
     const log = (msg) => logBuffer.push(msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
-    const { backup, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, keepCnaes, cleaningDate } = options;
+    const { backup, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, keepCnaes, findCnaes, cleaningDate } = options;
 
     const cleanClientName = (name) => {
         if (!name || typeof name !== 'string') return name;
@@ -98,11 +116,6 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         log(`❌ ERRO: A coluna "cpf" ou "cnpj" não foi encontrada em ${path.basename(file)}. Pulando este arquivo.`);
         return { processed: false, logs: logBuffer };
     }
-    // Sem a coluna, o filtro devolveria a lista inteira: a planilha é pulada sem alteração.
-    if (keepCnaes && cnaeColIdx === -1) {
-        log(`❌ ERRO: "Manter só estes CNAEs" está ativo, mas ${path.basename(file)} não tem a coluna "cnae" ou "livre3". Pulando este arquivo.`);
-        return { processed: false, logs: logBuffer };
-    }
     if (nomeColIdx === -1) {
         log(`⚠️ AVISO: Nenhuma coluna "nome" encontrada em ${path.basename(file)}. A limpeza de nomes será ignorada para este arquivo.`);
     }
@@ -123,10 +136,12 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         log(`🏷️ A coluna "livre5" de ${path.basename(file)} será preenchida com "${livre5Value}".`);
     }
 
+    const cnaeByCnpj = keepCnaes ? await loadReceitaCnaes(data.slice(1), cpfColIdx, findCnaes, log, progress) : null;
     const cleaned = [header];
     let removedByRoot = 0;
     let removedByCnae = 0;
     let removedOutsideCnaes = 0;
+    let withoutReceitaCnae = 0;
     let removedByBlocklist = 0;
     let removedInvalidPhonesNumber = 0; // adicionado por enzo
     let removedDdiCount = 0;
@@ -154,8 +169,13 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
                 removedByCnae++;
                 continue;
             }
-            if (keepCnaes && !(cnaeValue && keepCnaes.has(cnaeKey(cnaeValue)))) {
+        }
+
+        if (cnaeByCnpj) {
+            const cnae = cnaeByCnpj.get(receitaCnpj(row[cpfColIdx]));
+            if (!cnae || !keepCnaes.has(cnaeKey(cnae))) {
                 removedOutsideCnaes++;
+                if (!cnae) withoutReceitaCnae++;
                 continue;
             }
         }
@@ -196,7 +216,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         await saveCsvCopy(file, result.rows, log);
         progress(100);
         if (!foneIdxs.length) log('Sem colunas fone: ajuste e exclusão de linhas sem contato não foram aplicados.');
-        log(`✅ ${path.basename(file)}\n   • Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae} | Blocklist: ${removedByBlocklist}${keepCnaes ? ` | Fora da lista de CNAEs: ${removedOutsideCnaes}` : ''}\n   • CNPJs repetidos: ${result.stats.repeatedDocuments} | Telefones repetidos: ${result.stats.repeatedPhones}\n   • Telefones sujos: ${dirtyPhones} | Números inválidos (BD): ${removedInvalidPhonesNumber}\n   • Linhas sem telefone: ${result.stats.withoutPhones} | Fones fixos: ${cleanedPhones} | DDIs removidos: ${removedDdiCount}\n   • Total final: ${result.rows.length - 1}`);
+        log(`✅ ${path.basename(file)}\n   • Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae} | Blocklist: ${removedByBlocklist}${keepCnaes ? ` | Fora da lista de CNAEs: ${removedOutsideCnaes} (sem CNAE na Receita: ${withoutReceitaCnae})` : ''}\n   • CNPJs repetidos: ${result.stats.repeatedDocuments} | Telefones repetidos: ${result.stats.repeatedPhones}\n   • Telefones sujos: ${dirtyPhones} | Números inválidos (BD): ${removedInvalidPhonesNumber}\n   • Linhas sem telefone: ${result.stats.withoutPhones} | Fones fixos: ${cleanedPhones} | DDIs removidos: ${removedDdiCount}\n   • Total final: ${result.rows.length - 1}`);
         return { processed: true, logs: logBuffer, removedOutsideCnaes };
     };
 
@@ -324,6 +344,8 @@ function register() {
             }
             // A tela só envia o texto com a chave ligada; a lista é validada aqui, antes de abrir qualquer planilha.
             const keepCnaes = args.keepCnaesText == null ? null : parseKeepCnaes(args.keepCnaesText);
+            if (keepCnaes && !state.receitaCnaeService?.configured()) throw new Error('Configure o banco da Receita na tela de login para usar "Manter só estes CNAEs".');
+            const ignoredCnaes = keepCnaes ? withoutProhibited(keepCnaes) : [];
             const rootSource = args.autoRootSource ?? 'neon';
             if (args.isAutoRoot && !['neon', 'bq'].includes(rootSource)) throw new Error('Escolha Banco de Dados ou BigQuery como fonte do Auto Raiz.');
             const operation = args.isAutoRoot && rootSource === 'bq' ? OPERATIONS.find(item => item.id === args.autoRootOperation) : null;
@@ -334,7 +356,8 @@ function register() {
             const cleaningDate = new Intl.DateTimeFormat('pt-BR', {
                 timeZone: 'America/Sao_Paulo'
             }).format(new Date());
-            const cleaningOptions = { ...args, cleaningDate, keepCnaes };
+            const findCnaes = (documents, onProgress) => state.receitaCnaeService.lookupCnaes(documents, { onProgress });
+            const cleaningOptions = { ...args, cleaningDate, keepCnaes, findCnaes };
             const crossList = createCrossListContext();
             log('Cruzamento do lote ativo: mantém a primeira ocorrência de CNPJ/telefone. Ajuste de fones obrigatório.');
             logSystemAction(state.currentUser.username, 'Limpeza Local', `Iniciou limpeza de ${args.cleanFiles.length} arquivos.`);
@@ -390,7 +413,8 @@ function register() {
             if (args.removeLandlines) log("Opção \"Remover Fones Fixos\" está ATIVADA.");
             log('CSV adicional: salvo ao lado de cada lista limpa.');
             log(`FILTRO DE CNAE PROIBIDO: ATIVADO (Padrão).`);
-            if (keepCnaes) log(`Opção "Manter só estes CNAEs" está ATIVADA: ${keepCnaes.size} CNAE(s) na lista.`);
+            if (keepCnaes) log(`Opção "Manter só estes CNAEs" está ATIVADA: ${keepCnaes.size} CNAE(s) na lista, conferidos pelo CNPJ no banco da Receita.`);
+            if (ignoredCnaes.length) log(`⚠️ CNAEs proibidos ignorados: ${ignoredCnaes.join(', ')}. Essas empresas saem da lista.`);
 
             const fileEvent = { sender: { send } };
             let removedOutsideCnaesTotal = 0;
