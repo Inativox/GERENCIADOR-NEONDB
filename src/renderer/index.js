@@ -569,7 +569,12 @@ document.addEventListener('DOMContentLoaded', () => {
     //adiciona captura de numeros inválidos
     const checkNumerosInvalidosCheckbox = document.getElementById('checkNumerosInvalidosCheckbox'); //adicionado por Enzo
     const fillLivre5Checkbox = document.getElementById('fillLivre5Checkbox');
-    const generateCsvCheckbox = document.getElementById('generateCsvCheckbox');
+    const keepCnaesCheckbox = document.getElementById('keepCnaesCheckbox');
+    const keepCnaesField = document.getElementById('keepCnaesField');
+    const keepCnaesInput = document.getElementById('keepCnaesInput');
+    function updateKeepCnaesField() { keepCnaesField.hidden = !keepCnaesCheckbox.checked; }
+    keepCnaesCheckbox.addEventListener('change', updateKeepCnaesField);
+    keepCnaesInput.addEventListener('input', saveCurrentUiSettings);
     const localCleaningStatus = document.getElementById('localCleaningStatus');
     const cadenceModeFlag = document.getElementById('cadence-mode-flag');
     function updateRootModeIndicator() {
@@ -626,7 +631,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setLocalCleaningBusy(busy) {
         localCleaningBusy = busy;
         if (busy) {
-            document.querySelectorAll('#local button, #local input, #local select').forEach(control => {
+            document.querySelectorAll('#local button, #local input, #local select, #local textarea').forEach(control => {
                 localControlStates.set(control, control.disabled);
                 control.disabled = true;
             });
@@ -658,7 +663,8 @@ document.addEventListener('DOMContentLoaded', () => {
             checkBlocklist: blocklistRequired || checkBlocklistCheckbox.checked,
             checkNumerosInvalidos: checkNumerosInvalidosCheckbox.checked, // adicionado por Enzo
             fillLivre5: fillLivre5Checkbox.checked,
-            generateCsv: generateCsvCheckbox.checked,
+            keepCnaes: keepCnaesCheckbox.checked,
+            keepCnaesText: keepCnaesInput.value,
             autoRoot: autoRootBtn.dataset.on === 'true',
             autoRootSource: autoRootSource.value,
             autoRootOperation: autoRootOperation.value,
@@ -715,7 +721,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof settings.checkBlocklist === 'boolean') preferredBlocklist = settings.checkBlocklist;
         applyBlocklistPolicy();
         setChecked(fillLivre5Checkbox, settings.fillLivre5);
-        setChecked(generateCsvCheckbox, settings.generateCsv);
+        if (typeof settings.keepCnaesText === 'string') keepCnaesInput.value = settings.keepCnaesText;
+        setChecked(keepCnaesCheckbox, settings.keepCnaes);
         autoRootSource.value = settings.autoRootSource === 'bq' ? 'bq' : 'neon';
         if (Array.from(autoRootOperation.options).some(option => option.value === settings.autoRootOperation)) autoRootOperation.value = settings.autoRootOperation;
         updateRootModeIndicator();
@@ -835,12 +842,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 autoAdjust: true,
                 checkBlocklist: blocklistRequired || checkBlocklistCheckbox.checked,
                 fillLivre5: fillLivre5Checkbox.checked,
-                generateCsv: generateCsvCheckbox.checked
+                keepCnaesText: keepCnaesCheckbox.checked ? keepCnaesInput.value : null
             });
         });
     }
 
-    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; backupEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) { autoAdjustPhonesCheckbox.checked = true; autoAdjustPhonesCheckbox.disabled = true; } if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkNumerosInvalidosCheckbox) checkNumerosInvalidosCheckbox.checked = false; preferredBlocklist = false; applyBlocklistPolicy(); if (fillLivre5Checkbox) fillLivre5Checkbox.checked = false; if (generateCsvCheckbox) generateCsvCheckbox.checked = false; if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } updateRootModeIndicator(); saveCurrentUiSettings(); appendLog('Módulo de Limpeza Local reiniciado.'); });
+    if (resetLocalBtn) resetLocalBtn.addEventListener('click', () => { rootFile = null; cleanFiles = []; backupEnabled = false; removeLandlinesEnabled = false; if (rootFilePathSpan) rootFilePathSpan.innerHTML = ''; if (selectedCleanFilesDiv) selectedCleanFilesDiv.innerHTML = ''; if (progressContainer) progressContainer.innerHTML = ''; if (logDiv) logDiv.textContent = ''; if (backupCheckbox) backupCheckbox.querySelector('input').checked = false; if (autoAdjustPhonesCheckbox) { autoAdjustPhonesCheckbox.checked = true; autoAdjustPhonesCheckbox.disabled = true; } if (removeLandlinesCheckbox) removeLandlinesCheckbox.checked = false; if (checkNumerosInvalidosCheckbox) checkNumerosInvalidosCheckbox.checked = false; preferredBlocklist = false; applyBlocklistPolicy(); if (fillLivre5Checkbox) fillLivre5Checkbox.checked = false; keepCnaesCheckbox.checked = false; keepCnaesInput.value = ''; updateKeepCnaesField(); if (autoRootBtn) { delete autoRootBtn.dataset.on; autoRootBtn.textContent = 'Auto Raiz: OFF'; selectRootBtn.disabled = false; } updateRootModeIndicator(); saveCurrentUiSettings(); appendLog('Módulo de Limpeza Local reiniciado.'); });
     if (feedRootBtn) feedRootBtn.addEventListener('click', async () => { appendLog('Selecionando arquivos para alimentar a base Raiz...'); const files = await window.electronAPI.selectFile({ title: 'Selecione planilhas com CNPJs para a Raiz', multi: true }); if (!files || files.length === 0) { appendLog('Nenhum arquivo selecionado. Operação cancelada.'); return; } feedRootBtn.disabled = true; appendLog(`Iniciando o processo de alimentação da Raiz com ${files.length} arquivo(s).`); window.electronAPI.feedRootDatabase(files); });
     window.electronAPI.onRootFeedFinished(() => { if (feedRootBtn) feedRootBtn.disabled = false; appendLog('✅ Processo de alimentação da Raiz finalizado.'); });
     window.electronAPI.onLog((msg) => appendLog(msg));

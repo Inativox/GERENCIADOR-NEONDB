@@ -229,11 +229,11 @@ app.whenReady().then(async () => {
     }
     selectedPaths = localFiles;
     await evaluate(`document.getElementById('update-overlay').classList.remove('visible'); document.querySelector('[data-tab-name="local"]').click(); document.getElementById('resetLocalBtn').click()`);
-    await evaluate(`document.getElementById('fillLivre5Checkbox').click(); document.getElementById('generateCsvCheckbox').click(); document.getElementById('backupCheckbox').click()`);
+    await evaluate(`document.getElementById('fillLivre5Checkbox').click(); document.getElementById('backupCheckbox').click()`);
     await waitFor(`document.getElementById('backupCheckbox').checked`);
     assert.equal(savedUiSettings.fillLivre5, true);
-    assert.equal(savedUiSettings.generateCsv, true);
     assert.equal(savedUiSettings.backup, true);
+    assert.equal(savedUiSettings.keepCnaes, false);
     assert.equal(savedUiSettings.autoAdjust, true);
     assert.equal(Object.hasOwn(savedUiSettings, 'checkDb'), false);
     assert.equal(Object.hasOwn(savedUiSettings, 'saveToDb'), false);
@@ -261,6 +261,36 @@ app.whenReady().then(async () => {
         assert.equal(csvLines.length, 2);
         assert.match(csvLines[1], new RegExp(`^"[12]2345678000199";"${index === 0 ? 'Empresa Sol' : 'Empresa Lua'}";"${index === 0 ? 21998364849 : 11987654321}";"lista [AB] \\| \\d{2}/\\d{2}/\\d{4}";""$`));
     }
+    // "Manter só estes CNAEs": a chave mostra a caixa, a lista colada é salva e só o CNAE listado fica.
+    const cnaeFile = path.join(userData, 'lista CNAE.xlsx');
+    const cnaeWorkbook = new ExcelJS.Workbook(), cnaeSheet = cnaeWorkbook.addWorksheet('Base');
+    cnaeSheet.addRow(['cnpj', 'nome', 'fone1', 'cnae']);
+    cnaeSheet.addRow(['12345678000199', 'Fica', '21998364849', '4781400']);
+    cnaeSheet.addRow(['22345678000199', 'Sai', '11987654321', '4711302']);
+    await cnaeWorkbook.xlsx.writeFile(cnaeFile);
+    selectedPaths = [cnaeFile];
+    await evaluate(`document.getElementById('resetLocalBtn').click()`);
+    assert.equal(await evaluate(`document.getElementById('keepCnaesField').hidden`), true);
+    await evaluate(`document.getElementById('keepCnaesCheckbox').click()`);
+    await waitFor(`!document.getElementById('keepCnaesField').hidden`);
+    await evaluate(`const box = document.getElementById('keepCnaesInput'); box.value = '4781-4/00'; box.dispatchEvent(new Event('input'))`);
+    assert.equal(savedUiSettings.keepCnaes, true);
+    assert.equal(savedUiSettings.keepCnaesText, '4781-4/00');
+    await evaluate(`document.getElementById('addCleanFileBtn').click()`);
+    await waitFor(`document.querySelectorAll('#progressContainer .file-progress').length === 1`);
+    await evaluate(`document.getElementById('keepCnaesField').scrollIntoView({ block: 'center' })`);
+    await delay(300);
+    await fs.writeFile(path.resolve(__dirname, '../out/local-keep-cnaes.png'), (await window.webContents.capturePage()).toPNG());
+    await evaluate(`document.getElementById('startCleaningBtn').click()`);
+    assert.equal(await evaluate(`document.getElementById('keepCnaesInput').disabled && document.getElementById('keepCnaesCheckbox').disabled`), true);
+    await waitFor(`document.getElementById('localCleaningStatus').textContent === 'Lote concluído'`);
+    assert.equal(await evaluate(`document.getElementById('keepCnaesInput').disabled`), false);
+    const cnaeResult = new ExcelJS.Workbook(); await cnaeResult.xlsx.readFile(cnaeFile);
+    assert.equal(cnaeResult.worksheets[0].rowCount, 2);
+    assert.equal(cnaeResult.worksheets[0].getCell('B2').value, 'Fica');
+    assert.equal((await fs.readFile(cnaeFile.replace(/\.xlsx$/, '.csv'), 'utf8')).split('\r\n').filter(Boolean).length, 2);
+    await evaluate(`document.getElementById('resetLocalBtn').click()`);
+    assert.equal(await evaluate(`document.getElementById('keepCnaesCheckbox').checked || !document.getElementById('keepCnaesField').hidden`), false);
     // BQ uses a synthetic provider and temporary XLSX files, never Google or Neon.
     const bqFile = path.join(userData, 'lista BQ.xlsx');
     const bqWorkbook = new ExcelJS.Workbook(), bqSheet = bqWorkbook.addWorksheet('Base');

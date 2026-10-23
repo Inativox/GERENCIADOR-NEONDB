@@ -119,6 +119,11 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .cleaning-option + .cleaning-option { border-top: 1px solid var(--border-color); }
 .cleaning-option > span:first-child { color: var(--text-primary); font-size: 12px; font-weight: 500; }
 .cleaning-option small { display: block; color: var(--text-secondary); font-size: 11px; font-weight: 400; margin-top: 3px; line-height: 1.5; }
+.keep-cnaes-field { display: grid; gap: 6px; padding: 2px 0 12px; }
+.keep-cnaes-field[hidden] { display: none; }
+.keep-cnaes-field label { margin: 0; font-size: 12px; color: var(--text-primary); }
+.keep-cnaes-field textarea { width: 100%; min-height: 84px; margin: 0; resize: vertical; font-family: var(--font-mono); font-size: 12px; }
+.keep-cnaes-field small { color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
 .cadence-flag { align-self: flex-start; margin-top: 12px; padding: 4px 8px; border-radius: 5px; background: color-mix(in srgb, var(--accent-yellow) 10%, var(--bg-card)); color: var(--accent-yellow); font-size: 11px; font-weight: 600; }
 .cadence-flag[hidden] { display: none; }
 .local-activity-status { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: var(--text-secondary); font-size: 11px; padding-bottom: 16px; }
