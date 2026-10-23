@@ -1,7 +1,7 @@
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs/promises'), path = require('node:path'), os = require('node:os');
 const ExcelJS = require('exceljs');
-const { lookup, annotateFile, document } = require('../src/main/receitaSituacao');
+const { lookup, lookupCnaes, annotateFile, document } = require('../src/main/receitaSituacao');
 const { cnpjCheckDigits } = require('../src/main/documentos');
 const { normalizarDocumento } = require('../src/main/limpezaTelefones');
 const { restoreCnpj } = require('../src/main/flows/bq');
@@ -156,4 +156,40 @@ test('CSV from a CNPJ list passes the Importar Mailing header check (nome, cpf, 
     const { file } = await listFile(t, 'CNPJ;nome;fone1\n12ABC34501DE35;Não MEI;11999990000\n12345678000190;MEI;11999990001\n11444777000161;Fora da base;11999990002');
     const result = await annotateFile({ filename: file, pool: meiPool(), removeMei: true, csv: true });
     assert.deepEqual(await inspectCsv(result.csvOutput), { rows: 2 });
+});
+// CNAE principal por CNPJ, usado pelo filtro "Manter só estes CNAEs" da Limpeza Local.
+function cnaePool({ cnpjType = 'text', fail = false } = {}) {
+    const calls = [], cnaes = { '04252011000110': '0111301', '12345678000199': '4781400' };
+    return { calls, query: async (sql, values) => {
+        if (sql.includes('information_schema')) return { rows: [...columns, 'atividade_principal_cod'].map(column_name => ({ column_name, data_type: column_name === 'cnpj' ? cnpjType : 'text' })) };
+        calls.push({ sql, values });
+        if (fail) throw new Error('connection terminated: postgresql://synthetic/private');
+        return { rows: values[0].filter(cnpj => cnaes[cnpj]).map(cnpj => ({ cnpj: `${cnpj}`, cnae: cnaes[cnpj] })) };
+    } };
+}
+test('CNAE lookup returns the principal CNAE of each found CNPJ, querying each document once', async () => {
+    const pool = cnaePool();
+    const result = await lookupCnaes(pool, [4252011000110, '04.252.011/0001-10', '12345678000199', '11444777000161', '12345678901']);
+    assert.deepEqual([...result], [['04252011000110', '0111301'], ['12345678000199', '4781400']]);
+    assert.deepEqual(pool.calls[0].values, [['04252011000110', '12345678000199', '11444777000161']]);
+    assert.match(pool.calls[0].sql, /"atividade_principal_cod"/);
+});
+test('CNAE lookup splits long lists in batches of 1.000 and reports progress after each one', async () => {
+    const pool = cnaePool({ cnpjType: 'character' }), progress = [];
+    const documents = Array.from({ length: 2500 }, (_, index) => String(10000000000000 + index * 100));
+    await lookupCnaes(pool, documents, { onProgress: done => progress.push(done) });
+    assert.deepEqual(pool.calls.map(call => call.values[0].length), [1000, 1000, 500]);
+    assert.match(pool.calls[0].sql, /= ANY\(\$1::bpchar\[\]\)/);
+    assert.deepEqual(progress, [1000, 2000, 2500]);
+});
+test('CNAE lookup failure gives a friendly message without the connection details', async () => {
+    await assert.rejects(lookupCnaes(cnaePool({ fail: true }), ['12345678000199']), error => {
+        assert.match(error.message, /CNAE.*Receita/);
+        assert.doesNotMatch(error.message, /postgresql|synthetic/);
+        return true;
+    });
+});
+test('CNAE lookup stops when the Receita base has no principal CNAE column', async () => {
+    const pool = { query: async () => ({ rows: columns.map(column_name => ({ column_name, data_type: 'text' })) }) };
+    await assert.rejects(lookupCnaes(pool, ['12345678000199']), /atividade_principal_cod/);
 });
