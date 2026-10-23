@@ -39,73 +39,110 @@ function opcoes(overrides = {}) {
 
 const event = { sender: { send() {} } };
 
-const BASE_COM_CNAES = [
-    ['cnpj', 'nome', 'fone1', 'cnae'],
-    ['11111111000111', 'Mantida formatada', '11999990001', '4781-4/00'],
-    ['22222222000122', 'Mantida numerica', '11999990002', 5611201],
-    ['33333333000133', 'Outro CNAE', '11999990003', '4711302'],
-    ['44444444000144', 'Sem CNAE', '11999990004', ''],
-    ['55555555000155', 'Zero perdido no Excel', '11999990005', 111301]
+// CNAE principal na Receita, por CNPJ. 55555555000155 está na base sem CNAE preenchido.
+const RECEITA = new Map([
+    ['11111111000111', '4781400'],
+    ['22222222000122', '5611201'],
+    ['33333333000133', '4711302'],
+    ['04252011000110', '0111301'],
+    ['55555555000155', '']
+]);
+function receita(consultas = []) {
+    return async documentos => {
+        consultas.push(documentos);
+        return new Map(documentos.filter(cnpj => RECEITA.has(cnpj)).map(cnpj => [cnpj, RECEITA.get(cnpj)]));
+    };
+}
+
+const LISTA_SEM_CNAE = [
+    ['cnpj', 'nome', 'fone1'],
+    ['11.111.111/0001-11', 'Mantida formatada', '11999990001'],
+    [22222222000122, 'Mantida numerica', '11999990002'],
+    ['33333333000133', 'Outro CNAE', '11999990003'],
+    ['44444444000144', 'Fora da Receita', '11999990004'],
+    [4252011000110, 'Zero perdido no Excel', '11999990005'],
+    ['55555555000155', 'Sem CNAE na Receita', '11999990006'],
+    ['123.456.789-01', 'CPF', '11999990007']
 ];
 
-test('mantem so as linhas com CNAE da lista e conta as removidas no resumo', async (t) => {
-    const caminho = criarPlanilha(t, 'cnaes.xlsx', BASE_COM_CNAES);
+test('mantem so os CNPJs cujo CNAE principal na Receita esta na lista', async (t) => {
+    const caminho = criarPlanilha(t, 'pagbank.xlsx', LISTA_SEM_CNAE);
+    const consultas = [];
 
     const resultado = await processFile(
         { path: caminho, id: 'arquivo-1' },
         new Set(),
-        opcoes({ keepCnaes: new Set(['4781400', '5611201', '0111301']) }),
+        opcoes({ keepCnaes: new Set(['4781400', '5611201', '0111301']), findCnaes: receita(consultas) }),
         event
     );
 
     assert.ok(resultado.processed);
     assert.deepEqual(lerNomes(caminho), ['Mantida formatada', 'Mantida numerica', 'Zero perdido no Excel']);
-    assert.ok(resultado.logs.some(log => log.includes('Fora da lista de CNAEs: 2')));
+    assert.deepEqual(consultas, [['11111111000111', '22222222000122', '33333333000133', '44444444000144', '04252011000110', '55555555000155']]);
+    assert.equal(resultado.removedOutsideCnaes, 4);
+    assert.ok(resultado.logs.some(log => log.includes('Fora da lista de CNAEs: 4 (sem CNAE na Receita: 3)')));
 });
 
-test('sem a lista de CNAEs, nenhuma linha sai por CNAE permitido', async (t) => {
-    const caminho = criarPlanilha(t, 'sem_filtro.xlsx', BASE_COM_CNAES);
-
-    await processFile({ path: caminho, id: 'arquivo-2' }, new Set(), opcoes(), event);
-
-    assert.deepEqual(lerNomes(caminho), ['Mantida formatada', 'Mantida numerica', 'Outro CNAE', 'Sem CNAE', 'Zero perdido no Excel']);
-});
-
-test('CNAE proibido sai mesmo quando esta na lista colada', async (t) => {
-    const caminho = criarPlanilha(t, 'proibido.xlsx', [
+test('o CNAE da Receita vale mesmo quando a planilha tem coluna de CNAE', async (t) => {
+    const caminho = criarPlanilha(t, 'com_coluna.xlsx', [
         ['cnpj', 'nome', 'fone1', 'cnae'],
-        ['11111111000111', 'Proibida', '11999990001', '4731800'],
-        ['22222222000122', 'Permitida', '11999990002', '4781400']
+        ['33333333000133', 'Coluna desatualizada', '11999990003', '4781400'],
+        ['11111111000111', 'Receita confirma', '11999990001', '4711302']
     ]);
+
+    await processFile(
+        { path: caminho, id: 'arquivo-2' },
+        new Set(),
+        opcoes({ keepCnaes: new Set(['4781400']), findCnaes: receita() }),
+        event
+    );
+
+    assert.deepEqual(lerNomes(caminho), ['Receita confirma']);
+});
+
+test('sem a lista de CNAEs, a Receita nao e consultada e nenhuma linha sai por CNAE', async (t) => {
+    const caminho = criarPlanilha(t, 'sem_filtro.xlsx', LISTA_SEM_CNAE);
 
     await processFile(
         { path: caminho, id: 'arquivo-3' },
         new Set(),
-        opcoes({ keepCnaes: new Set(['4731800', '4781400']) }),
+        opcoes({ findCnaes: async () => { throw new Error('A Receita não deveria ser consultada'); } }),
+        event
+    );
+
+    assert.deepEqual(lerNomes(caminho), LISTA_SEM_CNAE.slice(1).map(linha => linha[1]));
+});
+
+test('CNAE proibido na coluna da planilha continua saindo com o filtro ligado', async (t) => {
+    const caminho = criarPlanilha(t, 'proibido.xlsx', [
+        ['cnpj', 'nome', 'fone1', 'cnae'],
+        ['11111111000111', 'Proibida na planilha', '11999990001', '4731800'],
+        ['22222222000122', 'Permitida', '11999990002', '5611201']
+    ]);
+
+    await processFile(
+        { path: caminho, id: 'arquivo-4' },
+        new Set(),
+        opcoes({ keepCnaes: new Set(['4781400', '5611201']), findCnaes: receita() }),
         event
     );
 
     assert.deepEqual(lerNomes(caminho), ['Permitida']);
 });
 
-test('planilha sem coluna de CNAE e pulada intacta quando o filtro esta ativo', async (t) => {
-    const caminho = criarPlanilha(t, 'sem_coluna.xlsx', [
-        ['cnpj', 'nome', 'fone1'],
-        ['11111111000111', '123 Empresa A', '11999990001']
-    ]);
+test('falha ao consultar a Receita interrompe sem alterar a planilha', async (t) => {
+    const caminho = criarPlanilha(t, 'falha.xlsx', LISTA_SEM_CNAE);
     const original = fs.readFileSync(caminho);
 
-    const resultado = await processFile(
-        { path: caminho, id: 'arquivo-4' },
+    await assert.rejects(processFile(
+        { path: caminho, id: 'arquivo-5' },
         new Set(),
-        opcoes({ keepCnaes: new Set(['4781400']) }),
+        opcoes({ keepCnaes: new Set(['4781400']), findCnaes: async () => { throw new Error('Não foi possível consultar o CNAE no banco da Receita.'); } }),
         event
-    );
+    ), /consultar o CNAE/);
 
-    assert.equal(resultado.processed, false);
     assert.deepEqual(fs.readFileSync(caminho), original);
-    assert.deepEqual(fs.readdirSync(path.dirname(caminho)), ['sem_coluna.xlsx']);
-    assert.ok(resultado.logs.some(log => log.includes('sem_coluna.xlsx') && log.includes('cnae')));
+    assert.deepEqual(fs.readdirSync(path.dirname(caminho)), ['falha.xlsx']);
 });
 
 test('le CNAEs colados com qualquer separador, com ou sem pontuacao', () => {
