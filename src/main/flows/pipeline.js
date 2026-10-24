@@ -109,6 +109,28 @@ function safeCell(value) {
 }
 function csvRow(values) { return values.map(value => `"${safeCell(value).replace(/"/g, '""')}"`).join(';') + '\r\n'; }
 
+// Receita fields a flow needs: the output layout plus what enrichment and cleaning read.
+// A layout column naming anything else keeps every field, so nothing comes out empty.
+const DERIVED_FIELDS = Object.freeze({ cnpj_numerico: ['cnpj'], atividade_principal_cod_num: ['atividade_principal_cod'], ano_abertura: ['data_abertura'],
+    telefone_principal_num: ['telefone_principal'], telefone_secundario_num: ['telefone_secundario'] });
+const UNSOURCED_FIELDS = new Set(['manual', 'fixo_vazio', 'fixo_c6', 'fixo_olos', 'fixo_flex']);
+function generationFields(format) {
+    const { FIELD_ALIASES } = require('./receita');
+    const fields = new Set(['cnpj', 'razao_social', 'situacao_cadastral_cod', 'situacao_cadastral', 'telefone_principal', 'telefone_secundario', 'atividade_principal_cod']);
+    const add = name => {
+        if (UNSOURCED_FIELDS.has(name) || /^telefone_[1-9]\d*$/.test(name)) return true;
+        const sources = DERIVED_FIELDS[name] || (Object.hasOwn(FIELD_ALIASES, name) ? [name] : null);
+        sources?.forEach(source => fields.add(source));
+        return Boolean(sources);
+    };
+    for (const column of format.colunas) {
+        if (typeof column === 'string') return null;
+        const names = column.campo === 'composto' ? column.partes || [] : [column.campo];
+        if (!names.every(add)) return null;
+    }
+    return [...fields];
+}
+
 function outputFormat(flow, providers, checkpoint) {
     const formats = providers.getFormat && providers.mapOutputRow ? providers : require('./formats');
     const context = { operation: flow.operation, fillLivre5: flow.cleaning?.enabled !== false && flow.cleaning?.fillLivre5,
@@ -307,7 +329,8 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                     for await (const row of records(file, signal)) cache.remember('generation-cnpj', row.cnpj);
                     await cache.confirm({ unorderedResume: true });
                 }
-                for await (const batch of iterate({ pool, filters, afterCnpj: cache.state.cursor, savedCount: cache.state.rows, isSaved: cnpj => cache.has('generation-cnpj', cnpj), batchSize: Math.min(batchSize, 50000), signal })) {
+                const fields = fromBq ? generationFields(outputFormat(flow, providers, checkpoint).format) : undefined;
+                for await (const batch of iterate({ pool, filters, afterCnpj: cache.state.cursor, savedCount: cache.state.rows, isSaved: cnpj => cache.has('generation-cnpj', cnpj), batchSize: Math.min(batchSize, 50000), signal, fields })) {
                     abort(signal);
                     for (const row of batch.rows) {
                         await emit(canonical(row));
@@ -662,4 +685,4 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
     }
 }
 
-module.exports = { runFlow, canonical, csvRow, safeCell, queryEnrichment, queryPhones };
+module.exports = { runFlow, canonical, csvRow, safeCell, queryEnrichment, queryPhones, generationFields };

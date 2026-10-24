@@ -171,3 +171,12 @@ test('limite de bytes do BigQuery vira mensagem própria (FLOW_VALIDATION)', asy
     const limit = Object.assign(new Error('limite'), { code: 'BQ_BYTES_LIMIT' });
     await assert.rejects(drain(iterateReceitaBq({ bq: fakeBq([], { fail: limit }), filters: {} })), { code: 'FLOW_VALIDATION', message: 'A consulta da Receita no BigQuery passou do limite de custo configurado (80 GB). Restrinja os filtros ou use a fonte Neon.' });
 });
+test('com campos pedidos, seleciona só eles e sempre os obrigatórios; sem campos, todos', () => {
+    const { query } = buildBqQuery({}, { fields: ['data_abertura', 'telefone_principal'] });
+    const selected = [...query.split(' FROM ')[0].matchAll(/ AS ([a-z_]+)/g)].map(match => match[1]);
+    assert.deepEqual(selected, ['cnpj', 'razao_social', 'situacao_cadastral_cod', 'situacao_cadastral', 'telefone_principal', 'data_abertura']);
+    // Filters still read their own fields, whatever is selected.
+    assert.match(query, /natureza_juridica_cod'\) IN UNNEST\(@naturezas\)/);
+    assert.equal([...buildBqQuery({}, { fields: null }).query.split(' FROM ')[0].matchAll(/ AS ([a-z_]+)/g)].length, Object.keys(FIELD_ALIASES).length);
+    assert.throws(() => buildBqQuery({}, { fields: ['payload'] }), /Campos Receita inválidos/);
+});

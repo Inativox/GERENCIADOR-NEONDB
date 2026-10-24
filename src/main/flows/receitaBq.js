@@ -50,10 +50,18 @@ function whereClauses(filters, params) {
     return where;
 }
 
-function queryFor(filters, total) {
+// The payload is billed per JSON field read: selecting only what the flow uses reads less and downloads less.
+const REQUIRED = ['cnpj', 'razao_social', 'situacao_cadastral_cod', 'situacao_cadastral'];
+function selectedFields(fields) {
+    if (fields == null) return Object.keys(FIELD_ALIASES);
+    if (!Array.isArray(fields) || fields.some(name => !Object.hasOwn(FIELD_ALIASES, name))) fail('Campos Receita inválidos.');
+    return Object.keys(FIELD_ALIASES).filter(name => REQUIRED.includes(name) || fields.includes(name));
+}
+
+function queryFor(filters, total, fields) {
     const params = [];
     const where = whereClauses(filters, params);
-    const selection = Object.keys(FIELD_ALIASES).map(name => `${SELECT_EXPRESSIONS[name] || field(name)} AS ${name}`).join(', ');
+    const selection = selectedFields(fields).map(name => `${SELECT_EXPRESSIONS[name] || field(name)} AS ${name}`).join(', ');
     let query = `SELECT ${selection} FROM ${EMPRESAS_TABLE} e WHERE ${where.join(' AND ')}`;
     if (total != null) { params.push(scalar('limit', 'INT64', total)); query += ' LIMIT @limit'; }
     return { query, params };
@@ -67,9 +75,9 @@ function totalFor(filters, savedCount) {
 }
 
 // Same filters as buildQuery (receita.js), reading the payload JSON. Values only as named parameters.
-function buildBqQuery(filters, { savedCount = 0 } = {}) {
+function buildBqQuery(filters, { savedCount = 0, fields } = {}) {
     const selected = normalizeFilters(filters);
-    return queryFor(selected, totalFor(selected, savedCount));
+    return queryFor(selected, totalFor(selected, savedCount), fields);
 }
 
 // queryPages awaits onPage, so holding the page until the generator takes it
@@ -94,11 +102,11 @@ function pageQueue() {
     };
 }
 
-async function* iterateReceitaBq({ bq, filters = {}, batchSize = 50000, savedCount = 0, isSaved = () => false, signal } = {}) {
+async function* iterateReceitaBq({ bq, filters = {}, batchSize = 50000, savedCount = 0, isSaved = () => false, signal, fields } = {}) {
     const selected = normalizeFilters(filters);
     if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > MAX_BATCH_SIZE) fail('Lote Receita inválido.');
     if (!bq || typeof bq.queryPages !== 'function') fail('Configure o acesso ao BigQuery antes de gerar a base Receita.');
-    const { query, params } = queryFor(selected, totalFor(selected, savedCount));
+    const { query, params } = queryFor(selected, totalFor(selected, savedCount), fields);
     checkCancelled(signal);
     const controller = new AbortController();
     const onAbort = () => controller.abort();

@@ -567,3 +567,17 @@ test('expired Google login during BigQuery generation keeps its code and friendl
     fake.iterateReceitaBq = async function* () { throw Object.assign(new Error('Seu login Google precisa ser renovado. Entre pelo navegador e depois retome a execução.'), { code: 'BQ_AUTH_REQUIRED' }); };
     await assert.rejects(runFlow({ flow: config, user: { username: 'Operador' }, jobDir, providers: fake }), { code: 'BQ_AUTH_REQUIRED', message: /login Google/ });
 });
+test('generation from BigQuery asks only for the Receita fields the layout and cleaning use', async t => {
+    const { generationFields } = require('../src/main/flows/pipeline');
+    const layout = { colunas: [{ header: 'nome', campo: 'razao_social' }, { header: 'cpf', campo: 'cnpj_numerico' }, { header: 'livre1', campo: 'ano_abertura' },
+        { header: 'livre3', campo: 'composto', partes: ['atividade_principal_cod_num', 'estado'] }, { header: 'livre7', campo: 'fixo_c6' }, { header: 'fone1', campo: 'telefone_1' }] };
+    assert.deepEqual(generationFields(layout).sort(), ['atividade_principal_cod', 'cnpj', 'data_abertura', 'estado', 'razao_social', 'situacao_cadastral', 'situacao_cadastral_cod', 'telefone_principal', 'telefone_secundario']);
+    assert.equal(generationFields({ colunas: ['nome', 'fone1'] }), null);
+    assert.equal(generationFields({ colunas: [{ header: 'x', campo: 'desconhecido' }] }), null);
+    const jobDir = await setup(t); const config = flow(); config.generation.source = 'bq';
+    const fake = providers([]); delete fake.iterateReceita; let asked;
+    fake.getFormat = () => layout;
+    fake.iterateReceitaBq = async function* (args) { asked = args.fields; yield { rows: [row(1, ['11999990001'])] }; };
+    await runFlow({ flow: config, user: { username: 'Operador' }, jobDir, providers: fake });
+    assert.ok(asked.includes('estado') && asked.includes('data_abertura') && !asked.includes('logradouro'));
+});
