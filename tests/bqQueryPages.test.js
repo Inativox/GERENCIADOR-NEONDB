@@ -171,3 +171,29 @@ test('abortSession encerra a sessão pelo BQ.ABORT_SESSION e não falha se o Big
     const failing = fixture(() => { throw { response: { status: 500 } }; });
     await failing.client.abortSession('sessao-sintetica');
 });
+
+test('queryPages em paralelo lê as páginas por posição, refaz página curta e entrega uma por vez, sem repetir linhas', async () => {
+    const total = 50005, all = Array.from({ length: total }, (_, index) => String(index));
+    const f = fixture(request => {
+        if (request.method === 'POST') return { jobComplete: true, jobReference: { jobId: 'j9' }, schema, totalRows: String(total), pageToken: 'p2', rows: all.slice(0, 5).map(v => ({ f: [{ v }, { v: 'A' }] })) };
+        const start = Number(request.params.startIndex), size = Number(request.params.maxResults);
+        // Answers stop near 10 MB: the first range comes back short.
+        const count = start === 5 ? 7 : size;
+        return { jobComplete: true, schema, rows: all.slice(start, start + count).map(v => ({ f: [{ v }, { v: 'B' }] })) };
+    });
+    const seen = []; let active = 0, overlap = false;
+    const result = await f.client.queryPages({ query: 'q', parallel: 3, onPage: async rows => { active++; if (active > 1) overlap = true; await new Promise(r => setTimeout(r, 2)); seen.push(...rows.map(row => row.cnpj)); active--; } });
+    assert.equal(overlap, false);
+    assert.equal(seen.length, total); assert.equal(new Set(seen).size, total); assert.equal(result.rows, total);
+    assert.ok(f.requests.some(r => r.params?.startIndex === '12'));
+});
+
+test('queryPages em paralelo para no primeiro erro e cancela o job', async () => {
+    const f = fixture(request => {
+        if (request.method === 'POST' && request.url.endsWith('/cancel')) return {};
+        if (request.method === 'POST') return { jobComplete: true, jobReference: { jobId: 'j10' }, schema, totalRows: '100000', pageToken: 'p2', rows: [{ f: [{ v: '0' }, { v: 'A' }] }] };
+        throw { response: { status: 400 } };
+    });
+    await assert.rejects(f.client.queryPages({ query: 'q', parallel: 4 }), /Falha ao consultar o BQ/);
+    assert.ok(f.requests.some(r => r.url.endsWith('/jobs/j10/cancel')));
+});

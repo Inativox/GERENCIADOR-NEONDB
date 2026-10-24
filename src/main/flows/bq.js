@@ -45,6 +45,7 @@ function existingCredentials(keyFile, environment = process.env) {
     return content;
 }
 const RESULT_ATTEMPTS = 3;
+const RANGE_ROWS = 20000;
 const RESULT_RETRY_DELAYS_MS = [1000, 4000];
 function bytesLimitExceeded(details) {
     const reasons = [details?.reason, ...(details?.errors || []).map(item => item?.reason)];
@@ -125,7 +126,33 @@ function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southa
     const cancelJob = jobId => request('POST', `/projects/${project}/jobs/${jobId}/cancel`, { params: { location } }).catch(() => {});
     // A session keeps temporary tables between queries; its jobs run one at a time.
     const sessionFields = (session, createSession) => ({ ...(createSession ? { createSession: true } : {}), ...(session ? { connectionProperties: [{ key: 'session_id', value: session }] } : {}) });
-    const runPages = async ({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs, session, createSession }, state) => {
+    // Result pages read by row offset, `parallel` at a time, and delivered one at a time as they arrive:
+    // at most `parallel` pages wait in memory. Each answer stops near 10 MB, so a short page asks again for the rest.
+    const fetchRanges = async ({ jobId, fields, from, total, parallel, signal, onPage }, state) => {
+        const pending = [];
+        for (let start = from; start < total; start += RANGE_ROWS) pending.push([start, Math.min(RANGE_ROWS, total - start)]);
+        let chain = Promise.resolve(), failed = false;
+        const deliver = async rows => {
+            const previous = chain; let release;
+            chain = new Promise(resolve => { release = resolve; });
+            try { await previous; if (!failed) await onPage(rows); state.rows += rows.length; } finally { release(); }
+        };
+        const worker = async () => {
+            try {
+                while (pending.length && !failed) {
+                    if (signal?.aborted) throw new Error('Consulta BQ cancelada.');
+                    const [start, size] = pending.shift();
+                    const page = await getWithRetry(`/projects/${project}/queries/${jobId}`, { signal, params: { location, startIndex: String(start), maxResults: size } });
+                    const got = (page.rows || []).length;
+                    if (!got) throw new Error('O BQ devolveu uma página vazia. Tente novamente.');
+                    if (got < size) pending.unshift([start + got, size - got]);
+                    await deliver(toObjects(fields, page.rows));
+                }
+            } catch (error) { failed = true; throw error; }
+        };
+        await Promise.all(Array.from({ length: parallel }, worker));
+    };
+    const runPages = async ({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs, session, createSession, parallel = 1 }, state) => {
         const body = { query, useLegacySql: false, location, parameterMode: 'NAMED', queryParameters: params, maximumBytesBilled: String(maxBytesBilled), timeoutMs: 10000, maxResults: pageSize, ...sessionFields(session, createSession) };
         // Let submission finish so an aborted local request does not lose the remote job ID.
         let result = await request('POST', `/projects/${project}/queries`, { data: { ...body, jobTimeoutMs: String(jobTimeoutMs) } });
@@ -147,15 +174,19 @@ function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southa
             state.rows += rows.length; state.bytes = Number(result.totalBytesProcessed || state.bytes);
             await onPage(rows);
             if (!result.pageToken) break;
+            if (parallel > 1 && Number(result.totalRows) > state.rows) {
+                await fetchRanges({ jobId: state.reference.jobId, fields: result.schema?.fields || [], from: state.rows, total: Number(result.totalRows), parallel, signal, onPage }, state);
+                break;
+            }
             result = await getWithRetry(`/projects/${project}/queries/${state.reference.jobId}`, { signal, params: { location, pageToken: result.pageToken, maxResults: pageSize } });
         }
     };
-    const queryPages = async ({ query, params = [], signal, pageSize = 50000, onPage = async () => {}, maxBytesBilled = '1000000000', jobTimeoutMs = '180000', waitMs = 180000, session, createSession = false } = {}) => {
+    const queryPages = async ({ query, params = [], signal, pageSize = 50000, onPage = async () => {}, maxBytesBilled = '1000000000', jobTimeoutMs = '180000', waitMs = 180000, session, createSession = false, parallel = 1 } = {}) => {
         if (signal?.aborted) throw new Error('Consulta BQ cancelada.');
         const state = { rows: 0, bytes: 0, reference: undefined, session: undefined };
         let complete = false;
         try {
-            await runPages({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs, session, createSession }, state);
+            await runPages({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs, session, createSession, parallel }, state);
             complete = true;
             return { rows: state.rows, jobId: state.reference?.jobId, bytes: state.bytes, ...(state.session ? { session: state.session } : {}) };
         } catch (error) {

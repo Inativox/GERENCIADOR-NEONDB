@@ -7,6 +7,8 @@ const MAX_BYTES_BILLED = '80000000000';
 const JOB_TIMEOUT_MS = '900000';
 const WAIT_MS = 900000;
 const PAGE_SIZE = 50000;
+// Result pages read at the same time; measured on a real flow before choosing.
+const PARALLEL_PAGES = 6;
 const READ_ERROR = 'Não foi possível ler a base Receita no BigQuery. Retome do último lote salvo.';
 const BYTES_LIMIT_ERROR = 'A consulta da Receita no BigQuery passou do limite de custo configurado (80 GB). Restrinja os filtros ou use a fonte Neon.';
 
@@ -102,7 +104,7 @@ function pageQueue() {
     };
 }
 
-async function* iterateReceitaBq({ bq, filters = {}, batchSize = 50000, savedCount = 0, isSaved = () => false, signal, fields } = {}) {
+async function* iterateReceitaBq({ bq, filters = {}, batchSize = 50000, savedCount = 0, isSaved = () => false, signal, fields, parallel = PARALLEL_PAGES } = {}) {
     const selected = normalizeFilters(filters);
     if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > MAX_BATCH_SIZE) fail('Lote Receita inválido.');
     if (!bq || typeof bq.queryPages !== 'function') fail('Configure o acesso ao BigQuery antes de gerar a base Receita.');
@@ -113,7 +115,7 @@ async function* iterateReceitaBq({ bq, filters = {}, batchSize = 50000, savedCou
     signal?.addEventListener('abort', onAbort, { once: true });
     const queue = pageQueue();
     const running = Promise.resolve()
-        .then(() => bq.queryPages({ query, params, signal: controller.signal, pageSize: PAGE_SIZE, onPage: queue.onPage, maxBytesBilled: MAX_BYTES_BILLED, jobTimeoutMs: JOB_TIMEOUT_MS, waitMs: WAIT_MS }))
+        .then(() => bq.queryPages({ query, params, signal: controller.signal, pageSize: PAGE_SIZE, onPage: queue.onPage, maxBytesBilled: MAX_BYTES_BILLED, jobTimeoutMs: JOB_TIMEOUT_MS, waitMs: WAIT_MS, parallel }))
         .then(() => queue.finish(), error => queue.finish(error));
     const abortWake = () => queue.finish();
     signal?.addEventListener('abort', abortWake, { once: true });
