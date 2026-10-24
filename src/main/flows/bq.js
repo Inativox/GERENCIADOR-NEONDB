@@ -123,12 +123,15 @@ function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southa
     };
     const toObjects = (fields, rows) => rows.map(row => Object.fromEntries((row.f || []).map((cell, index) => [fields[index]?.name ?? String(index), cell?.v ?? null])));
     const cancelJob = jobId => request('POST', `/projects/${project}/jobs/${jobId}/cancel`, { params: { location } }).catch(() => {});
-    const runPages = async ({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs }, state) => {
-        const body = { query, useLegacySql: false, location, parameterMode: 'NAMED', queryParameters: params, maximumBytesBilled: String(maxBytesBilled), timeoutMs: 10000, maxResults: pageSize };
+    // A session keeps temporary tables between queries; its jobs run one at a time.
+    const sessionFields = (session, createSession) => ({ ...(createSession ? { createSession: true } : {}), ...(session ? { connectionProperties: [{ key: 'session_id', value: session }] } : {}) });
+    const runPages = async ({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs, session, createSession }, state) => {
+        const body = { query, useLegacySql: false, location, parameterMode: 'NAMED', queryParameters: params, maximumBytesBilled: String(maxBytesBilled), timeoutMs: 10000, maxResults: pageSize, ...sessionFields(session, createSession) };
         // Let submission finish so an aborted local request does not lose the remote job ID.
         let result = await request('POST', `/projects/${project}/queries`, { data: { ...body, jobTimeoutMs: String(jobTimeoutMs) } });
         const started = Date.now();
         state.reference = result.jobReference;
+        state.session = result.sessionInfo?.sessionId || session;
         while (true) {
             if (signal?.aborted) throw new Error('Consulta BQ cancelada.');
             if (result.errors?.length) {
@@ -147,14 +150,14 @@ function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southa
             result = await getWithRetry(`/projects/${project}/queries/${state.reference.jobId}`, { signal, params: { location, pageToken: result.pageToken, maxResults: pageSize } });
         }
     };
-    const queryPages = async ({ query, params = [], signal, pageSize = 50000, onPage = async () => {}, maxBytesBilled = '1000000000', jobTimeoutMs = '180000', waitMs = 180000 } = {}) => {
+    const queryPages = async ({ query, params = [], signal, pageSize = 50000, onPage = async () => {}, maxBytesBilled = '1000000000', jobTimeoutMs = '180000', waitMs = 180000, session, createSession = false } = {}) => {
         if (signal?.aborted) throw new Error('Consulta BQ cancelada.');
-        const state = { rows: 0, bytes: 0, reference: undefined };
+        const state = { rows: 0, bytes: 0, reference: undefined, session: undefined };
         let complete = false;
         try {
-            await runPages({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs }, state);
+            await runPages({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs, session, createSession }, state);
             complete = true;
-            return { rows: state.rows, jobId: state.reference?.jobId, bytes: state.bytes };
+            return { rows: state.rows, jobId: state.reference?.jobId, bytes: state.bytes, ...(state.session ? { session: state.session } : {}) };
         } catch (error) {
             if (error.code === 'BQ_FORBIDDEN') throw Object.assign(new Error('Sem acesso à Receita no BigQuery. Use a fonte Neon neste fluxo ou peça acesso ao dataset receita.'), { code: 'FLOW_VALIDATION' });
             throw error;
@@ -191,7 +194,12 @@ function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southa
         }
         return { documents: [...documents], info: { source: 'bq', pipelines, queriedAt: new Date().toISOString(), count: documents.size, skipped, restored, estimatedBytes: bytes, jobId, coverage: 'histórico disponível de negócios e fases; documentos ausentes não podem ser recuperados' } };
     };
-    return { loadRoot, queryPages, test: async () => {
+    // Ends a session and drops its temporary tables.
+    const abortSession = async session => {
+        try { await request('POST', `/projects/${project}/queries`, { data: { query: 'CALL BQ.ABORT_SESSION()', useLegacySql: false, location, timeoutMs: 10000, ...sessionFields(session) } }); }
+        catch { /* An unreachable session still expires by itself. */ }
+    };
+    return { loadRoot, queryPages, abortSession, test: async () => {
         await request('GET', '/projects/mbtech-bronze/datasets/bitrix/tables/deals');
         await request('GET', '/projects/mbtech-bronze/datasets/bitrix/tables/stage_history');
         const estimate = await request('POST', `/projects/${project}/queries`, { data: { query: ROOT_SQL, useLegacySql: false, location, dryRun: true, parameterMode: 'NAMED', queryParameters: [{ name: 'pipelines', parameterType: { type: 'ARRAY', arrayType: { type: 'INT64' } }, parameterValue: { arrayValues: [{ value: '90' }] } }] } });

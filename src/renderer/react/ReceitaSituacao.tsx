@@ -53,8 +53,8 @@ export function ReceitaSituacao({ aside }: { aside?: ReactNode }) {
         open: () => void action(() => api.receitaSituacaoOpen()),
     };
     return <div className="flows-app receita-situacao-app" aria-busy={busy}>
-        <header className="flows-heading"><div><h1>Situação Receita</h1><p>Consulte CNPJs ou uma lista própria no banco da Receita, sem depender de um fluxo de geração.</p></div>{aside}</header>
-        {!configured && <p role="status" className="flow-notice">Configure o banco da Receita na tela de login. O acesso salvo será usado automaticamente nesta consulta.</p>}
+        <header className="flows-heading"><div><h1>Situação Receita</h1><p>Consulte CNPJs ou uma lista própria na Receita do BigQuery, sem depender de um fluxo de geração.</p></div>{aside}</header>
+        {!configured && <p role="status" className="flow-notice">Entre com sua conta Google na tela de Fluxos (Acessos às fontes). O mesmo acesso ao BigQuery será usado nesta consulta.</p>}
         {message && <p role="alert" className="flow-notice flow-notice--error">{message}</p>}
         <QuickLookup cnpj={cnpj} result={result} consulted={consulted} disabled={blocked} ready={configured && Boolean(cnpj.trim())}
             onChange={value => { setCnpj(value); setConsulted(false); }} onSubmit={() => void action(() => api.receitaSituacaoOne(cnpj), response => { setResult(response.result || null); setConsulted(true); })} />
@@ -75,9 +75,9 @@ function QuickLookup({ cnpj, result, consulted, disabled, ready, onChange, onSub
             <h2 id="receita-quick-title">Consultar um CNPJ</h2>
             <label className="flow-field"><span>CNPJ</span><input value={cnpj} maxLength={30} placeholder="Com ou sem pontuação" spellCheck={false} disabled={disabled} onChange={event => onChange(event.target.value)} /></label>
             <button className="flow-primary" disabled={disabled || !ready}><SearchIcon />Consultar situação</button>
-            <p className="receita-hint">A situação corresponde à versão da base configurada. A consulta não atualiza a Receita em tempo real.</p>
+            <p className="receita-hint">A situação corresponde à última atualização da Receita no BigQuery. A consulta não atualiza a Receita em tempo real.</p>
         </form>
-        {consulted && (result ? <LookupResult result={result} /> : <p role="status" className="receita-quick-empty">CNPJ não encontrado na base configurada.</p>)}
+        {consulted && (result ? <LookupResult result={result} /> : <p role="status" className="receita-quick-empty">CNPJ não encontrado na Receita do BigQuery.</p>)}
     </section>;
 }
 
@@ -108,7 +108,7 @@ function ListRules({ keep, options, disabled, onToggle, onPreset, onOptions }: R
         <div className="receita-group" role="group" aria-labelledby="receita-options-label">
             <span id="receita-options-label" className="receita-group-name">Opções</span>
             <div className="receita-situacao-switches">
-                <Switch label="Remover MEI" hint="Tira do resultado os CNPJs que são MEI no banco da Receita." checked={options.removeMei} disabled={disabled} onChange={removeMei => onOptions(previous => ({ ...previous, removeMei }))} />
+                <Switch label="Remover MEI" hint="Tira do resultado os CNPJs que são MEI na Receita." checked={options.removeMei} disabled={disabled} onChange={removeMei => onOptions(previous => ({ ...previous, removeMei }))} />
                 <Switch label="Gerar CSV adicional" hint="Salva também um .csv com as mesmas linhas, pronto para o Importar Mailing. A coluna CNPJ sai com o nome cpf." checked={options.csv} disabled={disabled} onChange={csv => onOptions(previous => ({ ...previous, csv }))} />
             </div>
         </div>

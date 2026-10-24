@@ -152,3 +152,22 @@ test('queryPages marca bytesBilledLimitExceeded com BQ_BYTES_LIMIT', async () =>
     const g = retryFixture(request => request.method === 'POST' && request.url.endsWith('/cancel') ? {} : { jobComplete: true, jobReference: { jobId: 'r3' }, errors: [{ reason: 'bytesBilledLimitExceeded' }] });
     await assert.rejects(g.client.queryPages({ query: 'q' }), { code: 'BQ_BYTES_LIMIT' });
 });
+
+test('queryPages abre uma sessão quando pedido, devolve o id e as consultas seguintes vão na mesma sessão', async () => {
+    const f = fixture(() => ({ jobComplete: true, jobReference: { jobId: 'j3' }, sessionInfo: { sessionId: 'sessao-sintetica' }, schema, rows: [] }));
+    const opened = await f.client.queryPages({ query: 'CREATE TEMP TABLE lista (idx INT64, cnpj STRING)', createSession: true });
+    assert.equal(opened.session, 'sessao-sintetica');
+    assert.equal(f.requests[0].data.createSession, true); assert.equal(f.requests[0].data.connectionProperties, undefined);
+    await f.client.queryPages({ query: 'SELECT 1', session: opened.session });
+    assert.deepEqual(f.requests[1].data.connectionProperties, [{ key: 'session_id', value: 'sessao-sintetica' }]);
+    assert.equal(f.requests[1].data.createSession, undefined);
+});
+
+test('abortSession encerra a sessão pelo BQ.ABORT_SESSION e não falha se o BigQuery não responder', async () => {
+    const f = fixture(() => ({ jobComplete: true }));
+    await f.client.abortSession('sessao-sintetica');
+    assert.equal(f.requests[0].data.query, 'CALL BQ.ABORT_SESSION()');
+    assert.deepEqual(f.requests[0].data.connectionProperties, [{ key: 'session_id', value: 'sessao-sintetica' }]);
+    const failing = fixture(() => { throw { response: { status: 500 } }; });
+    await failing.client.abortSession('sessao-sintetica');
+});

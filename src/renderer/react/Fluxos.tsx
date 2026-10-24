@@ -316,7 +316,7 @@ export function Fluxos() {
                 <div>
                     <h3>Bancos do aplicativo</h3>
                     <p className="flow-hint">Neon: {bootstrap.access?.neonConfigured ? 'acesso do login reutilizado para enriquecimento, raiz comercial e filtros.' : 'configure o banco do Gerenciador na tela de login.'}</p>
-                    <p className="flow-hint">Receita: {bootstrap.access?.receitaConfigured ? 'acesso salvo reutilizado para geração e situação cadastral.' : 'configure o banco da Receita na tela de login.'}</p>
+                    <p className="flow-hint">Receita: {bootstrap.access?.receitaConfigured ? 'acesso salvo para a fonte Neon da geração e o filtro de CNAEs da Limpeza Local.' : 'configure o banco da Receita na tela de login.'}</p>
                     <p className="flow-hint">Para adicionar ou alterar os dois bancos, use “Salvar e testar” na tela de login.</p>
                 </div>
                 <div>

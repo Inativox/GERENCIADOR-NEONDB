@@ -62,16 +62,29 @@ function register() {
             if (state.currentUser?.username === update.owner && state.mainWindow && !state.mainWindow.isDestroyed?.()) state.mainWindow.webContents.send('flow-bq-auth-update', update);
         },
     });
+    const renewAutomatically = owner => {
+        // The job keeps its checkpoint. Login is independent of processing and never retries a failed export.
+        if (store.get('flow_bq_auto_login') !== false && owner === state.currentUser?.username && state.currentUser?.role === 'admin') void login.renew(owner, { automatic: true }).catch(() => {});
+    };
     const queryBq = async (action, signal) => {
         const owner = state.currentUser?.username;
         try { return await action(bq()); }
         catch (error) {
-            if (error.code === 'BQ_AUTH_REQUIRED' && !signal?.aborted && store.get('flow_bq_auto_login') !== false && owner === state.currentUser?.username && state.currentUser?.role === 'admin') {
-                // The job keeps its checkpoint. Login is independent of processing and never retries a failed export.
-                void login.renew(owner, { automatic: true }).catch(() => {});
-            }
+            if (error.code === 'BQ_AUTH_REQUIRED' && !signal?.aborted) renewAutomatically(owner);
             throw error;
         }
+    };
+    const bqAvailable = () => {
+        let configured = false;
+        try { configured = Boolean(existingCredentials(store.get('flow_bq_key_file'))); } catch { /* UI offers import/test. */ }
+        return configured || (process.platform === 'win32' ? Boolean(gcloudCommand()) : true);
+    };
+    // Situação Receita uses the same Google access; its list runs in a worker with its own client.
+    state.bqReceitaService = {
+        configured: bqAvailable,
+        client: bq,
+        access: () => ({ keyFile: store.get('flow_bq_key_file') || null, project: process.env.BQ_PROJECT || 'mbtech-bronze' }),
+        loginExpired: renewAutomatically,
     };
     // Shared Google access for both generated flows and Local Cleaning.
     state.bqRootService = {
@@ -139,9 +152,7 @@ function register() {
         }
     };
     ipcMain.handle('flows-bootstrap', protect(() => {
-        let bqConfigured = false;
-        try { bqConfigured = Boolean(existingCredentials(store.get('flow_bq_key_file'))); } catch { /* UI offers import/test. */ }
-        if (!bqConfigured) bqConfigured = process.platform === 'win32' ? Boolean(gcloudCommand()) : true;
+        const bqConfigured = bqAvailable();
         let bqLoginMode = 'unavailable';
         try { bqLoginMode = loginModeFor(store.get('flow_bq_key_file')); } catch { /* Invalid private file offers import instead. */ }
         const bootstrap = manager.bootstrap();
