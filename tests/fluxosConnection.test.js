@@ -29,6 +29,7 @@ function fixture(validate) {
         '../flows/receita': { getReceitaMetadata: validate },
         '../flows/postgres': { readOnlyPoolOptions: connectionString => ({ connectionString }) },
         '../flows/receitaOptions': { createReceitaOptions: () => ({}) },
+        '../runtimeConfig': {},
     };
     loadModule('src/main/handlers/fluxos.js', dependencies).register();
     return {
