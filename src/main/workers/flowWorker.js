@@ -36,6 +36,9 @@ runFlow({ ...workerData, cachePolicy: { compressed: true, prune: true }, process
         if (signal?.aborted) throw Object.assign(new Error('Envio cancelado.'), { code: 'FLOW_CANCELLED' });
         const { credentials } = await apiRequest('credentials', 'upload-request');
         return require('../flows/fastway').upload({ file, campaignId, credentials, signal });
+    }, async findMailing({ file, campaignId, since, signal }) {
+        const { credentials } = await apiRequest('credentials', 'upload-request');
+        return require('../flows/fastway').findReceived({ file, campaignId, since, credentials, signal });
     } },
     onUpdate: data => parentPort.postMessage({ type: 'update', data }) })
     .then(data => parentPort.postMessage({ type: 'result', data }))

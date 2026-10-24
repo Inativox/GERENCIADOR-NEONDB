@@ -10,6 +10,7 @@ const { parse } = require('csv-parse');
 const { finished } = require('node:stream/promises');
 
 const ENDPOINT = 'https://mbfinance2.fastssl.com.br/api/mailingup/index.php';
+const LIST_ENDPOINT = 'https://mbfinance2.fastssl.com.br/api/fmi/mailing/index.php';
 const MAX_ROWS = 250000;
 const REQUIRED_COLUMNS = ['nome', 'cpf', 'fone1'];
 const clean = value => String(value ?? '').replace(/[;"\r\n]/g, match => match === ';' ? ',' : ' ').trim();
@@ -107,4 +108,27 @@ async function upload({ file, campaignId, credentials, signal }) {
     } finally { await fsp.rm(converted.path, { force: true }); }
 }
 
-module.exports = { upload, inspectCsv, MAX_ROWS };
+// The Fastway clock is Brasília time without offset (no daylight saving since 2019).
+const importedAt = value => Date.parse(`${String(value || '').trim().replace(' ', 'T').slice(0, 23)}-03:00`);
+const RECEIVED_MARGIN_MS = 10 * 60 * 1000;
+
+/** Mailings of this service imported from this file since the attempt began: the Fastway lists each one with the uploaded file name. */
+async function findReceived({ file, campaignId, since, credentials, signal }) {
+    if (!credentials?.login || !credentials?.password) throw new Error('Configure as credenciais Fastway nos acessos do fluxo.');
+    const start = Date.parse(since);
+    if (!Number.isFinite(start)) throw safeError('Horário do envio desconhecido.');
+    let data;
+    try {
+        ({ data } = await axios.get(LIST_ENDPOINT, { params: { api_logon: credentials.login, api_senha: credentials.password, api_comando: 'Listar' }, timeout: 2 * 60 * 1000, signal }));
+    } catch (error) {
+        if (error.name === 'AbortError' || signal?.aborted) throw Object.assign(new Error('Envio cancelado.'), { code: 'FLOW_CANCELLED' });
+        throw safeError(`A Fastway não respondeu à consulta de mailings${error.response ? ` (HTTP ${error.response.status})` : ''}.`);
+    }
+    if (!Array.isArray(data?.Mailings)) throw safeError('A Fastway não devolveu a lista de mailings.');
+    const name = path.basename(file);
+    return data.Mailings
+        .filter(mailing => String(mailing.campanha_id) === String(campaignId) && mailing.arquivo === name && importedAt(mailing.data_importacao) >= start - RECEIVED_MARGIN_MS)
+        .map(mailing => ({ id: mailing.id, rows: Number(mailing.registros) || 0, status: mailing.status }));
+}
+
+module.exports = { upload, findReceived, inspectCsv, MAX_ROWS };

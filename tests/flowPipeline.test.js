@@ -184,6 +184,75 @@ test('uncertain Fastway upload resumes at the pending file without regenerating 
     assert.equal(result.status, 'completed'); assert.equal(generationCalls, 1);
     assert.deepEqual(sent, ['lista rca parte1.csv', 'lista rca parte2.csv']);
 });
+function fastwayFixture(t, uploadMailing, findMailing) {
+    const config = flow(); config.output.rowsPerFile = 1;
+    config.output.fileName = 'lista rca'; config.fastway = { enabled: true, campaignId: '120' };
+    const fake = providers([row(1, ['11999990001']), row(2, ['11999990002'])]);
+    const logs = [], waits = [];
+    Object.assign(fake, { uploadMailing, findMailing, wait: async ms => { waits.push(ms); } });
+    return { logs, waits, args: jobDir => ({ flow: config, user: { username: 'Davi' }, jobDir, providers: fake, onUpdate: data => data.log && logs.push(data.log) }) };
+}
+test('Fastway answer lost after import: the listed mailing confirms the file without resending it', async t => {
+    const jobDir = await setup(t); const sent = [], asked = [];
+    const fixture = fastwayFixture(t, async ({ file }) => {
+        sent.push(path.basename(file));
+        if (sent.length === 2) throw new Error('socket hang up');
+        return { rows: 1 };
+    }, async ({ file, campaignId, since }) => {
+        asked.push({ file: path.basename(file), campaignId, since });
+        return [{ id: 33256, rows: 1, status: 'ATIVO' }];
+    });
+    const result = await runFlow(fixture.args(jobDir));
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(sent, ['lista rca parte1.csv', 'lista rca parte2.csv']);
+    assert.deepEqual(fixture.waits, [300000]);
+    assert.equal(asked.length, 1); assert.equal(asked[0].file, 'lista rca parte2.csv'); assert.equal(asked[0].campaignId, '120');
+    assert.ok(Number.isFinite(Date.parse(asked[0].since)));
+    assert.ok(fixture.logs.some(log => /não respondeu, mas recebeu lista rca parte2\.csv \(mailing 33256\)/.test(log)));
+});
+test('resume after an unconfirmed upload skips the file the Fastway already lists', async t => {
+    const jobDir = await setup(t); const sent = []; let listed = [];
+    const fixture = fastwayFixture(t, async ({ file }) => {
+        sent.push(path.basename(file));
+        if (sent.length === 2) throw new Error('socket hang up');
+        return { rows: 1 };
+    }, async () => listed);
+    await assert.rejects(runFlow(fixture.args(jobDir)));
+    listed = [{ id: 40001, rows: 1, status: 'ATIVO' }];
+    const result = await runFlow(fixture.args(jobDir));
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(sent, ['lista rca parte1.csv', 'lista rca parte2.csv']);
+    assert.ok(fixture.logs.some(log => /já tinha recebido lista rca parte2\.csv \(mailing 40001\); o arquivo não será reenviado/.test(log)));
+    const checkpoint = JSON.parse(await fs.readFile(path.join(jobDir, 'checkpoint.json'), 'utf8'));
+    assert.equal(checkpoint.stages.upload.pending, undefined);
+});
+test('resume after an unconfirmed upload resends the file the Fastway does not list, without asking', async t => {
+    const jobDir = await setup(t); const sent = [];
+    const fixture = fastwayFixture(t, async ({ file }) => {
+        sent.push(path.basename(file));
+        if (sent.length === 2) throw new Error('socket hang up');
+        return { rows: 1 };
+    }, async () => []);
+    await assert.rejects(runFlow(fixture.args(jobDir)));
+    const result = await runFlow(fixture.args(jobDir));
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(sent, ['lista rca parte1.csv', 'lista rca parte2.csv', 'lista rca parte2.csv']);
+    assert.ok(fixture.logs.some(log => /não recebeu lista rca parte2\.csv; o arquivo será reenviado/.test(log)));
+});
+test('resume still asks for authorization when the Fastway mailing list cannot be read', async t => {
+    const jobDir = await setup(t); const sent = [];
+    const fixture = fastwayFixture(t, async ({ file }) => {
+        sent.push(path.basename(file));
+        if (sent.length === 2) throw new Error('socket hang up');
+        return { rows: 1 };
+    }, async () => { throw new Error('HTTP 500'); });
+    await assert.rejects(runFlow(fixture.args(jobDir)));
+    await assert.rejects(runFlow(fixture.args(jobDir)), error => error.code === 'FLOW_VALIDATION' && /não foi possível consultar os mailings recebidos/.test(error.message));
+    assert.deepEqual(sent, ['lista rca parte1.csv', 'lista rca parte2.csv']);
+    const result = await runFlow({ ...fixture.args(jobDir), retryUncertainUpload: true });
+    assert.equal(result.status, 'completed');
+    assert.deepEqual(sent, ['lista rca parte1.csv', 'lista rca parte2.csv', 'lista rca parte2.csv']);
+});
 test('rejected Fastway login waits and resends the same file without stopping the flow', async t => {
     const jobDir = await setup(t); const config = flow(); config.output.rowsPerFile = 1;
     config.output.fileName = 'lista rca'; config.fastway = { enabled: true, campaignId: '120' };

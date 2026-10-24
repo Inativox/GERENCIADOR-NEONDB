@@ -21,6 +21,8 @@ const STAGES = ['generation', 'enrichment', 'api', 'cleaning', 'export', 'upload
 // A rejected Fastway login means the file was not received, so the same file can be sent again.
 const FASTWAY_LOGIN_RETRIES = 5;
 const FASTWAY_LOGIN_WAIT_MS = 60000;
+// The Fastway may start importing more than a minute after a lost answer (RCAN parte9, 23/10).
+const FASTWAY_RECEIVED_WAIT_MS = 5 * 60000;
 function abort(signal) {
     if (signal?.aborted) {
         const error = new Error('Execução cancelada.');
@@ -457,11 +459,21 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
             const csvOutputs = checkpoint.stages.export.outputs.filter(output => output.kind === 'csv');
             if (!csvOutputs.length) throw validation('Ative a geração de CSV antes de enviar mailings pela Fastway.');
             const confirmed = new Set(checkpoint.stages.upload?.confirmed || []);
-            const pending = checkpoint.stages.upload?.pending;
-            if (pending && !retryUncertainUpload) throw validation(`A Fastway não confirmou ${path.basename(pending)}. Confira o painel antes de retomar; só autorize o reenvio se o arquivo não tiver sido recebido.`);
-            if (pending && retryUncertainUpload) {
-                const next = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed] } } };
-                await atomicJson(checkpointPath, next); checkpoint = next;
+            const { pending, pendingSince } = checkpoint.stages.upload || {};
+            const campaignId = flow.fastway.campaignId;
+            const saveUpload = async upload => { const next = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed], ...upload } } }; await atomicJson(checkpointPath, next); checkpoint = next; };
+            if (pending) {
+                // Ask the Fastway whether the unconfirmed file arrived, so a resume never sends it twice.
+                const received = await receivedMailings({ providers, file: pending, campaignId, since: pendingSince, signal, update });
+                if (received?.length) {
+                    confirmed.add(pending);
+                    update({ log: `A Fastway já tinha recebido ${path.basename(pending)} (mailing ${received.map(mailing => mailing.id).join(', ')}); o arquivo não será reenviado.` });
+                } else if (received) {
+                    update({ log: `A Fastway não recebeu ${path.basename(pending)}; o arquivo será reenviado.` });
+                } else if (!retryUncertainUpload) {
+                    throw validation(`A Fastway não confirmou ${path.basename(pending)} e não foi possível consultar os mailings recebidos. Confira o painel antes de retomar; só autorize o reenvio se o arquivo não tiver sido recebido.`);
+                }
+                await saveUpload({});
             }
             stageProgress = { stage, processed: confirmed.size, total: csvOutputs.length, complete: false };
             for (const output of csvOutputs) {
@@ -469,15 +481,25 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                 if (confirmed.has(output.path)) continue;
                 if (!providers.uploadMailing) throw validation('O envio Fastway não está disponível nesta execução.');
                 update({ log: `Enviando ${path.basename(output.path)} para a Fastway.` });
-                const before = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed], pending: output.path } } };
-                await atomicJson(checkpointPath, before); checkpoint = before;
-                const result = await uploadWithLoginRetry({ providers, file: output.path, campaignId: flow.fastway.campaignId, signal, update });
+                const since = new Date().toISOString();
+                await saveUpload({ pending: output.path, pendingSince: since });
+                let rows;
+                try {
+                    ({ rows } = await uploadWithLoginRetry({ providers, file: output.path, campaignId, signal, update }));
+                } catch (error) {
+                    if (error.code === 'FLOW_CANCELLED' || error.loginRejected || !providers.findMailing) throw error;
+                    // The answer may be lost after the Fastway imported the file; a listed mailing confirms it.
+                    const sleep = providers.wait || ((ms, abortSignal) => wait(ms, undefined, { signal: abortSignal }));
+                    await sleep(FASTWAY_RECEIVED_WAIT_MS, signal);
+                    const received = await receivedMailings({ providers, file: output.path, campaignId, since, signal, update });
+                    if (!received?.length) throw error;
+                    rows = received.reduce((total, mailing) => total + mailing.rows, 0);
+                    update({ log: `A Fastway não respondeu, mas recebeu ${path.basename(output.path)} (mailing ${received.map(mailing => mailing.id).join(', ')}).` });
+                }
                 confirmed.add(output.path);
-                const next = { ...checkpoint, stages: { ...checkpoint.stages, upload: { confirmed: [...confirmed], last: { file: path.basename(output.path), rows: result.rows } } } };
-                await atomicJson(checkpointPath, next);
-                checkpoint = next;
+                await saveUpload({ last: { file: path.basename(output.path), rows } });
                 stageProgress = { stage, processed: confirmed.size, total: csvOutputs.length, complete: false };
-                update({ log: `Fastway confirmou ${path.basename(output.path)} (${result.rows.toLocaleString('pt-BR')} registros).` });
+                update({ log: `Fastway confirmou ${path.basename(output.path)} (${rows.toLocaleString('pt-BR')} registros).` });
             }
             await commit('upload', { confirmed: [...confirmed] });
         } else if (!checkpoint.stages.upload) {
@@ -487,9 +509,20 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         update({ ...result, log: result.status === 'empty' ? 'Nenhum registro restou para exportar após os filtros do fluxo.' : 'Fluxo concluído.' });
         return result;
     } catch (error) {
-        if (checkpoint) update({ status: friendly(stage, error).code === 'FLOW_CANCELLED' ? 'cancelled' : 'failed', log: stage === 'upload' && checkpoint.stages.upload?.pending ? 'Envio Fastway sem confirmação. Confira o painel antes de autorizar um reenvio.' : friendly(stage, error).message });
+        if (checkpoint) update({ status: friendly(stage, error).code === 'FLOW_CANCELLED' ? 'cancelled' : 'failed', log: stage === 'upload' && checkpoint.stages.upload?.pending ? 'Envio Fastway sem confirmação. A retomada consulta a Fastway antes de reenviar.' : friendly(stage, error).message });
         throw friendly(stage, error);
     } finally { await Promise.allSettled(ownedPools.map(pool => pool.end())); }
+}
+
+// Mailings the Fastway lists for this file since the attempt began; null when that cannot be known.
+async function receivedMailings({ providers, file, campaignId, since, signal, update }) {
+    if (!providers.findMailing || !since) return null;
+    try { return await providers.findMailing({ file, campaignId, since, signal }); }
+    catch (error) {
+        if (error.code === 'FLOW_CANCELLED') throw error;
+        update({ log: `Não foi possível consultar a Fastway sobre ${path.basename(file)}: ${error.message}` });
+        return null;
+    }
 }
 
 async function uploadWithLoginRetry({ providers, file, campaignId, signal, update }) {

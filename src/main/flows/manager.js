@@ -7,12 +7,12 @@ const { effectiveFlow, validateFlow } = require('./config');
 const { listFormats, getFormat, mapOutputRow } = require('./formats');
 const { validateLayout } = require('./layouts');
 
-/** The Fastway may have imported a file whose answer never arrived, so a resend must be authorized. */
+/** The Fastway may have imported a file whose answer never arrived; the resume asks the Fastway before resending it. */
 function interrupted(job) {
     const updatedAt = new Date().toISOString();
     if (job.stage !== 'upload') return { ...job, status: 'interrupted', error: 'Execução interrompida. Retome a partir da última etapa confirmada.', updatedAt };
-    return { ...job, status: 'interrupted', error: 'Execução interrompida durante o envio Fastway. Confira o painel antes de retomar: o arquivo pode ter sido recebido.',
-        logs: [...(job.logs || []), 'Envio Fastway sem confirmação. Confira o painel antes de autorizar um reenvio.'].slice(-300), updatedAt };
+    return { ...job, status: 'interrupted', error: 'Execução interrompida durante o envio Fastway. Ao retomar, o Gerenciador consulta a Fastway e só reenvia o arquivo se ele não tiver sido recebido.',
+        logs: [...(job.logs || []), 'Envio Fastway sem confirmação. A retomada consulta a Fastway antes de reenviar.'].slice(-300), updatedAt };
 }
 function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirectory, getCacheDirectories = () => [getCacheDirectory()], getUser, resolveConnections, resolveRoot, resolveApiSession, resolveFastwayCredentials, onUpdate = () => {}, workerFactory = data => new Worker(path.join(__dirname, '../workers/flowWorker.js'), { workerData: data, resourceLimits: { maxOldGenerationSizeMb: 512 } }) }) {
     const stores = new Map(); let active = null;
