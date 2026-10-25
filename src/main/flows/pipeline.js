@@ -30,6 +30,10 @@ function abort(signal) {
         throw error;
     }
 }
+function errorDetail(error) {
+    const text = `${error?.code ? `${error.code} ` : ''}${error?.message || error}`;
+    return text.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"]+/gi, '[endereço]').replace(/((?:senha|password|token|secret|key)\s*[=:]\s*)\S+/gi, '$1***').slice(0, 300);
+}
 function friendly(stage, error) {
     if (error.code === 'FLOW_CANCELLED' || error.name === 'AbortError') {
         const cancelled = new Error('Execução cancelada.');
@@ -532,6 +536,8 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         update({ ...result, log: result.status === 'empty' ? 'Nenhum registro restou para exportar após os filtros do fluxo.' : 'Fluxo concluído.' });
         return result;
     } catch (error) {
+        // The friendly message hides the cause; keep it in the log, without addresses or passwords.
+        if (checkpoint && friendly(stage, error).code === 'FLOW_FAILED') update({ log: `Detalhe do erro (${stage}): ${errorDetail(error)}` });
         if (checkpoint) update({ status: friendly(stage, error).code === 'FLOW_CANCELLED' ? 'cancelled' : 'failed', log: stage === 'upload' && checkpoint.stages.upload?.pending ? 'Envio Fastway sem confirmação. A retomada consulta a Fastway antes de reenviar.' : friendly(stage, error).message });
         throw friendly(stage, error);
     } finally { await Promise.allSettled(ownedPools.map(pool => pool.end())); }

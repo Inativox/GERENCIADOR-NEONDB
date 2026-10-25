@@ -581,3 +581,12 @@ test('generation from BigQuery asks only for the Receita fields the layout and c
     await runFlow({ flow: config, user: { username: 'Operador' }, jobDir, providers: fake });
     assert.ok(asked.includes('estado') && asked.includes('data_abertura') && !asked.includes('logradouro'));
 });
+test('an unexpected failure keeps its cause in the log, without addresses or passwords', async t => {
+    const jobDir = await setup(t); const logs = [];
+    const fake = providers([row(1, ['11999990001'])]);
+    fake.queryPhones = async () => { throw Object.assign(new Error('connection terminated: postgresql://user:synthetic-pass@host/db password=synthetic-pass'), { code: 'ECONNRESET' }); };
+    await assert.rejects(runFlow({ flow: flow(), user: { username: 'Operador' }, jobDir, providers: fake, onUpdate: data => data.log && logs.push(data.log) }), /Não foi possível concluir a limpeza/);
+    const detail = logs.find(log => log.startsWith('Detalhe do erro (cleaning)'));
+    assert.match(detail, /ECONNRESET connection terminated: \[endereço\] password=\*\*\*/);
+    assert.doesNotMatch(logs.join('\n'), /synthetic-pass|postgresql:/);
+});
