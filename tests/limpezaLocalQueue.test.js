@@ -363,6 +363,33 @@ test('lista só com CNAEs proibidos é recusada antes de abrir qualquer planilha
     assert.equal(f.messages.at(-1).payload.success, false);
 });
 
+test('chave CNAEs de máquina filtra pela lista salva, sem nada colado', async t => {
+    const f = fixture(t);
+    receita(f, { '12345678000199': '5611201', '22345678000199': '6201501' });
+    writeSheet(f.files[0].path, [['cnpj', 'fone1'], ['12345678000199', '21998364849'], ['22345678000199', '11987654321']]);
+    await f.start({ cleanFiles: [f.files[0]], machineCnaes: true });
+    assert.equal(f.messages.at(-1).payload.success, true);
+    const result = XLSX.readFile(f.files[0].path);
+    assert.deepEqual(XLSX.utils.sheet_to_json(result.Sheets.Base, { header: 1 }), [['cnpj', 'fone1'], ['12345678000199', 21998364849]]);
+});
+
+test('CNAEs de máquina somam com a lista colada', async t => {
+    const f = fixture(t);
+    receita(f, { '12345678000199': '5611201', '22345678000199': '6201501', '32345678000199': '4110700' });
+    writeSheet(f.files[0].path, [['cnpj', 'fone1'], ['12345678000199', '21998364849'], ['22345678000199', '11987654321'], ['32345678000199', '11987654322']]);
+    await f.start({ cleanFiles: [f.files[0]], machineCnaes: true, keepCnaesText: '6201-5/01' });
+    const result = XLSX.readFile(f.files[0].path);
+    assert.deepEqual(XLSX.utils.sheet_to_json(result.Sheets.Base, { header: 1 }), [['cnpj', 'fone1'], ['12345678000199', 21998364849], ['22345678000199', 11987654321]]);
+});
+
+test('sem a conexão da Receita, a chave CNAEs de máquina é recusada antes de abrir qualquer planilha', async t => {
+    const f = fixture(t);
+    await f.start({ machineCnaes: true });
+    assert.equal(f.reads.length, 0);
+    assert.ok(logsOf(f).some(log => log.includes('Configure o banco da Receita')));
+    assert.equal(f.messages.at(-1).payload.success, false);
+});
+
 test('fim do lote soma as linhas fora da lista de CNAEs de todas as planilhas', async t => {
     const f = fixture(t);
     receita(f, { '12345678000199': '4781400', '22345678000199': '4711302', '32345678000199': '5611201', '52345678000199': '4781400' });
