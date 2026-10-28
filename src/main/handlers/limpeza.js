@@ -16,6 +16,7 @@ const { normalizarTelefone, phoneIndices, createCrossListContext, cruzarECompact
 const { OPERATIONS } = require('../flows/config');
 const { csvRow } = require('../flows/pipeline');
 const { document: receitaCnpj } = require('../receitaSituacao');
+const blocklistBq = require('../blocklistBq');
 
 
 
@@ -244,14 +245,10 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         });
         const blocked = new Set();
         //condicao nao verifica o checkBlockList se o toogle estiver desativado vai remover os blocklist de qualquer jeito. para corrigir isso devemos colocar (if (checkBlocklist && phonesInBatch.size > 0)) tornado a utilizacao do toggle sendo feito de forma correta. essa correcao foi adicionada por enzo.
+        // Blocklist no BigQuery desde a 1.8.26 (o Neon segue só para telefones_invalidos).
         if (checkBlocklist && phonesInBatch.size > 0) {
-            const { rows } = await queryWithRetry(
-                'SELECT telefone FROM blocklist WHERE telefone = ANY($1::text[])',
-                [Array.from(phonesInBatch)],
-                3,
-                log
-            );
-            rows.forEach(r => blocked.add(normalizarTelefone(r.telefone).phone));
+            const found = await blocklistBq.findBlocked(options.blocklistBq, Array.from(phonesInBatch));
+            for (const telefone of found.keys()) blocked.add(normalizarTelefone(telefone).phone);
         }
 
         //esse bloco de codigo verifica se tem numeros invalidos e numeros no lote faz uma query de leitura da tabela telefones_invalidos
@@ -352,12 +349,13 @@ function register() {
             if (args.isAutoRoot && rootSource === 'bq' && !operation) throw new Error('Escolha o pipeline do BigQuery para carregar a raiz.');
             args.autoRootSource = rootSource;
             if (args.isAutoRoot && rootSource === 'neon' && !state.pool) throw new Error('Conecte ao banco do Gerenciador para carregar a raiz do Banco de Dados.');
-            if ((args.checkBlocklist || args.checkNumerosInvalidos) && !state.pool) throw new Error('Conecte ao banco do Gerenciador para usar a blocklist ou os filtros de telefone.');
+            if (args.checkNumerosInvalidos && !state.pool) throw new Error('Conecte ao banco do Gerenciador para usar o filtro de números inválidos.');
+            if (args.checkBlocklist && !state.bqReceitaService?.configured?.()) throw new Error('Configure o acesso ao BigQuery (credencial em Fluxos) para usar a blocklist.');
             const cleaningDate = new Intl.DateTimeFormat('pt-BR', {
                 timeZone: 'America/Sao_Paulo'
             }).format(new Date());
             const findCnaes = (documents, onProgress) => state.receitaCnaeService.lookupCnaes(documents, { onProgress });
-            const cleaningOptions = { ...args, cleaningDate, keepCnaes, findCnaes };
+            const cleaningOptions = { ...args, cleaningDate, keepCnaes, findCnaes, blocklistBq: args.checkBlocklist ? state.bqReceitaService.client() : null };
             const crossList = createCrossListContext();
             log('Cruzamento do lote ativo: mantém a primeira ocorrência de CNPJ/telefone. Ajuste de fones obrigatório.');
             logSystemAction(state.currentUser.username, 'Limpeza Local', `Iniciou limpeza de ${args.cleanFiles.length} arquivos.`);

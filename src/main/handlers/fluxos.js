@@ -102,10 +102,13 @@ function register() {
             const connections = config();
             const fromBq = flow.generation?.source === 'bq';
             if (!fromBq && !connections.receita) throw new Error('Configure a base da Receita na tela de login.');
-            if ((flow.enrichment.enabled || flow.cleaning.blocklist || (flow.cleaning.enabled && flow.cleaning.invalidPhones)) && !connections.enrichment) throw new Error('Configure o banco do Gerenciador para enriquecimento e filtros de telefone.');
-            if (!fromBq) return connections;
-            // The worker builds its own BigQuery client from this local credential path; the Receita pool is not needed.
-            return { enrichment: connections.enrichment, bq: { keyFile: store.get('flow_bq_key_file') || null, project: process.env.BQ_PROJECT || 'mbtech-bronze' } };
+            if ((flow.enrichment.enabled || (flow.cleaning.enabled && flow.cleaning.invalidPhones)) && !connections.enrichment) throw new Error('Configure o banco do Gerenciador para enriquecimento e filtros de telefone.');
+            // The blocklist lives in BigQuery (1.8.26+), even when the list is generated from Neon.
+            if (flow.cleaning.blocklist && !bqAvailable()) throw new Error('Configure o acesso ao BigQuery para usar a blocklist.');
+            // The worker builds its own BigQuery client from this local credential path.
+            const access = { keyFile: store.get('flow_bq_key_file') || null, project: process.env.BQ_PROJECT || 'mbtech-bronze' };
+            if (!fromBq) return { ...connections, bq: access };
+            return { enrichment: connections.enrichment, bq: access };
         },
         async resolveRoot(flow, options) {
             const source = flow.cleaning.enabled ? flow.cleaning.rootSource : 'none';

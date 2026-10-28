@@ -172,6 +172,7 @@ function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southa
             }
             const rows = toObjects(result.schema?.fields || [], result.rows || []);
             state.rows += rows.length; state.bytes = Number(result.totalBytesProcessed || state.bytes);
+            if (result.numDmlAffectedRows != null) state.dml = Number(result.numDmlAffectedRows);
             await onPage(rows);
             if (!result.pageToken) break;
             if (parallel > 1 && Number(result.totalRows) > state.rows) {
@@ -183,12 +184,12 @@ function createBqClient({ keyFile, project = 'mbtech-bronze', location = 'southa
     };
     const queryPages = async ({ query, params = [], signal, pageSize = 50000, onPage = async () => {}, maxBytesBilled = '1000000000', jobTimeoutMs = '180000', waitMs = 180000, session, createSession = false, parallel = 1 } = {}) => {
         if (signal?.aborted) throw new Error('Consulta BQ cancelada.');
-        const state = { rows: 0, bytes: 0, reference: undefined, session: undefined };
+        const state = { rows: 0, bytes: 0, dml: undefined, reference: undefined, session: undefined };
         let complete = false;
         try {
             await runPages({ query, params, signal, pageSize, onPage, maxBytesBilled, jobTimeoutMs, waitMs, session, createSession, parallel }, state);
             complete = true;
-            return { rows: state.rows, jobId: state.reference?.jobId, bytes: state.bytes, ...(state.session ? { session: state.session } : {}) };
+            return { rows: state.rows, jobId: state.reference?.jobId, bytes: state.bytes, ...(state.dml != null ? { dml: state.dml } : {}), ...(state.session ? { session: state.session } : {}) };
         } catch (error) {
             if (error.code === 'BQ_FORBIDDEN') throw Object.assign(new Error('Sem acesso à Receita no BigQuery. Use a fonte Neon neste fluxo ou peça acesso ao dataset receita.'), { code: 'FLOW_VALIDATION' });
             throw error;

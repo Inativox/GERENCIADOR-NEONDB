@@ -26,6 +26,8 @@ function fixture(t, query) {
     let peakReads = 0;
     let failRead = false;
     let queries = 0;
+    let bqLookups = 0;
+    const bloqueadosBq = new Set();
     const state = { currentUser: { username: 'Davi', role: 'admin' }, pool: null };
     const sender = { isDestroyed: () => false, send: (channel, payload) => messages.push({ channel, payload }) };
     state.mainWindow = { webContents: sender };
@@ -37,6 +39,12 @@ function fixture(t, query) {
         '../flows/config': require('../src/main/flows/config'),
         '../flows/pipeline': require('../src/main/flows/pipeline'),
         '../receitaSituacao': require('../src/main/receitaSituacao'),
+        // Blocklist no BigQuery (1.8.26): a consulta passa por aqui, nunca pelo banco do Gerenciador.
+        '../blocklistBq': { async findBlocked(client, phones) {
+            assert.ok(client, 'cliente BQ ausente');
+            bqLookups++;
+            return new Map(phones.filter(phone => bloqueadosBq.has(phone)).map(phone => [phone, '27/10/2026 10:00:00']));
+        } },
         '../database/connection': { PROHIBITED_CNAES: new Set(['4731800']), queryWithRetry: async (...args) => { queries++; if (query) return query(...args); throw new Error('Banco não deve ser acessado'); }, logSystemAction() {} },
         './files': {
             readSpreadsheet: async file => {
@@ -59,6 +67,8 @@ function fixture(t, query) {
         start: (args = {}, selectedSender = sender) => listeners.get('start-cleaning')({ sender: selectedSender }, { cleanFiles: files, ...args }),
         peak: () => peakReads,
         queries: () => queries,
+        bqLookups: () => bqLookups,
+        bloquearNoBq: (...phones) => { phones.forEach(phone => bloqueadosBq.add(phone)); state.bqReceitaService = { configured: () => true, client: () => ({}) }; },
         fail: value => { failRead = value; },
         rootOptions: (from = sender) => handlers.get('local-cleaning-root-options')({ sender: from }),
         logout: () => listeners.get('logout')()
@@ -135,7 +145,7 @@ test('fonte ou pipeline inválido é rejeitado antes de qualquer consulta ou alt
     }
 });
 
-test('BQ não dispensa a conexão para a blocklist obrigatória de outros usuários', async t => {
+test('raiz BQ não dispensa o acesso à blocklist obrigatória de outros usuários', async t => {
     const f = fixture(t);
     f.state.currentUser.username = 'Outro';
     let loads = 0;
@@ -265,7 +275,7 @@ test('recusa o mesmo arquivo duas vezes antes de alterar qualquer planilha', asy
     assert.ok(f.messages.some(m => m.channel === 'log' && m.payload.includes('repetido')));
 });
 
-test('outros usuários não limpam sem conexão mesmo enviando blocklist desmarcada', async t => {
+test('outros usuários não limpam sem acesso ao BigQuery mesmo enviando blocklist desmarcada', async t => {
     const f = fixture(t);
     f.state.currentUser.username = 'Outro';
     await f.start({ checkBlocklist: false, username: 'Davi' });
@@ -275,19 +285,17 @@ test('outros usuários não limpam sem conexão mesmo enviando blocklist desmarc
 
 for (const username of ['Outro', 'Davi']) {
     test(`blocklist consulta e remove contatos bloqueados para ${username}`, async t => {
-        const f = fixture(t, async sql => {
-            assert.match(sql, /FROM blocklist/);
-            return { rows: [{ telefone: '21998364849' }] };
-        });
+        const f = fixture(t);
         f.state.currentUser.username = username;
-        f.state.pool = {};
+        f.bloquearNoBq('21998364849');
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
             ['cnpj', 'fone1'], ['12345678000199', '21998364849'], ['22345678000199', '11987654321']
         ]), 'Base');
         XLSX.writeFile(workbook, f.files[0].path);
         await f.start({ cleanFiles: [f.files[0]], checkBlocklist: username === 'Davi' });
-        assert.equal(f.queries(), 1);
+        assert.equal(f.queries(), 0);
+        assert.equal(f.bqLookups(), 1);
         assert.equal(f.messages.at(-1).payload.success, true);
         const result = XLSX.readFile(f.files[0].path);
         assert.deepEqual(XLSX.utils.sheet_to_json(result.Sheets.Base, { header: 1 }), [

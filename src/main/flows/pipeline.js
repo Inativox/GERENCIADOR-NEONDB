@@ -160,8 +160,9 @@ async function queryEnrichment(pool, documents) {
     return rows;
 }
 async function queryPhones(pool, kind, phones) {
-    // SQL identifiers come exclusively from this fixed allowlist.
-    const table = kind === 'blocklist' ? 'blocklist' : 'telefones_invalidos';
+    // Only telefones_invalidos stays in Postgres; the blocklist moved to BigQuery in 1.8.26.
+    if (kind === 'blocklist') throw validation('A blocklist é consultada no BigQuery, não no banco do Gerenciador.');
+    const table = 'telefones_invalidos';
     const { rows } = await pool.query(`SELECT telefone FROM ${table} WHERE telefone = ANY($1::text[])`, [phones]);
     return rows.map(row => row.telefone);
 }
@@ -187,6 +188,11 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
         pool.on?.('error', () => {});
         ownedPools.push(pool);
         return (pools[name] = pool);
+    }
+    let blocklistBqClient;
+    function blocklistClient() {
+        if (!connections.bq) throw validation('Configure o acesso ao BigQuery para usar a blocklist.');
+        return (blocklistBqClient ||= require('./bq').createBqClient(connections.bq));
     }
     function update(data = {}) {
         // Notifications are advisory: an observer must never roll back a confirmed file.
@@ -429,7 +435,10 @@ async function runFlow({ flow, user, jobDir, connections = {}, rootFile, signal,
                     const variants = [...new Set(phones.flatMap(variantesTelefoneFluxo))];
                     const lookup = async kind => {
                         if (!variants.length) return new Set();
-                        const values = providers.queryPhones ? await providers.queryPhones(kind, variants, signal) : await queryPhones(await poolFor('enrichment'), kind, variants);
+                        // Blocklist no BigQuery desde a 1.8.26; telefones inválidos seguem no banco do Gerenciador.
+                        const values = providers.queryPhones ? await providers.queryPhones(kind, variants, signal)
+                            : kind === 'blocklist' ? [...(await require('../blocklistBq').findBlocked(blocklistClient(), variants, { signal })).keys()]
+                                : await queryPhones(await poolFor('enrichment'), kind, variants);
                         return new Set(normalizedPhones(values));
                     };
                     const blocked = blocklist ? await lookup('blocklist') : new Set();

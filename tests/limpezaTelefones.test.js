@@ -30,6 +30,11 @@ function isolatedProcessor(query, write = (wb, file) => XLSX.writeFile(wb, file)
         '../flows/pipeline': require('../src/main/flows/pipeline'),
         '../receitaSituacao': require('../src/main/receitaSituacao'),
         '../database/connection': { PROHIBITED_CNAES: new Set(), queryWithRetry: query },
+        // Blocklist no BigQuery (1.8.26): o mesmo callback responde, para comparar as duas consultas.
+        '../blocklistBq': { async findBlocked(_client, phones) {
+            const { rows } = await query('SELECT telefone FROM blocklist (BigQuery)', [phones]);
+            return new Map(rows.map(row => [row.telefone, '']));
+        } },
         './files': { readSpreadsheet: async file => XLSX.readFile(file), writeSpreadsheet: write },
         '../limpezaTelefones': require('../src/main/limpezaTelefones')
     }, { setImmediate }).processFile;

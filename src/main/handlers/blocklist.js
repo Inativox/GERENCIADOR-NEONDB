@@ -1,5 +1,7 @@
 /**
  * Handlers da aba Blocklist: alimentação, verificação, estatísticas e divisão de CSV.
+ * A lista mora no BigQuery desde a 1.8.26 (src/main/blocklistBq.js), com o mesmo acesso
+ * Google dos Fluxos e da Situação Receita.
  */
 const { ipcMain, shell } = require('electron');
 const path = require('path');
@@ -10,8 +12,25 @@ const { parse } = require('csv-parse');
 
 const state = require('../state');
 const { logSystemAction } = require('../database/connection');
+const blocklistBq = require('../blocklistBq');
 
 const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
+const NO_ACCESS = 'Acesso negado ou acesso ao BigQuery não configurado (importe a credencial em Fluxos).';
+
+// Cliente do processo principal, o mesmo dos Fluxos; null se não houver acesso Google nesta máquina.
+function bqClient() {
+    const service = state.bqReceitaService;
+    return service?.configured?.() ? service.client() : null;
+}
+async function withBq(action) {
+    const client = bqClient();
+    if (!client) throw new Error(NO_ACCESS);
+    try { return await action(client); }
+    catch (error) {
+        if (error.code === 'BQ_AUTH_REQUIRED') state.bqReceitaService?.loginExpired?.(state.currentUser?.username);
+        throw error;
+    }
+}
 
 // #################################################################
 // #           E-MAIL DE ATUALIZAÇÃO                              #
@@ -62,16 +81,10 @@ async function sendBlocklistUpdateEmail(totalNewPhones, finalTotalCount) {
 
 function register() {
     ipcMain.handle("add-numbers-to-blocklist", async (_event, numbers) => {
-        if (!isAdmin() || !state.pool) return { success: false, message: "Acesso negado ou conexão com BD inativa." };
+        if (!isAdmin() || !bqClient()) return { success: false, message: NO_ACCESS };
         if (!Array.isArray(numbers) || numbers.length === 0) return { success: false, message: "Nenhum número fornecido." };
         try {
-            const query = `
-                INSERT INTO blocklist (telefone)
-                SELECT unnest($1::text[])
-                ON CONFLICT (telefone) DO NOTHING;
-            `;
-            const result = await state.pool.query(query, [numbers]);
-            const added = result.rowCount;
+            const added = await withBq(bq => blocklistBq.addPhones(bq, numbers, { origem: 'gerenciador-manual' }));
             logSystemAction(state.currentUser.username, 'Adicionar Manualmente à Blocklist', `${added} de ${numbers.length} números adicionados.`);
             return { success: true, added, total: numbers.length };
         } catch (e) {
@@ -80,8 +93,8 @@ function register() {
     });
 
     ipcMain.on("feed-blocklist", async (event, { filePaths, sendEmail }) => {
-        if (!isAdmin() || !state.pool) {
-            event.sender.send("blocklist-log", "❌ Acesso negado ou conexão com BD inativa.");
+        if (!isAdmin() || !bqClient()) {
+            event.sender.send("blocklist-log", "❌ " + NO_ACCESS);
             return;
         }
         const log = (msg) => event.sender.send("blocklist-log", msg);
@@ -94,13 +107,7 @@ function register() {
         const processChunk = async (phoneChunk) => {
             if (phoneChunk.size === 0) return;
             try {
-                const query = `
-                    INSERT INTO blocklist (telefone)
-                    SELECT unnest($1::text[])
-                    ON CONFLICT (telefone) DO NOTHING;
-                `;
-                const result = await state.pool.query(query, [Array.from(phoneChunk)]);
-                const newCount = result.rowCount;
+                const newCount = await withBq(bq => blocklistBq.addPhones(bq, Array.from(phoneChunk), { origem: 'gerenciador-feed' }));
                 if (newCount > 0) {
                     log(`✅ Lote salvo. ${newCount} novos telefones adicionados à blocklist.`);
                     totalNewPhonesAdded += newCount;
@@ -176,8 +183,7 @@ function register() {
         log(`Total de telefones novos adicionados: ${totalNewPhonesAdded.toLocaleString('pt-BR')}.`);
 
         try {
-            const finalCountResult = await state.pool.query('SELECT COUNT(*) FROM blocklist;');
-            const finalTotalCount = parseInt(finalCountResult.rows[0].count, 10);
+            const finalTotalCount = (await withBq(bq => blocklistBq.stats(bq))).total;
             log(`Total na blocklist agora: ${finalTotalCount.toLocaleString('pt-BR')}.`);
 
             if (sendEmail) {
@@ -193,20 +199,11 @@ function register() {
     });
 
     ipcMain.handle("get-blocklist-stats", async () => {
-        if (!isAdmin() || !state.pool) {
-            return { success: false, message: "Acesso negado ou conexão com BD inativa.", data: { total: 0, addedToday: 0 } };
+        if (!isAdmin() || !bqClient()) {
+            return { success: false, message: NO_ACCESS, data: { total: 0, addedToday: 0 } };
         }
         try {
-            const [totalResult, todayResult] = await Promise.all([
-                state.pool.query('SELECT COUNT(*) FROM blocklist;'),
-                state.pool.query("SELECT COUNT(*) FROM blocklist WHERE data_adicao >= current_date;")
-            ]);
-
-            const stats = {
-                total: parseInt(totalResult.rows[0].count, 10) || 0,
-                addedToday: parseInt(todayResult.rows[0].count, 10) || 0,
-            };
-            return { success: true, data: stats };
+            return { success: true, data: await withBq(bq => blocklistBq.stats(bq)) };
         } catch (error) {
             console.error("Erro ao buscar estatísticas da blocklist:", error);
             return { success: false, message: error.message, data: { total: 0, addedToday: 0 } };
@@ -214,24 +211,15 @@ function register() {
     });
 
     ipcMain.handle("check-blocklist-numbers", async (event, numbers) => {
-        if (!isAdmin() || !state.pool) {
-            return { success: false, message: "Acesso negado ou conexão com BD inativa." };
+        if (!isAdmin() || !bqClient()) {
+            return { success: false, message: NO_ACCESS };
         }
         if (!numbers || numbers.length === 0) {
             return { success: false, message: "Nenhum número fornecido para verificação." };
         }
 
         try {
-            const query = `
-                SELECT
-                    telefone,
-                    to_char(data_adicao, 'DD/MM/YYYY HH24:MI:SS') as data_formatada
-                FROM blocklist
-                WHERE telefone = ANY($1::text[])
-            `;
-            const result = await state.pool.query(query, [numbers]);
-
-            const foundNumbersMap = new Map(result.rows.map(row => [row.telefone, row.data_formatada]));
+            const foundNumbersMap = await withBq(bq => blocklistBq.findBlocked(bq, numbers));
             const notFoundNumbers = numbers.filter(num => !foundNumbersMap.has(num));
             const foundData = Array.from(foundNumbersMap.entries()).map(([telefone, data]) => ({ telefone, data_adicao: data }));
 

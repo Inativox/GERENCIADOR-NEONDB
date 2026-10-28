@@ -340,10 +340,13 @@ for (const extension of ['xlsx', 'csv']) {
 test('bounded pg lookups are read-only and parameterized', async () => {
     const calls = []; const pool = { async query(sql, args) { calls.push({ sql, args }); return { rows: [] }; } };
     const documents = ["00000000000001' OR true --"];
-    await queryEnrichment(pool, documents); await queryPhones(pool, 'blocklist', ['11999990001']); await queryPhones(pool, 'invalid', ['11999990002']);
+    await queryEnrichment(pool, documents); await queryPhones(pool, 'invalid', ['11999990002']);
+    // 1.8.26: a blocklist saiu do Postgres; pedir por aqui é erro, nunca consulta ao Neon.
+    await assert.rejects(queryPhones(pool, 'blocklist', ['11999990001']), /BigQuery/);
+    assert.equal(calls.length, 2);
     assert.ok(calls.every(call => /^SELECT/.test(call.sql) && call.sql.includes('ANY($1::text[])')));
     assert.ok(!calls[0].sql.includes(documents[0])); assert.deepEqual(calls[0].args, [documents]);
-    assert.ok(calls[0].sql.includes('socios')); assert.ok(calls[2].sql.includes('telefones_invalidos'));
+    assert.ok(calls[0].sql.includes('socios')); assert.ok(calls[1].sql.includes('telefones_invalidos'));
 });
 
 test('owned pools close on failed generation and secrets stay out of checkpoint', async t => {

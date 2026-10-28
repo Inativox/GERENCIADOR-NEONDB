@@ -111,7 +111,7 @@
                                 <label for="autoRootOperation">Pipeline
                                     <select id="autoRootOperation"><option value="c6">C6 — Abertura</option></select>
                                 </label>
-                                <p class="local-root-hint">Remove empresas que já passaram pelo pipeline escolhido, usando o histórico disponível no Bitrix. A blocklist e os filtros de telefone usam o Banco de Dados.</p>
+                                <p class="local-root-hint">Remove empresas que já passaram pelo pipeline escolhido, usando o histórico disponível no Bitrix. A blocklist usa o BigQuery; os filtros de telefone usam o Banco de Dados.</p>
                                 <div class="local-bq-actions"><button id="localBqLoginBtn" type="button">Entrar no Google</button><button id="localBqImportBtn" type="button">Importar chave BQ</button><button id="localBqTestBtn" type="button">Testar acesso</button></div>
                                 <p id="localBqStatus" class="local-root-hint" role="status">Usa o acesso Google já configurado nesta máquina.</p>
                             </div>
@@ -519,7 +519,7 @@
                         </div>
                         <hr>
                         <div class="tool-group">
-                            <h3>Alimentar Banco de Dados da Blocklist</h3>
+                            <h3>Alimentar a Blocklist (BigQuery)</h3>
                             <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 15px;">Selecione
                                 arquivos (.xlsx, .csv) contendo colunas de telefones para adicionar à blocklist.</p>
                             <div class="toggle-switch" style="margin-bottom: 15px;">
