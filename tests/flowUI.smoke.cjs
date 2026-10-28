@@ -144,11 +144,13 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     assert.equal(await evaluate(`document.querySelector('.receita-select-options input').checked`), true);
     await click('Concluir seleção');
     await checkbox('03 · Suspensa');
+    await checkbox('CNAEs de máquina');
     await click('Salvar fluxo');
     await waitFor(`window.electronAPI.inspect().flows.length===1 && !document.querySelector('.flows-app').getAttribute('aria-busy').includes('true')`);
     const first = await evaluate(`window.electronAPI.inspect().flows[0]`);
     assert.deepEqual(first.generation.uf, ['SP', 'RJ']);
     assert.deepEqual(first.generation.cnaes, expectedCnaes);
+    assert.equal(first.generation.machineCnaes, true);
     assert.deepEqual(first.generation.cidade, ['Campinas', 'São Paulo']);
     assert.deepEqual(first.generation.bairro, ['Centro', 'Cambuí']);
     assert.deepEqual(first.generation.naturezas, ['2062']);
