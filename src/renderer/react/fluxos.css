@@ -43,6 +43,7 @@
 .flow-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .flow-field > span { font-size: 11px; font-weight: 500; }
 .receita-select { position: relative; min-width: 0; }
+.flow-cnae-field { display: grid; gap: 10px; align-content: start; min-width: 0; }
 .receita-select-label { display: block; font-size: 11px; font-weight: 500; margin-bottom: 7px; }
 .flows-app .receita-select-trigger { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 38px; text-align: left; background: var(--bg-input); }
 .receita-selected { list-style: none; display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 0; padding: 0; max-height: 140px; overflow: auto; }
