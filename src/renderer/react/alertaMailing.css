@@ -84,7 +84,7 @@
 
 /* Folha com o detalhe do serviço ou o dia completo */
 .alerta-scrim { position: fixed; z-index: 40; inset: 0; background: color-mix(in srgb, var(--bg-app) 55%, transparent); animation: alerta-surgir .2s ease-out; }
-.alerta-sheet { position: fixed; z-index: 41; left: 50%; bottom: 24px; width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; border: 1px solid var(--border-hover); border-radius: 14px;
+.alerta-sheet { position: fixed; z-index: 41; left: 50%; bottom: 24px; width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 120px); overflow: auto; border: 1px solid var(--border-hover); border-radius: 14px;
     background: var(--bg-card); box-shadow: 0 30px 80px var(--shadow-color), 0 2px 8px var(--shadow-color); transform: translateX(-50%); animation: alerta-subir .36s cubic-bezier(.16, 1, .3, 1); }
 @keyframes alerta-surgir { from { opacity: 0; } }
 @keyframes alerta-subir { from { opacity: 0; transform: translate(-50%, 28px); } }
