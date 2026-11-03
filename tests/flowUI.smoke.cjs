@@ -42,6 +42,8 @@ app.whenReady().then(async () => {
 const {contextBridge} = require('electron');
 let username='Outro', role='admin', flows=[], jobs=[], callbacks=[], authCallbacks=[], calls=[], access={receitaConfigured:true,bqConfigured:true,bqLoginMode:'gcloud',bqAutoLogin:true};
 let receitaJob=null, receitaCallbacks=[];
+let mailingQueue={running:false,items:[]}, mailingCallbacks=[];
+const mailingServices=[{id:63,group:'Santander',label:'Santander',name:'SANTANDER'},{id:139,group:'MP',label:'213 - MP',name:'213 - MP'}];
 let formats=[{id:'padrao',nome:'Padrão',colunas:[{header:'CNPJ',campo:'cnpj'},{header:'NOME',campo:'razao_social'},{header:'FONE1',campo:'telefone_1'}]}];
 const layoutFields=${JSON.stringify(require('../src/main/flows/layouts').listLayoutFields())};
 const api={
@@ -52,9 +54,13 @@ receitaSituacaoStart:async(id,keep,options)=>{calls.push(['situacao-start',id,ke
 receitaSituacaoOpen:async()=>{calls.push(['situacao-open']);return {success:true};},
 onReceitaSituacaoUpdate:callback=>{receitaCallbacks.push(callback);return ()=>{};},
 emitReceita:job=>{receitaJob=job;receitaCallbacks.forEach(callback=>callback(job));},
-mailingImportState:async()=>({success:true,admin:false,fastway:{saved:false,login:null,canSave:true},maxRows:250000,job:null,services:[{id:63,group:'Santander',label:'Santander',name:'SANTANDER'},{id:139,group:'MP',label:'213 - MP',name:'213 - MP'}]}),
-mailingImportFile:async()=>{calls.push(['mailing-file']);return {success:true,file:{id:'mailing-fixture',name:'mailing.csv',rows:184320}};},
-mailingImportSend:async(fileId,serviceId,fastway)=>{calls.push(['mailing-send',fileId,serviceId,fastway]);return {success:true,fastway:fastway?.save?{saved:true,login:fastway.login,canSave:true}:{saved:false,login:null,canSave:true},job:{status:'completed',file:'mailing.csv',rows:184320,service:{id:139,group:'MP',label:'213 - MP',name:'213 - MP'},message:'Fastway confirmou 184.320 registros em 139 · 213 - MP.'}};},
+mailingImportState:async()=>({success:true,admin:false,fastway:{saved:false,login:null,canSave:true},maxRows:250000,maxQueue:50,queue:mailingQueue,services:mailingServices}),
+mailingImportAdd:async serviceId=>{calls.push(['mailing-add',serviceId]);const first=!calls.some(item=>item[0]==='mailing-add'&&item!==calls.at(-1));const n=mailingQueue.items.length+1;mailingQueue={...mailingQueue,items:[...mailingQueue.items,{id:'item-'+n,name:'lista-'+n+'.csv',rows:184320,service:mailingServices.find(item=>item.id===serviceId),status:'waiting',message:''}]};return {success:true,queue:mailingQueue,rejected:first?[{name:'sem-cpf.csv',message:'O cabeçalho precisa ter as colunas nome, cpf e fone1. Falta: cpf.'}]:[]};},
+mailingImportRemove:async itemId=>{calls.push(['mailing-remove',itemId]);mailingQueue={...mailingQueue,items:mailingQueue.items.filter(item=>item.id!==itemId)};return {success:true,queue:mailingQueue};},
+mailingImportClear:async()=>{calls.push(['mailing-clear']);mailingQueue={...mailingQueue,items:mailingQueue.items.filter(item=>['waiting','running'].includes(item.status))};return {success:true,queue:mailingQueue};},
+mailingImportStart:async fastway=>{calls.push(['mailing-start',fastway]);mailingQueue={running:true,items:mailingQueue.items.map((item,index)=>index===0?{...item,status:'running'}:item)};return {success:true,queue:mailingQueue};},
+onMailingImportUpdate:callback=>{mailingCallbacks.push(callback);return ()=>{mailingCallbacks=mailingCallbacks.filter(item=>item!==callback);};},
+emitMailing:update=>{mailingQueue=update.queue;mailingCallbacks.forEach(callback=>callback(update));},
 mailingImportForget:async()=>{calls.push(['mailing-forget']);return {success:true,fastway:{saved:false,login:null,canSave:true}};},
 
 flowsBootstrap:async()=>({success:true,user:{username,role},flows,jobs,formats,layoutFields,access,limits:{maxRows:500000}}),
@@ -287,29 +293,62 @@ emit:job=>{jobs=[job,...jobs.filter(item=>item.id!==job.id)];callbacks.forEach(c
     await waitFor(`window.electronAPI.inspect().calls.some(item=>item[0]==='situacao-open')`);
     await waitFor(`!!document.querySelector('.mailing-app')`);
     assert.equal(await evaluate(`!!document.querySelector('.importar-mailing .flow-view-switch') || !!document.querySelector('.importar-mailing .receita-situacao-app')`), false, 'quem não é admin não vê a Situação Receita');
-    const sendButton = `Array.from(document.querySelectorAll('.mailing-app button')).find(item=>item.textContent.trim()==='Enviar para a Fastway')`;
-    assert.equal(await evaluate(`${sendButton}.disabled`), true);
-    await click('Selecionar CSV');
-    await waitFor(`document.querySelector('.mailing-file')?.textContent.includes('184.320 linhas')`);
-    await evaluate(`Array.from(document.querySelectorAll('.mailing-chip')).find(item=>item.textContent.includes('213 - MP')).querySelector('input').click()`);
-    assert.equal(await evaluate(`${sendButton}.disabled`), true, 'sem login digitado não envia');
+    // Fila do Importar Mailing: cada lista com o seu serviço, uma por vez.
+    const mailingButton = text => `Array.from(document.querySelectorAll('.mailing-app button')).find(item=>item.textContent.trim().startsWith(${JSON.stringify(text)}))`;
+    const mailingChip = name => evaluate(`Array.from(document.querySelectorAll('.mailing-chip')).find(item=>item.textContent.includes(${JSON.stringify(name)})).querySelector('input').click()`);
+    const queueItems = `Array.from(document.querySelectorAll('.mailing-queue-item'))`;
+    assert.equal(await evaluate(`${mailingButton('Adicionar CSV à fila')}.disabled`), true, 'sem serviço não adiciona');
+    assert.equal(await evaluate(`${mailingButton('Enviar fila')}.disabled`), true);
+    await mailingChip('213 - MP');
+    await evaluate(`${mailingButton('Adicionar CSV à fila')}.click()`);
+    await waitFor(`${queueItems}.length===1`);
+    assert.match(await evaluate(`${queueItems}[0].textContent`), /lista-1\.csv184\.320 linhas · 139 · 213 - MPNa fila/);
+    assert.match(await evaluate(`document.querySelector('.mailing-notice').textContent`), /sem-cpf\.csv: .*Falta: cpf/);
+    await mailingChip('Santander');
+    await evaluate(`${mailingButton('Adicionar CSV à fila')}.click()`);
+    await waitFor(`${queueItems}.length===2`);
+    assert.equal(await evaluate(`!!document.querySelector('.mailing-notice')`), false, 'nova seleção sem recusa limpa o aviso');
+    await evaluate(`document.querySelector('[aria-label="Tirar lista-2.csv da fila"]').click()`);
+    await waitFor(`${queueItems}.length===1`);
+    await evaluate(`${mailingButton('Adicionar CSV à fila')}.click()`);
+    await waitFor(`${queueItems}.length===2 && ${queueItems}[1].textContent.includes('63 · SANTANDER')`);
+    assert.deepEqual(await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0].startsWith('mailing-'))`), [['mailing-add', 139], ['mailing-add', 63], ['mailing-remove', 'item-2'], ['mailing-add', 63]]);
+    assert.equal(await evaluate(`${mailingButton('Enviar fila')}.disabled`), true, 'sem login digitado não envia');
     assert.match(await evaluate(`document.querySelector('.mailing-missing').textContent`), /login e a senha/);
     // Os Fluxos também têm campos de login na mesma página; aqui a busca fica dentro do Importar Mailing.
     const mailingInput = (label, value) => evaluate(`(() => { const element = Array.from(document.querySelectorAll('.mailing-app .flow-field')).find(item => item.firstElementChild.textContent === ${JSON.stringify(label)}).querySelector('input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input',{bubbles:true})); })()`);
     await mailingInput('Login', 'ana.fastway'); await mailingInput('Senha', 'synthetic-own');
     await evaluate(`document.querySelector('.mailing-app .flow-check input').click()`);
-    await waitFor(`!${sendButton}.disabled`);
+    await waitFor(`!${mailingButton('Enviar fila')}.disabled`);
+    assert.equal(await evaluate(`${mailingButton('Enviar fila')}.textContent.trim()`), 'Enviar fila (2)');
     await evaluate(`document.querySelector('.mailing-login').scrollIntoView({ block: 'center' })`); await delay(100);
     await fs.writeFile(path.join(root, 'out', 'mailing-login-smoke.png'), (await window.webContents.capturePage()).toPNG());
-    await click('Enviar para a Fastway');
-    await waitFor(`document.querySelector('.mailing-confirm')?.textContent.includes('139 · 213 - MP')`);
-    assert.equal(await evaluate(`window.electronAPI.inspect().calls.some(item=>item[0]==='mailing-send')`), false, 'só envia depois de confirmar');
+    await evaluate(`${mailingButton('Enviar fila')}.click()`);
+    await waitFor(`document.querySelector('.mailing-confirm')?.textContent.includes('2 listas')`);
+    assert.match(await evaluate(`document.querySelector('.mailing-confirm').textContent`), /368\.640 linhas/);
+    assert.equal(await evaluate(`window.electronAPI.inspect().calls.some(item=>item[0]==='mailing-start')`), false, 'só envia depois de confirmar');
     await click('Confirmar envio');
-    await waitFor(`document.querySelector('.mailing-result')?.textContent.includes('Fastway confirmou 184.320')`);
-    assert.deepEqual(await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0]==='mailing-send')`), [['mailing-send', 'mailing-fixture', 139, { login: 'ana.fastway', password: 'synthetic-own', save: true }]]);
+    await waitFor(`document.querySelector('.mailing-progress')?.textContent.includes('Enviando lista-1.csv para 139')`);
+    assert.deepEqual(await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0]==='mailing-start')`), [['mailing-start', { login: 'ana.fastway', password: 'synthetic-own', save: true }]]);
+    assert.equal(await evaluate(`${mailingButton('Adicionar CSV à fila')}.disabled`), false, 'durante o envio dá para adicionar mais listas');
+    const saved = { saved: true, login: 'ana.fastway', canSave: true };
+    const item = (n, service, status, message = '') => ({ id: `item-${n}`, name: `lista-${n}.csv`, rows: 184320, service, status, message });
+    const mp = { id: 139, group: 'MP', label: '213 - MP', name: '213 - MP' }, santander = { id: 63, group: 'Santander', label: 'Santander', name: 'SANTANDER' };
+    const confirmed = 'Fastway confirmou 184.320 registros em 139 · 213 - MP.';
+    await evaluate(`window.electronAPI.emitMailing(${JSON.stringify({ queue: { running: true, items: [item(1, mp, 'completed', confirmed), item(2, santander, 'running')] }, fastway: saved })})`);
+    await waitFor(`document.querySelector('.mailing-progress')?.textContent.includes('Enviando lista-2.csv para 63')`);
+    await evaluate(`window.electronAPI.emitMailing(${JSON.stringify({ queue: { running: false, items: [item(1, mp, 'completed', confirmed), item(2, santander, 'failed', 'A Fastway respondeu HTTP 500.')] }, fastway: saved })})`);
+    await waitFor(`document.querySelector('.mailing-summary')?.textContent === '1 enviada · 1 com falha'`);
+    assert.deepEqual(await evaluate(`${queueItems}.map(item=>item.querySelector('.mailing-queue-status').textContent)`), ['Enviada', 'Falhou']);
+    assert.match(await evaluate(`${queueItems}[1].textContent`), /HTTP 500/);
     await waitFor(`document.querySelector('.mailing-login-saved')?.textContent.includes('ana.fastway')`);
     assert.equal(await evaluate(`document.querySelectorAll('.mailing-app input[type=password]').length`), 0, 'com login salvo a senha não fica na tela');
+    await evaluate(`document.querySelector('.mailing-queue').scrollIntoView({ block: 'center' })`); await delay(100);
+    await fs.writeFile(path.join(root, 'out', 'mailing-queue-smoke.png'), (await window.webContents.capturePage()).toPNG());
     await fs.writeFile(path.join(root, 'out', 'mailing-login-saved-smoke.png'), (await window.webContents.capturePage()).toPNG());
+    await click('Limpar concluídas');
+    await waitFor(`${queueItems}.length===0`);
+    assert.equal(await evaluate(`window.electronAPI.inspect().calls.filter(item=>item[0]==='mailing-clear').length`), 1);
     await click('Esquecer');
     await waitFor(`document.querySelectorAll('.mailing-app input[type=password]').length === 1`);
     assert.equal(await evaluate(`document.querySelector('.mailing-app input[type=password]').value`), '', 'esquecer não deixa a senha antiga no campo');
