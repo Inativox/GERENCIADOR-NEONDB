@@ -59,7 +59,7 @@ app.whenReady().then(async () => {
     require(path.join(appRoot, 'src/main/handlers/limpezaColunas')).register();
     require(path.join(appRoot, 'src/main/handlers/limpeza')).register();
     ipcMain.handle('get-ui-settings', () => new Promise(resolve => {
-        releaseUiSettings = () => resolve({ autoRoot: true, autoRootSource: 'bq', autoRootOperation: 'santander', checkBlocklist: false, checkDb: true, saveToDb: true, autoAdjust: false, organizeType: 'empresaAqui', mergeStrategy: 'custom' });
+        releaseUiSettings = () => resolve({ autoRoot: true, autoRootSource: 'bq', autoRootOperation: 'santander', machineCnaes: true, checkBlocklist: false, checkDb: true, saveToDb: true, autoAdjust: false, organizeType: 'empresaAqui', mergeStrategy: 'custom' });
     }));
     ipcMain.on('save-ui-settings', (_event, settings) => { savedUiSettings = settings; });
     ipcMain.on('start-cleaning', () => { localStartCount++; });
@@ -125,6 +125,7 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate(`document.getElementById('autoRootSource').value`), 'bq');
     assert.equal(await evaluate(`document.getElementById('autoRootOperation').value`), 'santander');
     assert.equal(await evaluate(`document.getElementById('checkBlocklistCheckbox').checked`), true, 'Preferência antiga não desativa blocklist obrigatória');
+    assert.equal(await evaluate(`document.getElementById('machineCnaesCheckbox').checked`), true, 'CNAEs de máquina volta ligada ao abrir o app');
     await evaluate(`document.getElementById('resetLocalBtn').click()`);
     assert.equal(await evaluate(`document.getElementById('checkBlocklistCheckbox').checked && document.getElementById('checkBlocklistCheckbox').disabled`), true);
     window.webContents.send('user-info', { username: 'Davi', role: 'admin' });
@@ -294,6 +295,22 @@ app.whenReady().then(async () => {
     assert.equal((await fs.readFile(cnaeFile.replace(/\.xlsx$/, '.csv'), 'utf8')).split('\r\n').filter(Boolean).length, 2);
     await evaluate(`document.getElementById('resetLocalBtn').click()`);
     assert.equal(await evaluate(`document.getElementById('keepCnaesCheckbox').checked || !document.getElementById('keepCnaesField').hidden`), false);
+    // "CNAEs de máquina": a chave usa a lista salva sem nada colado, e Reiniciar desliga.
+    const machineReceita = { '12345678000199': '5611201', '22345678000199': '6201501' };
+    mainState.receitaCnaeService = { configured: () => true, async lookupCnaes(documents) { return new Map(documents.filter(cnpj => machineReceita[cnpj]).map(cnpj => [cnpj, machineReceita[cnpj]])); } };
+    await cnaeWorkbook.xlsx.writeFile(cnaeFile);
+    await evaluate(`document.getElementById('machineCnaesCheckbox').click()`);
+    assert.equal(savedUiSettings.machineCnaes, true);
+    assert.equal(savedUiSettings.keepCnaes, false);
+    await evaluate(`document.getElementById('addCleanFileBtn').click()`);
+    await waitFor(`document.querySelectorAll('#progressContainer .file-progress').length === 1`);
+    await evaluate(`document.getElementById('startCleaningBtn').click()`);
+    await waitFor(`document.getElementById('localCleaningStatus').textContent === 'Lote concluído'`);
+    const machineResult = new ExcelJS.Workbook(); await machineResult.xlsx.readFile(cnaeFile);
+    assert.equal(machineResult.worksheets[0].rowCount, 2);
+    assert.equal(machineResult.worksheets[0].getCell('B2').value, 'Fica');
+    await evaluate(`document.getElementById('resetLocalBtn').click()`);
+    assert.equal(await evaluate(`document.getElementById('machineCnaesCheckbox').checked`), false);
     // BQ uses a synthetic provider and temporary XLSX files, never Google or Neon.
     const bqFile = path.join(userData, 'lista BQ.xlsx');
     const bqWorkbook = new ExcelJS.Workbook(), bqSheet = bqWorkbook.addWorksheet('Base');

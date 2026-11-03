@@ -63,6 +63,30 @@ test('configuration validates bounds/dates and snapshot enforces authenticated b
     assert.throws(() => validateFlow({ ...input, pipelines: ['90'] }), /inteiro/);
 });
 
+test('chave CNAEs de máquina soma a lista salva aos CNAEs do fluxo na execução', () => {
+    const input = defaults();
+    assert.equal(input.generation.machineCnaes, false);
+    input.generation.cnaes = ['6201501'];
+    input.generation.machineCnaes = true;
+    const flow = validateFlow(input);
+    assert.equal(flow.generation.machineCnaes, true);
+    assert.deepEqual(flow.generation.cnaes, ['6201501'], 'o fluxo salvo guarda só a seleção');
+    assert.deepEqual([...effectiveFlow(flow, { username: 'Davi' }).generation.cnaes].sort(), [
+        '4711302', '4712100', '4723700', '4729699', '5611201', '5611203', '5611204', '5611205', '5620102', '6201501'
+    ]);
+    const off = validateFlow({ ...input, generation: { ...input.generation, machineCnaes: false } });
+    assert.deepEqual(effectiveFlow(off, { username: 'Davi' }).generation.cnaes, ['6201501']);
+});
+
+test('com CNAEs de máquina a lista do fluxo não passa de 500 CNAEs', () => {
+    const input = defaults();
+    input.generation.machineCnaes = true;
+    input.generation.cnaes = Array.from({ length: 492 }, (_, index) => String(1000000 + index));
+    assert.throws(() => validateFlow(input), /500 CNAEs/);
+    input.generation.cnaes = input.generation.cnaes.slice(0, 491);
+    assert.equal(validateFlow(input).generation.cnaes.length, 491);
+});
+
 test('saved availability persists and freezes per execution independently of the online API', async t => {
     const f = fixture(t);
     const input = defaults();

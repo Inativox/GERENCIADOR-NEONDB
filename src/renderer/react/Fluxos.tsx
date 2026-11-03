@@ -24,7 +24,7 @@ const safeText = (value: unknown) => String(value ?? '').slice(0, 4000).replace(
 export function createFlow(operation: Operation = 'c6', defaults?: Partial<Flow>): Flow {
     return {
         id: '', name: '', operation, pipelines: OPERATIONS.find(item => item.id === operation)?.pipelines || [], revision: 0,
-        generation: { limit: 100000, uf: [], cidade: [], bairro: [], cnaes: [], naturezas: [], dateFrom: '', dateTo: '', mei: 'all', phone: 'with', email: 'all', situacoes: ['02'], availability: 'all', source: 'bq', ...defaults?.generation },
+        generation: { limit: 100000, uf: [], cidade: [], bairro: [], cnaes: [], machineCnaes: false, naturezas: [], dateFrom: '', dateTo: '', mei: 'all', phone: 'with', email: 'all', situacoes: ['02'], availability: 'all', source: 'bq', ...defaults?.generation },
         enrichment: { enabled: true, strategy: 'append', fillCpf: false, ...defaults?.enrichment },
         api: { enabled: operation === 'c6', keyMode: 'dupla', delayMs: 60000 },
         fastway: { enabled: false, campaignId: '', ...defaults?.fastway },
@@ -267,7 +267,7 @@ export function Fluxos() {
                         <ReceitaSelect label="Bairros" field="bairro" values={draft.generation.bairro} uf={draft.generation.uf} cidade={draft.generation.cidade} source={receitaSource} api={api} disabled={!!busy || !receitaReady} onChange={bairro => generation({ bairro })} />
                         <Field label="Abertura a partir de"><input type="date" value={draft.generation.dateFrom} onChange={event => generation({ dateFrom: event.target.value })} /></Field>
                         <Field label="Abertura até"><input type="date" value={draft.generation.dateTo} onChange={event => generation({ dateTo: event.target.value })} /></Field>
-                        <ReceitaSelect label="CNAEs" field="cnaes" values={draft.generation.cnaes} source={receitaSource} api={api} disabled={!!busy || !receitaReady} onChange={cnaes => generation({ cnaes })} />
+                        <div className="flow-cnae-field"><ReceitaSelect label="CNAEs" field="cnaes" values={draft.generation.cnaes} source={receitaSource} api={api} disabled={!!busy || !receitaReady} onChange={cnaes => generation({ cnaes })} /><Check label="CNAEs de máquina" checked={draft.generation.machineCnaes === true} onChange={machineCnaes => generation({ machineCnaes })} /></div>
                         <ReceitaSelect label="Naturezas jurídicas" field="naturezas" values={draft.generation.naturezas} source={receitaSource} api={api} disabled={!!busy || !receitaReady} onChange={naturezas => generation({ naturezas })} />
                         <Field label="MEI"><select value={draft.generation.mei} onChange={event => generation({ mei: event.target.value as Flow['generation']['mei'] })}><option value="all">Todos</option><option value="yes">Somente MEI</option><option value="no">Excluir MEI</option></select></Field>
                         <Field label="Telefone na Receita"><select value={draft.generation.phone} onChange={event => generation({ phone: event.target.value as Flow['generation']['phone'] })}><option value="all">Com ou sem telefone</option><option value="with">Com telefone</option><option value="without">Sem telefone</option></select></Field>

@@ -9,9 +9,11 @@ const OPERATIONS = [
     { id: 'pagbank', name: 'PagBank', pipelines: [34] },
     { id: 'mercadopago', name: 'Mercado Pago — Hunter', pipelines: [58] },
 ];
+// Lista da chave "CNAEs de máquina" do Gerar Listas. A Limpeza Local tem a sua em handlers/limpeza.js.
+const MACHINE_CNAES = ['4723700', '5611204', '5611205', '5611203', '5611201', '4711302', '4712100', '4729699', '5620102'];
 function defaults() {
     return { id: '', revision: 0, name: 'Novo fluxo', operation: 'c6', pipelines: [90],
-        generation: { limit: 100000, uf: [], cidade: [], bairro: [], cnaes: [], naturezas: [], dateFrom: '', dateTo: '', mei: 'all', phone: 'with', email: 'all', situacoes: ['02'], availability: 'all', source: 'bq' },
+        generation: { limit: 100000, uf: [], cidade: [], bairro: [], cnaes: [], machineCnaes: false, naturezas: [], dateFrom: '', dateTo: '', mei: 'all', phone: 'with', email: 'all', situacoes: ['02'], availability: 'all', source: 'bq' },
         enrichment: { enabled: false, strategy: 'append', fillCpf: false },
         api: { enabled: true, keyMode: 'dupla', delayMs: 60000 },
         cleaning: { enabled: true, rootSource: 'bq', rootFile: '', blocklist: true, invalidPhones: false, removeLandlines: false, fillLivre5: false, prohibitedCnaes: [...PROHIBITED_CNAES].map(value => value.padStart(7, '0')) },
@@ -41,6 +43,9 @@ function validateFlow(input, existing, { resolveFormat = require('./formats').ge
     pipelines = [...new Set(pipelines.map(value => number(value, 1, 1000000)))];
     const from = date(g.dateFrom), to = date(g.dateTo); if (from && to && from > to) throw new Error('A data inicial deve preceder a final.');
     const situacoes = list(g.situacoes, /^(01|02|03|04|08)$/); if (!situacoes.length) throw new Error('Escolha ao menos uma situação da Receita.');
+    const cnaes = list(g.cnaes, /^\d{1,7}$/, 500), machineCnaes = g.machineCnaes === true;
+    // A geração aceita até 500 CNAEs, já somados os de máquina.
+    if (machineCnaes && new Set([...cnaes, ...MACHINE_CNAES]).size > 500) throw new Error('Com os CNAEs de máquina, a lista passa de 500 CNAEs. Remova alguns da seleção.');
     const rootSource = option(c.rootSource, ['bq', 'neon', 'file', 'none']);
     const rootFile = text(c.rootFile || '', 2048);
     const fastway = input.fastway || base.fastway;
@@ -49,7 +54,7 @@ function validateFlow(input, existing, { resolveFormat = require('./formats').ge
     if (rootSource === 'file' && c.enabled !== false && !/\.(xlsx|csv)$/i.test(rootFile)) throw new Error('Selecione um arquivo raiz XLSX ou CSV.');
     resolveFormat(o.formatId, { includeSituacao: o.includeSituacao !== false });
     return { id, revision: (existing?.revision || 0) + 1, name, operation, pipelines,
-        generation: { limit: g.limit == null || g.limit === '' ? null : number(g.limit, 1, MAX_ROWS), uf: list(g.uf, /^[A-Z]{2}$/i).map(value => value.toUpperCase()), cidade: locations(g.cidade), bairro: locations(g.bairro), cnaes: list(g.cnaes, /^\d{1,7}$/, 500), naturezas: list(g.naturezas, /^\d{1,4}$/, 500).filter(isAllowedNatureza), dateFrom: from, dateTo: to,
+        generation: { limit: g.limit == null || g.limit === '' ? null : number(g.limit, 1, MAX_ROWS), uf: list(g.uf, /^[A-Z]{2}$/i).map(value => value.toUpperCase()), cidade: locations(g.cidade), bairro: locations(g.bairro), cnaes, machineCnaes, naturezas: list(g.naturezas, /^\d{1,4}$/, 500).filter(isAllowedNatureza), dateFrom: from, dateTo: to,
             mei: option(g.mei, ['all', 'yes', 'no']), phone: option(g.phone, ['all', 'with', 'without']), email: option(g.email, ['all', 'with', 'without']), situacoes, availability: option(g.availability, ['all', 'available']), source: receitaSource(g.source) },
         enrichment: { enabled: e.enabled === true, strategy: option(e.strategy, ['append', 'overwrite', 'ignore']), fillCpf: e.fillCpf === true },
         api: { enabled: operation === 'c6' && (input.api?.enabled == null || input.api.enabled === true), keyMode: 'dupla', delayMs: 60000 },
@@ -60,6 +65,8 @@ function validateFlow(input, existing, { resolveFormat = require('./formats').ge
 function effectiveFlow(flow, user, { resolveFormat = require('./formats').getFormat } = {}) {
     const snapshot = JSON.parse(JSON.stringify(flow));
     snapshot.generation.source = receitaSource(flow.generation?.source);
+    // A execução recebe os CNAEs de máquina somados à seleção; o fluxo salvo guarda só a chave.
+    if (snapshot.generation.machineCnaes === true) snapshot.generation.cnaes = [...new Set([...snapshot.generation.cnaes, ...MACHINE_CNAES])];
     snapshot.api = { enabled: flow.operation === 'c6' && (flow.api?.enabled == null || flow.api.enabled === true), keyMode: 'dupla', delayMs: 60000 };
     snapshot.fastway = { enabled: flow.fastway?.enabled === true, campaignId: flow.fastway?.campaignId || '' };
     snapshot.cleaning.blocklist = user.username !== 'Davi' || snapshot.cleaning.blocklist;

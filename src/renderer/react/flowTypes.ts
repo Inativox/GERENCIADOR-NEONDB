@@ -8,7 +8,7 @@ export interface Flow {
     pipelines: number[];
     revision: number;
     generation: {
-        limit: number | null; uf: string[]; cidade: string[]; bairro: string[]; cnaes: string[]; naturezas: string[];
+        limit: number | null; uf: string[]; cidade: string[]; bairro: string[]; cnaes: string[]; machineCnaes?: boolean; naturezas: string[];
         dateFrom: string; dateTo: string; mei: 'all' | 'yes' | 'no';
         phone: 'all' | 'with' | 'without'; email: 'all' | 'with' | 'without'; situacoes: string[];
         availability?: 'all' | 'available';

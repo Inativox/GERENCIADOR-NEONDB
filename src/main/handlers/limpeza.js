@@ -57,6 +57,24 @@ function parseKeepCnaes(text) {
     return new Set(tokens.map(cnaeKey));
 }
 
+// --- CNAES DE MÁQUINA ---
+// Lista salva da chave "CNAEs de máquina". 4782202 fica de fora: é proibido e sairia da lista de qualquer jeito.
+const MACHINE_CNAES = [
+    '1091102', '4721102', '5611201', '5611203', '5612104', '5612105', '5620102', '5620104', '4723700', '4712100',
+    '4722901', '4722902', '4711302', '4729699', '4781400', '4782201', '4713001', '4754701', '4761001', '4761003',
+    '4763601', '4763602', '4753900', '4751201', '4752100', '4744100', '4744005', '4759801', '4744099', '8630503',
+    '8630501', '8650003', '8650006', '8690901', '9602501', '9602502', '9609206', '4789004', '7500100', '4520001',
+    '4530701', '9313100', '8592901', '8593700', '5510801', '5510803'
+];
+
+// As duas chaves somam: fica o CNPJ cujo CNAE está nos CNAEs de máquina ou na lista colada.
+function resolveKeepCnaes({ keepCnaesText, machineCnaes }) {
+    if (keepCnaesText == null && !machineCnaes) return null;
+    const keepCnaes = keepCnaesText == null ? new Set() : parseKeepCnaes(keepCnaesText);
+    if (machineCnaes) MACHINE_CNAES.forEach(code => keepCnaes.add(code));
+    return keepCnaes;
+}
+
 const PROHIBITED_KEYS = new Set([...PROHIBITED_CNAES].map(cnaeKey));
 // Proibidos colados saem da lista: essas empresas são removidas como qualquer CNAE fora dela.
 function withoutProhibited(keepCnaes) {
@@ -340,8 +358,8 @@ function register() {
                 selectedPaths.add(key);
             }
             // A tela só envia o texto com a chave ligada; a lista é validada aqui, antes de abrir qualquer planilha.
-            const keepCnaes = args.keepCnaesText == null ? null : parseKeepCnaes(args.keepCnaesText);
-            if (keepCnaes && !state.receitaCnaeService?.configured()) throw new Error('Configure o banco da Receita na tela de login para usar "Manter só estes CNAEs".');
+            const keepCnaes = resolveKeepCnaes(args);
+            if (keepCnaes && !state.receitaCnaeService?.configured()) throw new Error('Configure o banco da Receita na tela de login para usar o filtro de CNAEs.');
             const ignoredCnaes = keepCnaes ? withoutProhibited(keepCnaes) : [];
             const rootSource = args.autoRootSource ?? 'neon';
             if (args.isAutoRoot && !['neon', 'bq'].includes(rootSource)) throw new Error('Escolha Banco de Dados ou BigQuery como fonte do Auto Raiz.');
@@ -411,7 +429,9 @@ function register() {
             if (args.removeLandlines) log("Opção \"Remover Fones Fixos\" está ATIVADA.");
             log('CSV adicional: salvo ao lado de cada lista limpa.');
             log(`FILTRO DE CNAE PROIBIDO: ATIVADO (Padrão).`);
-            if (keepCnaes) log(`Opção "Manter só estes CNAEs" está ATIVADA: ${keepCnaes.size} CNAE(s) na lista, conferidos pelo CNPJ no banco da Receita.`);
+            if (args.machineCnaes) log(`Opção "CNAEs de máquina" está ATIVADA: ${MACHINE_CNAES.length} CNAEs salvos.`);
+            if (args.keepCnaesText != null) log('Opção "Manter só estes CNAEs" está ATIVADA.');
+            if (keepCnaes) log(`Filtro de CNAEs: ${keepCnaes.size} CNAE(s) na lista, conferidos pelo CNPJ no banco da Receita.`);
             if (ignoredCnaes.length) log(`⚠️ CNAEs proibidos ignorados: ${ignoredCnaes.join(', ')}. Essas empresas saem da lista.`);
 
             const fileEvent = { sender: { send } };
