@@ -58,8 +58,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
           return () => ipcRenderer.removeListener('receita-situacao-update', listener);
       },
       mailingImportState: () => ipcRenderer.invoke('mailing-import-state'),
-      mailingImportFile: () => ipcRenderer.invoke('mailing-import-file'),
-      mailingImportSend: (fileId, serviceId, fastway) => ipcRenderer.invoke('mailing-import-send', { fileId, serviceId, fastway }),
+      mailingImportAdd: (serviceId) => ipcRenderer.invoke('mailing-import-add', { serviceId }),
+      mailingImportRemove: (itemId) => ipcRenderer.invoke('mailing-import-remove', { itemId }),
+      mailingImportClear: () => ipcRenderer.invoke('mailing-import-clear'),
+      mailingImportStart: (fastway) => ipcRenderer.invoke('mailing-import-start', { fastway }),
+      onMailingImportUpdate: (callback) => subscribe('mailing-import-update', callback),
       mailingImportForget: () => ipcRenderer.invoke('mailing-import-forget'),
       alertaMailingState: () => ipcRenderer.invoke('alerta-mailing-state'),
       alertaMailingVerificar: () => ipcRenderer.invoke('alerta-mailing-verificar'),
