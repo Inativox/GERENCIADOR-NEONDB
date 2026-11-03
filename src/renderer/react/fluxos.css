@@ -226,6 +226,24 @@
 .mailing-result--completed svg, .receita-status--done svg { color: var(--accent-green); }
 .mailing-result--failed svg, .receita-status--failed svg { color: var(--accent-red); }
 @keyframes mailing-spin { to { transform: rotate(360deg); } }
+.mailing-add .mailing-file-pick, .mailing-add .mailing-file--reading { margin-top: 12px; }
+.mailing-notice { display: grid; gap: 4px; padding-left: 16px; }
+.mailing-queue-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.mailing-panel-section .mailing-queue-heading h2 { margin-bottom: 0; }
+.mailing-queue-heading span { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.mailing-queue { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.mailing-queue-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-element); }
+.mailing-queue-item--running { border-color: var(--accent-blue); }
+.mailing-queue-item strong { display: block; overflow: hidden; font-size: 12px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+.mailing-queue-meta { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 11px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mailing-queue-message { margin-top: 4px; color: var(--accent-red); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.mailing-queue-status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+.mailing-queue-status svg { width: 14px; height: 14px; color: var(--accent-blue); animation: mailing-spin 900ms linear infinite; }
+.mailing-queue-item--completed .mailing-queue-status { color: var(--accent-green); }
+.mailing-queue-item--failed .mailing-queue-status { color: var(--accent-red); }
+.flows-app .mailing-queue-item button { width: 26px; height: 26px; padding: 0; font-size: 15px; line-height: 1; }
+.flows-app button.mailing-queue-clear { margin-top: 10px; padding: 6px 10px; font-size: 11px; }
+.mailing-summary { margin-bottom: 10px; color: var(--text-secondary); font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
 /* Situação Receita: a mesma gramática do Importar Mailing. Regras da lista à esquerda; lista, ação e resultado no painel fixo. */
 .receita-situacao-app [data-tone="ok"] { --tone: var(--accent-green); }
 .receita-situacao-app [data-tone="warn"] { --tone: var(--accent-yellow); }
@@ -278,4 +296,4 @@
 .receita-job-actions button { flex: 1; }
 @container (max-width: 860px) { .mailing-layout, .receita-layout { grid-template-columns: 1fr; } .mailing-panel, .receita-panel { position: static; } .receita-quick-form { grid-template-columns: minmax(0, 1fr) auto; } .receita-quick-form .receita-hint { grid-column: 1 / -1; } }
 @container (max-width: 480px) { .mailing-group, .receita-group { grid-template-columns: 1fr; gap: 8px; } .mailing-group-name, .receita-group-name { padding-top: 0; } .receita-quick-form { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { .mailing-chip, .mailing-chip-id, .receita-chip, .receita-chip-dot { transition: none; } .mailing-destination, .receita-situacao-result, .receita-job { animation: none; } .mailing-progress svg, .mailing-file--reading svg, .receita-status--running svg { animation-duration: 4s; } }
+@media (prefers-reduced-motion: reduce) { .mailing-chip, .mailing-chip-id, .receita-chip, .receita-chip-dot { transition: none; } .mailing-destination, .receita-situacao-result, .receita-job { animation: none; } .mailing-progress svg, .mailing-file--reading svg, .mailing-queue-status svg, .receita-status--running svg { animation-duration: 4s; } }
