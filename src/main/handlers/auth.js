@@ -56,7 +56,7 @@ function confirmCloseDuringFlow(window) {
 }
 
 function closeDetail(uploading, mailing) {
-    if (mailing) return 'A Fastway só confirma depois de importar o mailing. Se fechar agora, o arquivo pode ser recebido sem confirmação. Confira o painel antes de enviar de novo.';
+    if (mailing) return 'A Fastway só confirma depois de importar o mailing. Se fechar agora, a lista que está subindo pode ser recebida sem confirmação e as que esperam na fila não serão enviadas. Confira o painel antes de enviar de novo.';
     if (uploading) return 'A Fastway só confirma depois de importar o mailing. Se fechar agora, o arquivo pode ser recebido sem confirmação e a execução aparecerá como interrompida.';
     return 'Se fechar agora, a execução será interrompida e poderá ser retomada da última etapa confirmada.';
 }
