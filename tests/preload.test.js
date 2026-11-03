@@ -36,19 +36,34 @@ test('assinatura de eventos de colunas pode ser removida sem afetar outro consum
     assert.equal(ipcRenderer.listenerCount('limpeza-colunas-log'), 1);
 });
 
-test('importação de mailing chama os canais do main e envia o arquivo, o serviço e o login digitado', async () => {
+test('fila do Importar Mailing chama os canais do main com o serviço, a lista e o login digitado', async () => {
     const ipcRenderer = new EventEmitter(), invoked = [];
     ipcRenderer.invoke = async (...args) => { invoked.push(args); return { success: true }; };
     let api;
     loadModule('preload.js', { electron: { ipcRenderer, contextBridge: { exposeInMainWorld: (_, value) => { api = value; } } } });
     const fastway = { login: 'ana.fastway', password: 'synthetic', save: true };
     await api.mailingImportState();
-    await api.mailingImportFile();
-    await api.mailingImportSend('arquivo-1', 63);
-    await api.mailingImportSend('arquivo-2', 87, fastway);
+    await api.mailingImportAdd(63);
+    await api.mailingImportRemove('item-1');
+    await api.mailingImportClear();
+    await api.mailingImportStart();
+    await api.mailingImportStart(fastway);
     await api.mailingImportForget();
-    assert.deepEqual(JSON.parse(JSON.stringify(invoked)), [['mailing-import-state'], ['mailing-import-file'], ['mailing-import-send', { fileId: 'arquivo-1', serviceId: 63 }],
-        ['mailing-import-send', { fileId: 'arquivo-2', serviceId: 87, fastway }], ['mailing-import-forget']]);
+    assert.deepEqual(JSON.parse(JSON.stringify(invoked)), [['mailing-import-state'], ['mailing-import-add', { serviceId: 63 }], ['mailing-import-remove', { itemId: 'item-1' }],
+        ['mailing-import-clear'], ['mailing-import-start', {}], ['mailing-import-start', { fastway }], ['mailing-import-forget']]);
+});
+
+test('a tela recebe as mudanças da fila e pode parar de ouvir', () => {
+    const ipcRenderer = new EventEmitter();
+    let api;
+    loadModule('preload.js', { electron: { ipcRenderer, contextBridge: { exposeInMainWorld: (_, value) => { api = value; } } } });
+    const updates = [];
+    const unsubscribe = api.onMailingImportUpdate(update => updates.push(update));
+    ipcRenderer.emit('mailing-import-update', {}, { queue: { running: true, items: [] } });
+    unsubscribe();
+    ipcRenderer.emit('mailing-import-update', {}, { queue: { running: false, items: [] } });
+    assert.deepEqual(updates, [{ queue: { running: true, items: [] } }]);
+    assert.equal(ipcRenderer.listenerCount('mailing-import-update'), 0);
 });
 
 test('consulta de lista da Receita envia a lista, as situações e as chaves de MEI e CSV', async () => {
