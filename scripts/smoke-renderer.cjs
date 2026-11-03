@@ -79,7 +79,7 @@ app.whenReady().then(async () => {
     ipcMain.handle('flows-receita-options', () => ({ success: true, options: [] }));
     ipcMain.handle('flows-test-bq', () => ({ success: true, message: 'Acesso BQ sintético aprovado.' }));
     ipcMain.handle('receita-situacao-state', () => ({ success: true, job: null, templates: [], configured: false }));
-    ipcMain.handle('mailing-import-state', () => ({ success: true, admin: true, configured: true, maxRows: 250000, job: null, services: [{ id: 63, group: 'Santander', label: 'Santander', name: 'SANTANDER' }] }));
+    ipcMain.handle('mailing-import-state', () => ({ success: true, admin: true, configured: true, maxRows: 250000, maxQueue: 50, queue: { running: false, items: [] }, services: [{ id: 63, group: 'Santander', label: 'Santander', name: 'SANTANDER' }] }));
     // Alerta de Mailing com dados sintéticos: uma lista para trocar, uma acabando, um transbordo e um serviço parado.
     const linhaAlerta = (servicoId, servico, extra) => ({ servicoId, servico, mailingId: servicoId * 10, arquivo: `lista-${servicoId}.csv`, registros: 10000, restantes: 4000, percentual: 60, situacao: 'OK', acao: 'NADA', reciclagensHoje: 0, limiteReciclagens: 2, minutosRestantes: 95, ritmoPorMinuto: 42, transbordo: false, parado: false, ...extra });
     const alertaPainel = { configurado: true, login: { saved: true, login: 'synthetic', canSave: true }, reciclador: false, foco: null, conectado: true, erro: null, verificando: false, intervaloMinutos: 3, verificadoEm: new Date().toISOString(),
