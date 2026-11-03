@@ -207,11 +207,14 @@ app.whenReady().then(async () => {
     await delay(300);
     await fs.mkdir(path.resolve(__dirname, '../out'), { recursive: true });
     await fs.writeFile(path.resolve(__dirname, '../out/renderer-smoke.png'), (await window.webContents.capturePage()).toPNG());
-    // A aba do Alerta de Mailing abre no serviço mais grave e mostra o que fazer.
+    // A aba do Alerta de Mailing é um mural: o serviço mais grave vem primeiro, maior, e o clique abre o que fazer.
     await evaluate(`document.querySelector('[data-tab-name="alertaMailing"]').click()`);
-    await waitFor(`document.querySelectorAll('#alertaMailing .alerta-item').length === 4`);
-    assert.equal(await evaluate(`document.querySelector('#alertaMailing .alerta-acao strong').textContent`), 'Trocar a lista');
-    assert.equal(await evaluate(`document.querySelector('#alertaMailing .alerta-item[aria-pressed="true"] strong').textContent`), 'PAG CADENCIA');
+    await waitFor(`document.querySelectorAll('#alertaMailing .alerta-tank').length === 4`);
+    assert.equal(await evaluate(`document.querySelector('#alertaMailing .alerta-tank .alerta-tank-nome').textContent`), 'PAG CADENCIA');
+    assert.equal(await evaluate(`document.querySelector('#alertaMailing .alerta-tank[data-big] .alerta-tank-verbo').textContent`), 'Trocar a lista');
+    assert.equal(await evaluate(`document.querySelectorAll('#alertaMailing .alerta-tank[data-big]').length`), 1);
+    await evaluate(`document.querySelector('#alertaMailing .alerta-tank').click()`);
+    await waitFor(`document.querySelector('#alertaMailing .alerta-sheet .alerta-acao strong')?.textContent === 'Trocar a lista'`);
     await delay(300);
     await fs.writeFile(path.resolve(__dirname, '../out/alerta-mailing.png'), (await window.webContents.capturePage()).toPNG());
 
