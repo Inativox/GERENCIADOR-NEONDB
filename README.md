@@ -15,6 +15,7 @@ Aplicativo desktop (Electron) para gerenciamento e processamento de bases de dad
 | **Limpeza de Colunas** | Padronização de XLSX em NOME, CPF e FONE1, com interface React e processamento em worker |
 | **Gerar listas** | Geração pela Receita, enriquecimento, consulta API opcional, filtros finais e exportação com checkpoints |
 | **Consulta Situação Receita** | Consulta da situação cadastral na base Receita |
+| **Importar Mailing** | Fila de CSVs enviados à Fastway um por vez, cada um para o seu serviço (até 50 listas). Uma falha fica marcada e a fila segue; login recusado para a fila |
 | **Alerta de Mailing** | Só admin: confere a cada 3 min o mailing ativo de cada serviço da Fastway, avisa por notificação do Windows e, no PC com a chave ligada, recicla e para serviços sozinho |
 
 ## Tecnologias
