@@ -6,6 +6,7 @@ const { createUserStore } = require('./store');
 const { effectiveFlow, validateFlow } = require('./config');
 const { listFormats, getFormat, mapOutputRow } = require('./formats');
 const { validateLayout } = require('./layouts');
+const { listPresets, getPreset, isPresetId } = require('./presets');
 
 /** The Fastway may have imported a file whose answer never arrived; the resume asks the Fastway before resending it. */
 function interrupted(job) {
@@ -139,9 +140,9 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
         bootstrap() {
             const current = user(), store = storeFor(current.username);
             for (const job of store.listJobs()) if (job.status === 'running' && active?.job.id !== job.id) store.saveJob(interrupted(store.getJob(job.id)));
-            return { user: current, flows: store.listFlows(), jobs: store.listJobs(), formats: listFormats(store.listLayouts()), cacheDirectory: getCacheDirectory() };
+            return { user: current, presets: listPresets(), flows: store.listFlows(), jobs: store.listJobs(), formats: listFormats(store.listLayouts()), cacheDirectory: getCacheDirectory() };
         },
-        save(input) { const store = storeFor(user().username); const existing = input.id ? store.getFlow(input.id) : null; if (input.id && !existing) throw new Error('Fluxo não encontrado nesta conta.'); return store.saveFlow(validateFlow(input, existing, { resolveFormat: formatResolver(store) })); },
+        save(input) { const store = storeFor(user().username); if (isPresetId(input?.id)) throw new Error('Presets não podem ser editados. Use Duplicar para criar um fluxo no modo livre.'); const existing = input.id ? store.getFlow(input.id) : null; if (input.id && !existing) throw new Error('Fluxo não encontrado nesta conta.'); return store.saveFlow(validateFlow(input, existing, { resolveFormat: formatResolver(store) })); },
         saveLayout(input) {
             const store = storeFor(user().username), existing = input?.id ? store.getLayout(input.id) : null;
             if (input?.id && !existing) throw new Error('Layout próprio não encontrado nesta conta. Para alterar um modelo padrão, salve uma cópia.');
@@ -161,10 +162,11 @@ function createFlowManager({ baseDirectory, getCacheDirectory = () => baseDirect
             const sample = { cnpj: '04252011000110', razao_social: 'Empresa Exemplo', nome_fantasia: 'Comércio Exemplo', data_abertura: '2020-01-15', email: 'contato@exemplo.test', phones: Array.from({ length: 10 }, (_, i) => `119876543${String(i + 10)}`), estado: 'SP', cidade: 'São Paulo', bairro: 'Centro', logradouro: 'Rua Exemplo', numero: '100', cep: '01001000', atividade_principal_cod: '4711302', atividade_principal: 'Comércio varejista', situacao_cadastral_cod: '02', situacao_cadastral: 'Ativa', situacao_cadastral_data: '2026-09-30', situacao_motivo: 'Sem motivo', nome_socio: 'Sócio Exemplo', cpf_socio: '***123456**' };
             return { headers: format.colunas.map(column => column.header), values: mapOutputRow(sample, format, { operation: input.operation, fillLivre5: input.fillLivre5 === true, jobName: 'Lista exemplo', date: '2026-09-30' }) };
         },
-        delete(id) { const store = storeFor(user().username); if (active?.job.flowId === id) throw new Error('Aguarde ou cancele a execução antes de excluir o fluxo.'); if (!store.getFlow(id)) throw new Error('Fluxo não encontrado.'); store.deleteFlow(id); },
+        delete(id) { const store = storeFor(user().username); if (isPresetId(id)) throw new Error('Presets não podem ser excluídos.'); if (active?.job.flowId === id) throw new Error('Aguarde ou cancele a execução antes de excluir o fluxo.'); if (!store.getFlow(id)) throw new Error('Fluxo não encontrado.'); store.deleteFlow(id); },
         start({ flowId, outputDirectory }) {
             const current = user(); if (active) throw new Error('Já existe um fluxo em execução. Aguarde ou cancele.');
-            const store = storeFor(current.username), flow = store.getFlow(flowId);
+            // O preset é montado na hora: a abertura vai até o dia corrente da execução.
+            const store = storeFor(current.username), flow = isPresetId(flowId) ? getPreset(flowId) : store.getFlow(flowId);
             if (!flow) throw new Error('Salve e selecione um fluxo antes de executar.');
             if (flow.fastway?.enabled && !resolveFastwayCredentials?.()) throw new Error('Configure as credenciais Fastway nos acessos do fluxo antes de iniciar.');
             if (!outputDirectory || !path.isAbsolute(outputDirectory) || !fs.statSync(outputDirectory).isDirectory()) throw new Error('Selecione uma pasta de saída válida.');

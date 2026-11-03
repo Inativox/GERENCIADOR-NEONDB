@@ -15,7 +15,7 @@ function asObject(values, format) { return Object.fromEntries(format.colunas.map
 
 test('formats expose all inherited layouts without cost fields or shared mutable state', () => {
     const formats = listFormats();
-    assert.deepEqual(formats.map(item => item.id), ['bernardo', 'olos', 'empresaaqui', 'plano_porto', 'padrao']);
+    assert.deepEqual(formats.map(item => item.id), ['bernardo', 'olos', 'empresaaqui', 'plano_porto', 'padrao', 'padrao_8_fones']);
     assert.ok(formats.every(item => item.nome && item.colunas.length));
     assert.doesNotMatch(JSON.stringify(formats), /custo|situacao_cadastral/);
     formats[0].colunas[0].header = 'mutated';

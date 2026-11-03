@@ -278,5 +278,84 @@
         "campo": "fixo_vazio"
       }
     ]
+  },
+  "padrao_8_fones": {
+    "nome": "LAYOUT PADRÃO · 8 telefones",
+    "colunas": [
+      {
+        "header": "nome",
+        "campo": "razao_social"
+      },
+      {
+        "header": "cpf",
+        "campo": "cnpj_numerico"
+      },
+      {
+        "header": "livre1",
+        "campo": "data_abertura"
+      },
+      {
+        "header": "chave",
+        "campo": "email"
+      },
+      {
+        "header": "livre3",
+        "campo": "composto",
+        "partes": [
+          "atividade_principal_cod_num",
+          "atividade_principal"
+        ],
+        "sep": " - "
+      },
+      {
+        "header": "livre4",
+        "campo": "composto",
+        "partes": [
+          "estado",
+          "cidade"
+        ],
+        "sep": " - "
+      },
+      {
+        "header": "livre5",
+        "campo": "fixo_vazio"
+      },
+      {
+        "header": "livre7",
+        "campo": "fixo_c6"
+      },
+      {
+        "header": "fone1",
+        "campo": "telefone_1"
+      },
+      {
+        "header": "fone2",
+        "campo": "telefone_2"
+      },
+      {
+        "header": "fone3",
+        "campo": "telefone_3"
+      },
+      {
+        "header": "fone4",
+        "campo": "telefone_4"
+      },
+      {
+        "header": "fone5",
+        "campo": "telefone_5"
+      },
+      {
+        "header": "fone6",
+        "campo": "telefone_6"
+      },
+      {
+        "header": "fone7",
+        "campo": "telefone_7"
+      },
+      {
+        "header": "fone8",
+        "campo": "telefone_8"
+      }
+    ]
   }
 }

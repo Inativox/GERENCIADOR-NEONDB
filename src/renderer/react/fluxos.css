@@ -26,6 +26,12 @@
 .flow-presets strong { font-size: 12px; font-weight: 600; }
 .flow-presets span { color: var(--text-secondary); font-size: 10px; margin-top: 5px; }
 .flows-app .flow-presets button[aria-current="true"] { background: color-mix(in srgb, var(--accent-blue) 7%, var(--bg-card)); color: var(--accent-blue); border-color: var(--border-color); }
+.flow-locked-presets { display: grid; gap: 4px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); }
+.flows-app .flow-locked-presets button { text-align: left; border-color: transparent; background: transparent; padding: 12px; overflow-wrap: anywhere; }
+.flow-locked-presets strong, .flow-locked-presets span { display: block; }
+.flow-locked-presets strong { font-size: 12px; font-weight: 600; }
+.flow-locked-presets span { color: var(--text-secondary); font-size: 10px; margin-top: 5px; }
+.flows-app .flow-locked-presets button[aria-current="true"] { background: color-mix(in srgb, var(--accent-blue) 7%, var(--bg-card)); color: var(--accent-blue); border-color: var(--border-color); }
 .flows-app .flow-sidebar-foot { font-size: 10px; margin-top: 22px; color: var(--text-muted); }
 .flow-editor { min-width: 0; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 7px; }
 .flow-editor-heading { padding: 20px 24px; border-bottom: 1px solid var(--border-color); }

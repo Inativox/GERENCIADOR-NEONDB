@@ -7,6 +7,8 @@ export interface Flow {
     operation: Operation;
     pipelines: number[];
     revision: number;
+    /** Fluxo fixo do aplicativo: somente leitura, gerado com a data do dia. */
+    preset?: boolean;
     generation: {
         limit: number | null; uf: string[]; cidade: string[]; bairro: string[]; cnaes: string[]; machineCnaes?: boolean; naturezas: string[];
         dateFrom: string; dateTo: string; mei: 'all' | 'yes' | 'no';
@@ -42,7 +44,7 @@ export interface LayoutPreviewInput { layout: CustomLayout; operation: Operation
 export interface FlowOperation { id: Operation; name?: string; nome?: string; label?: string; pipelines?: number[] }
 export interface BqAuthStatus { owner?: string; state: 'idle' | 'renewing' | 'ready' | 'failed'; message: string }
 export interface FlowBootstrap {
-    success: boolean; message?: string; user?: { username: string; role: string }; flows?: Flow[];
+    success: boolean; message?: string; user?: { username: string; role: string }; presets?: Flow[]; flows?: Flow[];
     cacheDirectory?: string;
     jobs?: FlowJob[]; formats?: FlowFormat[]; layoutFields?: LayoutField[]; operations?: FlowOperation[]; defaults?: Partial<Flow>;
     access?: { receitaConfigured: boolean; neonConfigured?: boolean; fastwayConfigured?: boolean; apiConfigured?: boolean; bqConfigured: boolean; bqLoginMode?: string; bqAutoLogin?: boolean; bqAuth?: BqAuthStatus }; limits?: { maxRows: number };
