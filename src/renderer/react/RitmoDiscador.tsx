@@ -4,7 +4,7 @@ import './fluxos.css';
 import './ritmoDiscador.css';
 import { KeyIcon, SpinnerIcon } from './icons';
 
-// Mesmo formato do painel montado em src/main/ritmoDiscador (ocupação = falando ÷ logados).
+// Mesmo formato do painel montado em src/main/ritmoDiscador (ocupação = falando ÷ logados fora de pausa).
 type Resp = { success: boolean; message?: string; painel?: Painel };
 type Regra = { desce: number; sobe: number; passo: number; minimo: number; maximo: number };
 type Contagem = { falando: number; livres: number; pausa: number; outros: number; logados: number };
@@ -32,6 +32,11 @@ const ABA = 'ritmoDiscador';
 const CAMPOS: Campo[] = ['desce', 'sobe', 'passo', 'minimo', 'maximo'];
 // Mesmos critérios de src/main/ritmoDiscador/regras.js: URA divide o teto geral; call center ativo (POWER) tem teto por serviço.
 const ehCallcenter = (modo: string) => modo.trim().toUpperCase() === 'POWER';
+const SUBTITULO = 'Ajusta a agressividade de cada serviço pela ocupação dos operadores: falando ÷ logados fora de pausa.';
+const disponiveis = (c: Contagem) => c.logados - c.pausa;
+// "14 de 18 disponíveis falando · 3 em pausa": quem está em pausa não entra na conta.
+const textoOcupacao = (c: Contagem) => `${c.falando} de ${disponiveis(c)} disponíveis falando${c.pausa ? ` · ${c.pausa} em pausa fora da conta` : ''}`;
+const semOcupacao = (c: Contagem) => (c.logados ? 'todos em pausa' : 'ninguém logado');
 const PAUSA_LONGA = 600; // passou de 10 min em pausa: fica vermelho na lista
 const numero = new Intl.NumberFormat('pt-BR');
 const fmt = (v: number | undefined) => numero.format(v ?? 0);
@@ -83,7 +88,7 @@ export function RitmoDiscador() {
 
     if (!painel) return mensagem ? <div className="flows-app rd-app"><p role="alert" className="flow-notice rd-erro">{mensagem}</p></div> : null;
     if (!painel.configurado) return <div className="flows-app rd-app" aria-busy={busy}>
-        <header className="rd-topo"><div><h1 className="rd-titulo">Ritmo do Discador</h1><p className="rd-sub">Ajusta a agressividade de cada serviço pela ocupação dos operadores: falando ÷ operadores logados.</p></div></header>
+        <header className="rd-topo"><div><h1 className="rd-titulo">Ritmo do Discador</h1><p className="rd-sub">{SUBTITULO}</p></div></header>
         {mensagem && <p role="alert" className="flow-notice rd-erro">{mensagem}</p>}
         <LoginFastway painel={painel} busy={busy} onSalvar={(login, senha) => void acao(() => api.ritmoDiscadorLogin(login, senha))} />
     </div>;
@@ -158,7 +163,7 @@ function Cabecalho({ painel, busy, onLer, onAtiva, onTeto }: { painel: Painel; b
     const admin = painel.admin;
     return <header className="rd-topo">
         <div><h1 className="rd-titulo">Ritmo do Discador</h1>
-            <p className="rd-sub">Ajusta a agressividade de cada serviço pela ocupação dos operadores: falando ÷ operadores logados.</p></div>
+            <p className="rd-sub">{SUBTITULO}</p></div>
         <div className="rd-ctl">
             <Relogio painel={painel} />
             <Teto painel={painel} busy={busy} onSalvar={onTeto} />
@@ -245,8 +250,8 @@ function Canal({ servico: s, painel, atual, busy, onSelecionar, onAbrir, onRetom
 
 function Tubo({ servico: s }: { servico: Servico }) {
     const c = s.contagem, r = s.regra;
-    if (!c.logados || s.ocupacao == null) return <div className="rd-tubo" title="Ninguém logado"><div className="rd-tubo-vazio">ninguém logado</div></div>;
-    return <div className="rd-tubo" title={`${c.falando} de ${c.logados} logados falando`}>
+    if (!disponiveis(c) || s.ocupacao == null) return <div className="rd-tubo" title={semOcupacao(c)}><div className="rd-tubo-vazio">{semOcupacao(c)}</div></div>;
+    return <div className="rd-tubo" title={textoOcupacao(c)}>
         {r && <><div className="rd-tubo-z rd-tubo-z--desce" style={{ height: `${100 - r.desce}%` }} /><div className="rd-tubo-z rd-tubo-z--sobe" style={{ height: `${r.sobe}%` }} /></>}
         <div className="rd-tubo-fill" style={{ height: `max(0px, calc(${s.ocupacao * 100}% - 10px))` }} />
         {r && <><div className="rd-tubo-linha rd-tubo-linha--desce" style={{ top: `${100 - r.desce}%` }}><span><Icone nome="down" />{r.desce}</span></div>
@@ -296,7 +301,7 @@ function proxima(s: Servico, painel: Painel): { tom: Tom; icone: NomeIcone; text
         case 'muitaPausa': return { tom: 'warn', icone: 'users', texto: `Ocioso, mas ${textoPausa(painel.limitePausa)} dos logados está em pausa. Não sobe.` };
         case 'teto': return { tom: 'warn', icone: 'up', texto: d.teto === 'callcenter' ? <>Ocioso, mas call center ativo vai no máximo até <Num v={painel.tetoCallcenter} />. Não sobe.</>
             : <>Ocioso, mas a soma das URAs já chegou no teto (<Num v={painel.teto} />). Não sobe.</> };
-        case 'semgente': return { tom: 'none', icone: 'userOff', texto: 'Ninguém logado. Não mexe.' };
+        case 'semgente': return { tom: 'none', icone: 'userOff', texto: s.contagem.logados ? 'Todos em pausa. Não mexe.' : 'Ninguém logado. Não mexe.' };
         case 'semregra': return { tom: 'none', icone: 'slash', texto: 'Sem regra. A automação não mexe neste serviço.' };
         case 'parado': return { tom: 'none', icone: 'stop', texto: 'Serviço parado na Fastway. Não mexe.' };
         case 'pausado': return { tom: 'warn', icone: 'pause', texto: s.pausado ? <><b>Pausado</b>: mudou na Fastway de <Num v={s.pausado.de} /> para <Num v={s.pausado.para} /> às {horaIso(s.pausado.em)}.</>
@@ -395,7 +400,7 @@ function GavetaServico({ servico: s, painel, criar, busy, recebidoEm, onFechar, 
             <div className="rd-gaveta-corpo">
                 <section className="rd-gsec"><h3 className="rd-sec">Agora</h3>
                     <BarraOcupacao servico={s} />
-                    <p className="rd-hint rd-agora-txt">{c.logados ? <><b className="rd-mono">{pct(s.ocupacao)}</b> · {c.falando} de {c.logados} logados falando</> : 'Ninguém logado'}</p>
+                    <p className="rd-hint rd-agora-txt">{disponiveis(c) ? <><b className="rd-mono">{pct(s.ocupacao)}</b> · {textoOcupacao(c)}</> : (c.logados ? 'Todos em pausa' : 'Ninguém logado')}</p>
                     <Contagens c={c} />
                     <div className="rd-agora-acao"><Proxima servico={s} painel={painel} />
                         {s.pausado && painel.admin && <button className="rd-btn rd-btn--sm" disabled={busy} onClick={onRetomar}><Icone nome="play" />Retomar</button>}</div>
@@ -412,7 +417,7 @@ function GavetaServico({ servico: s, painel, criar, busy, recebidoEm, onFechar, 
 
 function BarraOcupacao({ servico: s }: { servico: Servico }) {
     const r = s.regra;
-    if (!s.contagem.logados || s.ocupacao == null) return <div className="rd-hbar"><div className="rd-hbar-vazio" /></div>;
+    if (!disponiveis(s.contagem) || s.ocupacao == null) return <div className="rd-hbar"><div className="rd-hbar-vazio" /></div>;
     return <div className="rd-hbar" role="img" aria-label={`Ocupação ${pct(s.ocupacao)}`}>
         {r && <><div className="rd-hbar-z rd-hbar-z--sobe" style={{ width: `${r.sobe}%` }} /><div className="rd-hbar-z rd-hbar-z--desce" style={{ width: `${100 - r.desce}%` }} /></>}
         <div className="rd-hbar-fill" style={{ width: `max(0px, calc(${s.ocupacao * 100}% - 6px))` }} />
