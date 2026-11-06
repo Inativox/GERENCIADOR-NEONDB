@@ -169,7 +169,7 @@ function salvarRegra(input) {
         if (erro) throw validacao(erro);
         gravar(c => { c.regras[servicoId] = regra; });
         motor.registrar({ tipo: 'sistema', servicoId, servico: nome,
-            texto: `Regra salva por ${usuario()}: desce com ${regra.desce}% ou mais, sobe com ${regra.sobe}% ou menos, passo ${regra.passo}, entre ${regra.minimo} e ${regra.maximo}.` });
+            texto: `Regra salva por ${usuario()}: desce acima de ${regra.desce}%, sobe abaixo de ${regra.sobe}%, passo ${regra.passo}, entre ${regra.minimo} e ${regra.maximo}.` });
     }
     acordar(); // relê para a decisão já usar a regra nova
 }
