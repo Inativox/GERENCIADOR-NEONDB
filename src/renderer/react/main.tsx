@@ -5,6 +5,7 @@ import { LimpezaColunas } from './LimpezaColunas';
 import { Fluxos } from './Fluxos';
 import { ImportarMailing } from './ImportarMailing';
 import { AlertaMailing } from './AlertaMailing';
+import { RitmoDiscador } from './RitmoDiscador';
 import './limpezaColunas.css';
 import './fluxos.css';
 
@@ -26,6 +27,8 @@ function mount() {
     if (mailing) createRoot(mailing).render(<ColumnsBoundary><ImportarMailing /></ColumnsBoundary>);
     const alerta = document.getElementById('alerta-mailing-react-root');
     if (alerta) createRoot(alerta).render(<ColumnsBoundary><AlertaMailing /></ColumnsBoundary>);
+    const ritmo = document.getElementById('ritmo-discador-react-root');
+    if (ritmo) createRoot(ritmo).render(<ColumnsBoundary><RitmoDiscador /></ColumnsBoundary>);
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
