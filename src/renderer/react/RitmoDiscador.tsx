@@ -9,17 +9,17 @@ type Resp = { success: boolean; message?: string; painel?: Painel };
 type Regra = { desce: number; sobe: number; passo: number; minimo: number; maximo: number };
 type Contagem = { falando: number; livres: number; pausa: number; outros: number; logados: number };
 type Operador = { id: number; nome: string; estado: 'falando' | 'livre' | 'pausa' | 'outro'; detalhe: string; segundos: number };
-type Decisao = { tipo: 'semregra' | 'parado' | 'pausado' | 'semgente' | 'mantem' | 'limite' | 'muitaPausa' | 'teto' | 'pendente' | 'ajustou' | 'simulou' | 'falhou'; dir?: -1 | 1; alvo?: number; de?: number; mensagem?: string; teto?: 'ura' | 'callcenter' };
+type Decisao = { tipo: 'semregra' | 'parado' | 'pausado' | 'semgente' | 'mantem' | 'limite' | 'muitaPausa' | 'teto' | 'pendente' | 'ajustou' | 'falhou'; dir?: -1 | 1; alvo?: number; de?: number; mensagem?: string; teto?: 'ura' | 'callcenter' };
 type Pausado = { de: number; para: number; em: string };
 type Ponto = { t: number; ocupacao: number | null; agressividade: number };
 type Servico = { id: number; nome: string; modo: string; emExecucao: boolean; agressividade: number; limite: number; regra: Regra | null; pausado: Pausado | null;
     contagem: Contagem; ocupacao: number | null; decisao: Decisao; operadores: Operador[]; parceiros: number[]; serie: Ponto[] };
-type Evento = { id: string; em: string; tipo: 'ajuste' | 'simulacao' | 'manual' | 'falha' | 'sistema'; servicoId: number | null; servico: string; de?: number; para?: number; dir?: -1 | 1; ocupacao?: number | null; texto: string };
-type Painel = { configurado: boolean; login: { saved: boolean; login: string | null; canSave: boolean }; admin: boolean; ativa: boolean; simulacao: boolean;
+type Evento = { id: string; em: string; tipo: 'ajuste' | 'manual' | 'falha' | 'sistema'; servicoId: number | null; servico: string; de?: number; para?: number; dir?: -1 | 1; ocupacao?: number | null; texto: string };
+type Painel = { configurado: boolean; login: { saved: boolean; login: string | null; canSave: boolean }; admin: boolean; ativa: boolean;
     lidoEm: string | null; lendo: boolean; conectado: boolean; erro: string | null; intervaloSegundos: number; limitePausa: number; teto: number; tetoCallcenter: number; soma: number | null; servicos: Servico[]; eventos: Evento[] };
 type API = {
     ritmoDiscadorState(): Promise<Resp>; ritmoDiscadorAssistir(ativo: boolean): Promise<Resp>; ritmoDiscadorLer(): Promise<Resp>;
-    ritmoDiscadorLogin(login: string, password: string): Promise<Resp>; ritmoDiscadorAtiva(ligar: boolean): Promise<Resp>; ritmoDiscadorSimulacao(ligar: boolean): Promise<Resp>;
+    ritmoDiscadorLogin(login: string, password: string): Promise<Resp>; ritmoDiscadorAtiva(ligar: boolean): Promise<Resp>;
     ritmoDiscadorRegra(servicoId: number, regra: Regra | null): Promise<Resp>; ritmoDiscadorRetomar(servicoId: number): Promise<Resp>; ritmoDiscadorTeto(valor: number): Promise<Resp>;
     onRitmoDiscadorUpdate(callback: (painel: Painel) => void): () => void; showConfirmDialog(options: { title: string; message: string }): Promise<boolean>;
 };
@@ -57,6 +57,7 @@ export function RitmoDiscador() {
     const [painel, setPainel] = useState<Painel | null>(null), [recebidoEm, setRecebidoEm] = useState(() => Date.now());
     const [mensagem, setMensagem] = useState(''), [busy, setBusy] = useState(false);
     const [selecionado, setSelecionado] = useState<number | null>(null), [gaveta, setGaveta] = useState<Gaveta>(null);
+    const [confirmarAtivacao, setConfirmarAtivacao] = useState(false);
     const locked = useRef(false);
     const receber = (dados: Painel) => { setPainel(dados); setRecebidoEm(Date.now()); };
     useSessao(api, receber, setMensagem);
@@ -67,12 +68,6 @@ export function RitmoDiscador() {
         try { const r = await run(); if (!r.success) throw new Error(r.message); if (r.painel) receber(r.painel); return true; }
         catch (reason) { setMensagem(reason instanceof Error && reason.message ? reason.message : 'Não foi possível concluir. Tente novamente.'); return false; }
         finally { locked.current = false; setBusy(false); }
-    }
-
-    async function mudarSimulacao(ligar: boolean) {
-        const confirmado = ligar || await api.showConfirmDialog({ title: 'Desligar a simulação',
-            message: 'Os ajustes passam a valer na Fastway: a cada duas leituras seguidas na mesma faixa, este PC muda a agressividade dos serviços com regra. Desligar a simulação?' });
-        if (confirmado) await acao(() => api.ritmoDiscadorSimulacao(ligar));
     }
 
     async function salvarRegra(s: Servico, regra: Regra | null) {
@@ -99,7 +94,7 @@ export function RitmoDiscador() {
     return <div className="flows-app rd-app" aria-busy={busy}>
         <div className="rd-mesa-area">
             <Cabecalho painel={painel} busy={busy} onLer={() => void acao(() => api.ritmoDiscadorLer())}
-                onAtiva={ligar => void acao(() => api.ritmoDiscadorAtiva(ligar))} onSimulacao={ligar => void mudarSimulacao(ligar)}
+                onAtiva={ligar => { if (ligar) setConfirmarAtivacao(true); else void acao(() => api.ritmoDiscadorAtiva(false)); }}
                 onTeto={valor => acao(() => api.ritmoDiscadorTeto(valor))} />
             <Faixas painel={painel} busy={busy} mensagem={mensagem} onRetomar={retomar} />
             {painel.servicos.length ? <>
@@ -118,6 +113,8 @@ export function RitmoDiscador() {
         </div>
         {aberto && <GavetaServico servico={aberto} painel={painel} criar={gaveta?.criar ?? false} busy={busy} recebidoEm={recebidoEm} onFechar={fecharGaveta}
             onRetomar={() => retomar(aberto)} onRegra={regra => salvarRegra(aberto, regra)} />}
+        {confirmarAtivacao && <ConfirmarAtivacao painel={painel} busy={busy} onCancelar={() => setConfirmarAtivacao(false)}
+            onConfirmar={() => { setConfirmarAtivacao(false); void acao(() => api.ritmoDiscadorAtiva(true)); }} />}
     </div>;
 }
 
@@ -151,13 +148,13 @@ function useSessao(api: API, receber: (painel: Painel) => void, setMensagem: (te
 }
 
 function resumoEventos(eventos: Evento[]) {
-    const fastway = eventos.filter(e => e.tipo === 'ajuste').length, simulados = eventos.filter(e => e.tipo === 'simulacao').length;
-    return `${fastway} na Fastway · ${simulados} ${simulados === 1 ? 'simulado' : 'simulados'}`;
+    const ajustes = eventos.filter(e => e.tipo === 'ajuste').length;
+    return `${ajustes} ${ajustes === 1 ? 'ajuste' : 'ajustes'} na Fastway`;
 }
 
 /* ---------- Cabeçalho, relógio e faixas de aviso ---------- */
 
-function Cabecalho({ painel, busy, onLer, onAtiva, onSimulacao, onTeto }: { painel: Painel; busy: boolean; onLer(): void; onAtiva(ligar: boolean): void; onSimulacao(ligar: boolean): void; onTeto(valor: number): Promise<boolean> }) {
+function Cabecalho({ painel, busy, onLer, onAtiva, onTeto }: { painel: Painel; busy: boolean; onLer(): void; onAtiva(ligar: boolean): void; onTeto(valor: number): Promise<boolean> }) {
     const admin = painel.admin;
     return <header className="rd-topo">
         <div><h1 className="rd-titulo">Ritmo do Discador</h1>
@@ -168,7 +165,6 @@ function Cabecalho({ painel, busy, onLer, onAtiva, onSimulacao, onTeto }: { pain
             <button className="rd-btn rd-btn--sm" disabled={busy || painel.lendo} onClick={onLer}>
                 {painel.lendo ? <SpinnerIcon /> : <Icone nome="refresh" />}{painel.lendo ? 'Lendo…' : 'Ler agora'}</button>
             <Chave rotulo="Ativa neste PC" dica={admin ? 'Só um PC deve ficar ativo' : 'Só admin liga ou desliga'} ligado={painel.ativa} desabilitado={!admin || busy} onMudar={onAtiva} />
-            {painel.ativa && <Chave rotulo="Simulação" sim dica={admin ? 'Mostra o que faria sem mexer na Fastway' : 'Só admin muda'} ligado={painel.simulacao} desabilitado={!admin || busy} onMudar={onSimulacao} />}
         </div>
     </header>;
 }
@@ -210,7 +206,6 @@ function Faixas({ painel, busy, mensagem, onRetomar }: { painel: Painel; busy: b
         {!painel.ativa && <Faixa tom="none" icone="power" titulo="Automação desligada neste PC." texto="As regras ficam salvas. A agressividade fica como está." />}
         {painel.soma != null && painel.soma > painel.teto && <Faixa tom="warn" icone="alert" titulo={`A soma das URAs (${fmt(painel.soma)}) passou do teto de ${fmt(painel.teto)}.`}
             texto="Alguém subiu direto na Fastway. A automação não sobe nenhuma URA até a soma voltar para baixo do teto; descer continua normal. Call center ativo segue o teto de 99 por serviço." />}
-        {painel.ativa && painel.simulacao && <Faixa tom="warn" icone="flask" titulo="Simulação ligada." texto="O app mostra o que faria, mas não envia nada à Fastway." />}
         {pausados.map(s => <Faixa key={s.id} tom="warn" icone="alert" titulo={`${s.nome} mudou na Fastway`}
             texto={`de ${fmt(s.pausado?.de)} para ${fmt(s.pausado?.para)} às ${horaIso(s.pausado?.em)}, sem ter sido a automação. Pausei esse serviço até alguém retomar.`}>
             {painel.admin && <button className="rd-btn rd-btn--sm" disabled={busy} onClick={() => onRetomar(s)}><Icone nome="play" />Retomar</button>}
@@ -296,7 +291,6 @@ function proxima(s: Servico, painel: Painel): { tom: Tom; icone: NomeIcone; text
     switch (d.tipo) {
         case 'pendente': return pendente(s, painel);
         case 'ajustou': return { tom: 'info', icone: seta, texto: <>{desce ? 'Desceu' : 'Subiu'}{d.de != null && <> de <Num v={d.de} /></>} para <Num v={d.alvo} /> agora.</> };
-        case 'simulou': return { tom: 'warn', icone: 'flask', texto: <>Simulação: {desce ? 'desceria' : 'subiria'}{d.de != null && <> de <Num v={d.de} /></>} para <Num v={d.alvo} />.</> };
         case 'mantem': return { tom: 'ok', icone: 'equal', texto: r ? `Dentro da faixa (${r.sobe}–${r.desce}%). Mantém.` : 'Dentro da faixa. Mantém.' };
         case 'limite': return { tom: 'none', icone: seta, texto: desce ? <>Lotado, mas já está no mínimo (<Num v={r?.minimo} />).</> : <>Ocioso, mas já está no máximo (<Num v={r?.maximo} />).</> };
         case 'muitaPausa': return { tom: 'warn', icone: 'users', texto: `Ocioso, mas ${textoPausa(painel.limitePausa)} dos logados está em pausa. Não sobe.` };
@@ -316,11 +310,69 @@ function pendente(s: Servico, painel: Painel): { tom: Tom; icone: NomeIcone; tex
     const d = s.decisao, r = s.regra, desce = d.dir === -1, icone: NomeIcone = desce ? 'down' : 'up';
     const faixa = desce ? <><b>Lotado</b>{r && ` (≥ ${r.desce}%)`}</> : <><b>Ocioso</b>{r && ` (≤ ${r.sobe}%)`}</>;
     if (!painel.ativa) return { tom: 'none', icone, texto: <>{faixa}. {desce ? 'Desceria' : 'Subiria'} para <Num v={d.alvo} />, mas a automação está desligada neste PC.</> };
-    const verbo = painel.simulacao ? (desce ? 'Desceria' : 'Subiria') : (desce ? 'Desce' : 'Sobe');
-    return { tom: 'info', icone, texto: <>{faixa}. {verbo} para <Num v={d.alvo} /> se a próxima leitura confirmar <Conf /></> };
+    return { tom: 'info', icone, texto: <>{faixa}. {desce ? 'Desce' : 'Sobe'} para <Num v={d.alvo} /> se a próxima leitura confirmar <Conf /></> };
 }
 
 const textoPausa = (limite: number) => (Math.round((limite || 0.5) * 100) === 50 ? 'mais da metade' : `mais de ${Math.round((limite || 0.5) * 100)}%`);
+
+/* ---------- Confirmação para ligar a automação ---------- */
+
+// Ligar vale direto na Fastway: o modal mostra o que muda (serviços com regra, tetos e travas) antes de confirmar.
+function ConfirmarAtivacao({ painel, busy, onConfirmar, onCancelar }: { painel: Painel; busy: boolean; onConfirmar(): void; onCancelar(): void }) {
+    const caixa = useRef<HTMLElement>(null), cancelar = useRef<HTMLButtonElement>(null), fechar = useRef(onCancelar);
+    fechar.current = onCancelar;
+    useEffect(() => {
+        const antes = document.activeElement as HTMLElement | null;
+        cancelar.current?.focus();
+        const aoTeclar = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') { event.preventDefault(); fechar.current(); return; }
+            if (event.key !== 'Tab' || !caixa.current) return; // o foco fica preso no modal
+            const focaveis = [...caixa.current.querySelectorAll<HTMLElement>('button:not(:disabled)')];
+            const primeiro = focaveis[0], ultimo = focaveis[focaveis.length - 1];
+            if (event.shiftKey && document.activeElement === primeiro) { event.preventDefault(); ultimo?.focus(); }
+            else if (!event.shiftKey && document.activeElement === ultimo) { event.preventDefault(); primeiro?.focus(); }
+        };
+        document.addEventListener('keydown', aoTeclar);
+        return () => { document.removeEventListener('keydown', aoTeclar); antes?.focus(); };
+    }, []);
+    const comRegra = painel.servicos.filter(s => s.regra), acimaDoTeto = painel.soma != null && painel.soma > painel.teto;
+    const titulo = comRegra.length ? `${comRegra.length} ${comRegra.length === 1 ? 'serviço com regra' : 'serviços com regra'}` : 'Nenhum serviço com regra';
+    return <>
+        <div className="rd-scrim rd-scrim--modal" onClick={onCancelar} aria-hidden="true" />
+        <section ref={caixa} className="rd-modal" role="dialog" aria-modal="true" aria-labelledby="rd-modal-titulo" aria-describedby="rd-modal-desc">
+            <header className="rd-modal-cab">
+                <span className="rd-modal-icone" aria-hidden="true"><Icone nome="power" /></span>
+                <div><h2 id="rd-modal-titulo">Ligar a automação neste PC?</h2>
+                    <p id="rd-modal-desc">A partir da próxima leitura, este PC muda a agressividade <b>direto na Fastway</b> dos serviços com regra.</p></div>
+            </header>
+            <div className="rd-modal-corpo">
+                <h3>{titulo}</h3>
+                {comRegra.length ? <ul className="rd-modal-lista">{comRegra.map(s => {
+                    const r = s.regra as Regra;
+                    return <li key={s.id} data-pausado={s.pausado ? '' : undefined}>
+                        <span className="rd-modal-nome">{s.nome}<small>{s.modo}{s.emExecucao ? '' : ' · parado'}</small></span>
+                        <span className="rd-modal-valor"><b className="rd-mono">{fmt(s.agressividade)}</b><small>agora</small></span>
+                        <span className="rd-modal-faixa">{s.pausado ? <><Icone nome="pause" />pausado: não mexe até retomar</>
+                            : <>entre <b className="rd-mono">{fmt(r.minimo)}</b> e <b className="rd-mono">{fmt(r.maximo)}</b>, de <b className="rd-mono">{fmt(r.passo)}</b> em <b className="rd-mono">{fmt(r.passo)}</b></>}</span>
+                    </li>;
+                })}</ul> : <p className="rd-hint">Ligar não muda nada até alguém criar uma regra em algum serviço.</p>}
+                <ul className="rd-modal-travas">
+                    <li><Icone nome="refresh" /><span>Lê a cada {painel.intervaloSegundos} s e só muda depois de <b>2 leituras seguidas</b> na mesma faixa.</span></li>
+                    <li data-alerta={acimaDoTeto ? '' : undefined}><Icone nome="up" /><span>As URAs somadas nunca sobem acima de <b className="rd-mono">{fmt(painel.teto)}</b>
+                        {painel.soma != null && <> (agora <b className="rd-mono">{fmt(painel.soma)}</b>{acimaDoTeto ? ': nenhuma URA sobe até baixar' : ''})</>}.
+                        Call center ativo vai no máximo até <b className="rd-mono">{fmt(painel.tetoCallcenter)}</b> por serviço.</span></li>
+                    <li><Icone nome="users" /><span>Não sobe com {textoPausa(painel.limitePausa)} da equipe em pausa.</span></li>
+                    <li><Icone nome="pause" /><span>Se alguém mudar direto na Fastway, aquele serviço pausa até você retomar.</span></li>
+                    <li><Icone nome="alert" /><span>Deixe ligado em <b>um PC só</b>: dois PCs ligados brigam pelo mesmo valor.</span></li>
+                </ul>
+            </div>
+            <footer className="rd-modal-pe">
+                <button ref={cancelar} className="rd-btn rd-btn--ghost" onClick={onCancelar}>Cancelar</button>
+                <button className="rd-btn rd-btn--primary" disabled={busy} onClick={onConfirmar}><Icone nome="power" />Ligar automação</button>
+            </footer>
+        </section>
+    </>;
+}
 
 /* ---------- Gaveta com o detalhe do serviço ---------- */
 
@@ -481,8 +533,8 @@ function ItemHistorico({ evento: e, filtrado }: { evento: Evento; filtrado: bool
     if (e.tipo === 'falha') return <li data-tone="stop">{quando}<Icone nome="alert" /><div><b>{filtrado || !e.servico ? 'A Fastway recusou o ajuste' : e.servico}</b><p>{e.texto}</p></div></li>;
     if (e.tipo === 'manual') return <li data-tone="warn">{quando}<Icone nome="alert" /><div><b>{filtrado ? 'Mudou na Fastway' : e.servico}</b>
         <p>{filtrado ? '' : 'mudou na Fastway: '}{dePara} · automação pausada</p></div></li>;
-    const sim = e.tipo === 'simulacao', desce = e.dir === -1 || (e.dir == null && (e.para ?? 0) < (e.de ?? 0));
-    return <li data-tone={sim ? 'warn' : 'info'} data-sim={sim ? '' : undefined} title={e.texto}>{quando}<Icone nome={desce ? 'down' : 'up'} />
+    const desce = e.dir === -1 || (e.dir == null && (e.para ?? 0) < (e.de ?? 0));
+    return <li data-tone="info" title={e.texto}>{quando}<Icone nome={desce ? 'down' : 'up'} />
         <div><b>{filtrado ? (desce ? 'Desce' : 'Sobe') : e.servico}</b><p>{dePara}{e.ocupacao !== undefined && <> · ocupação {pct(e.ocupacao)}</>}</p></div></li>;
 }
 
@@ -523,7 +575,7 @@ function caminhoAgressividade(g: Geo, agora: number) {
     return d ? `${d}H${g.x(clamp(agora, g.ini, g.fim)).toFixed(1)}` : '';
 }
 
-const eventosDoGrafico = (eventos: Evento[], s: Servico) => eventos.filter(e => e.servicoId === s.id && (e.tipo === 'ajuste' || e.tipo === 'simulacao' || e.tipo === 'manual') && e.para != null);
+const eventosDoGrafico = (eventos: Evento[], s: Servico) => eventos.filter(e => e.servicoId === s.id && (e.tipo === 'ajuste' || e.tipo === 'manual') && e.para != null);
 
 function Grafico({ servico: s, painel }: { servico: Servico; painel: Painel }) {
     const caixa = useRef<HTMLDivElement>(null), [largura, setLargura] = useState(0), [hover, setHover] = useState<Ponto | null>(null);
@@ -550,8 +602,8 @@ function Grafico({ servico: s, painel }: { servico: Servico; painel: Painel }) {
                 <FundoGrafico g={g} s={s} agora={agora} />
                 {caminhoOcupacao(g) ? <path className="rd-l-occ" d={caminhoOcupacao(g)} /> : <text x={(G.padL + g.w) / 2} y={g.yo(0.5)} textAnchor="middle">sem leituras hoje</text>}
                 <path className="rd-l-ag" d={caminhoAgressividade(g, agora)} />
-                {eventos.map(e => <circle key={e.id} className={`rd-ev${e.tipo === 'simulacao' ? ' rd-ev--sim' : e.tipo === 'manual' ? ' rd-ev--manual' : ''}`}
-                    cx={g.x(clamp(Date.parse(e.em), g.ini, g.fim))} cy={g.yb(e.para ?? 0)} r={e.tipo === 'simulacao' ? 3.5 : 4} />)}
+                {eventos.map(e => <circle key={e.id} className={`rd-ev${e.tipo === 'manual' ? ' rd-ev--manual' : ''}`}
+                    cx={g.x(clamp(Date.parse(e.em), g.ini, g.fim))} cy={g.yb(e.para ?? 0)} r={4} />)}
                 {hover && <Cruz g={g} p={hover} />}
                 <rect x={G.padL} y={0} width={Math.max(0, g.w - G.padL - G.padR)} height={g.base} fill="transparent" onMouseMove={mover} onMouseLeave={() => setHover(null)} />
             </svg>}
@@ -564,7 +616,7 @@ function Legenda({ comRegra }: { comRegra: boolean }) {
     return <div className="rd-legenda">
         <span className="rd-leg-occ"><i />Ocupação</span><span className="rd-leg-ag"><i />Agressividade</span>
         {comRegra && <><span className="rd-leg-desce"><i className="z" />Zona que desce</span><span className="rd-leg-sobe"><i className="z" />Zona que sobe</span></>}
-        <span className="rd-leg-sim"><i className="o" />Simulação</span><span className="rd-leg-manual"><i className="o" />Mudou na Fastway</span>
+        <span className="rd-leg-manual"><i className="o" />Mudou na Fastway</span>
     </div>;
 }
 
@@ -594,7 +646,6 @@ function Cruz({ g, p }: { g: Geo; p: Ponto }) {
 function textoEventoGrafico(e: Evento) {
     const desce = e.dir === -1 || (e.dir == null && (e.para ?? 0) < (e.de ?? 0)), dePara = `${fmt(e.de)} → ${fmt(e.para)}`;
     if (e.tipo === 'manual') return `Mudou na Fastway ${dePara}`;
-    if (e.tipo === 'simulacao') return `Simulação: ${desce ? 'desceria' : 'subiria'} ${dePara}`;
     return `${desce ? 'Desceu' : 'Subiu'} ${dePara}`;
 }
 
