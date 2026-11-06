@@ -113,12 +113,12 @@ function estados(falando, livres = 0, pausa = 0) {
     return [...Array.from({ length: falando }, () => um('EM ATENDIMENTO', 'ATIVO')), ...Array.from({ length: livres }, () => um('CONECTADO')),
         ...Array.from({ length: pausa }, () => um('EM PAUSA', 'PAUSA ADM'))];
 }
-function montar({ ativa = true, simulacao = false, regras = { 52: REGRA }, teto = 100000 } = {}) {
+function montar({ ativa = true, regras = { 52: REGRA }, teto = 100000 } = {}) {
     const pasta = fs.mkdtempSync(path.join(os.tmpdir(), 'ritmo-'));
     let agora = new Date(2026, 10, 6, 10, 0, 0);
     const relogio = () => agora;
-    const cfg = { ativa, simulacao, regras, teto, pausados: {} };
-    const armazem = { regras: () => cfg.regras, pausados: () => cfg.pausados, ativa: () => cfg.ativa, simulacao: () => cfg.simulacao, teto: () => cfg.teto,
+    const cfg = { ativa, regras, teto, pausados: {} };
+    const armazem = { regras: () => cfg.regras, pausados: () => cfg.pausados, ativa: () => cfg.ativa, teto: () => cfg.teto,
         pausar: (id, info) => { cfg.pausados[id] = info; }, retomar: id => { delete cfg.pausados[id]; } };
     const fastway = new FastwayFalsa();
     const diario = new Diario(path.join(pasta, 'dia.json'), relogio);
@@ -146,15 +146,6 @@ test('motor: mostra serviços em execução e os com regra; ajusta só na segund
     const ajustes = motor.painel().eventos.filter(e => e.tipo === 'ajuste');
     assert.equal(ajustes.length, 1);
     assert.match(ajustes[0].texto, /^Desceu de 50 para 40 \(ocupação 90%\)\.$/);
-});
-
-test('motor: em simulação registra o que faria e nunca chama a Fastway', async () => {
-    const { fastway, ler, servico, motor } = montar({ simulacao: true });
-    await ler(); await ler();
-    assert.deepEqual(fastway.ajustes, []);
-    assert.deepEqual(servico(52).decisao, { tipo: 'simulou', dir: -1, de: 50, alvo: 40 });
-    assert.equal(servico(52).agressividade, 50);
-    assert.match(motor.painel().eventos[0].texto, /^Simulação: desceria de 50 para 40/);
 });
 
 test('motor: com a automação desligada só mostra a decisão, sem acumular leituras nem ajustar', async () => {
