@@ -108,11 +108,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (role === 'limited' || role === 'master') {
             navLinks.forEach(button => {
                 const tabName = button.dataset.tabName;
-                if (tabName !== 'monitoramento' && tabName !== 'importarMailing') { // Esta lógica pode ser ajustada se o monitoramento for reativado
+                // Ritmo do Discador fica visível só para leitura: o main recusa mudanças de quem não é admin.
+                if (tabName !== 'monitoramento' && tabName !== 'importarMailing' && tabName !== 'ritmoDiscador') { // Esta lógica pode ser ajustada se o monitoramento for reativado
                     button.parentElement.style.display = 'none';
                 }
             });
-            // Com o monitoramento oculto, a importação de mailing é a única aba destes perfis.
+            // Com o monitoramento oculto, a importação de mailing é a aba inicial destes perfis.
             const mailingTabButton = document.querySelector('.tab-button[data-tab-name="importarMailing"]');
             if (mailingTabButton) {
                 mailingTabButton.click();
