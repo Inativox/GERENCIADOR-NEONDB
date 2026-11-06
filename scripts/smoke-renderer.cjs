@@ -89,6 +89,11 @@ app.whenReady().then(async () => {
         eventos: [{ id: 'e1', hora: '09:12', tipo: 'TROCAR', servico: 'PAG CADENCIA', texto: 'lista-92.csv já foi reciclada 2x hoje (limite 2). Suba uma lista nova.', servicoId: 92, mailingId: 920, reciclagens: 2, status: 'aberta', motivo: '', horaFim: '', oculto: false },
             { id: 'e2', hora: '08:40', tipo: 'RECICLADA', servico: 'PAG CADENCIA', texto: 'lista-92.csv · 600 registros voltaram para a discagem · reciclagens hoje 2/2', servicoId: 92, mailingId: 920, reciclagens: 2, status: 'resolvida', motivo: 'reciclagem automática', horaFim: '08:40', oculto: false }] };
     ipcMain.handle('alerta-mailing-state', () => ({ success: true, painel: alertaPainel }));
+    // Ritmo do Discador com dados sintéticos: um serviço prestes a descer, um sem regra, um pausado por mudança na Fastway e um sem ninguém logado.
+    const ritmoPainel = painelRitmoSintetico();
+    let ritmoAssistindo = null;
+    ipcMain.handle('ritmo-discador-state', () => ({ success: true, painel: ritmoPainel }));
+    ipcMain.handle('ritmo-discador-assistir', (_event, { ativo }) => { ritmoAssistindo = ativo; return { success: true }; });
     ipcMain.handle('select-file', () => selectedPaths);
     ipcMain.on('start-limpeza-colunas', (_event, paths) => { startCount++; pathsReceived = paths; });
     window = new BrowserWindow({
@@ -217,6 +222,26 @@ app.whenReady().then(async () => {
     await waitFor(`document.querySelector('#alertaMailing .alerta-sheet .alerta-acao strong')?.textContent === 'Trocar a lista'`);
     await delay(300);
     await fs.writeFile(path.resolve(__dirname, '../out/alerta-mailing.png'), (await window.webContents.capturePage()).toPNG());
+    // Ritmo do Discador: um canal por serviço, o alvo da próxima leitura no canal pendente e a regra na gaveta.
+    await evaluate(`document.querySelector('[data-tab-name="ritmoDiscador"]').click()`);
+    await waitFor(`document.querySelectorAll('#ritmoDiscador .rd-canal').length === 4`);
+    // Teto geral: a soma acima do teto aparece no cabeçalho e num aviso.
+    assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-teto').textContent.includes('URAs 1.669 de 1.500')`), true);
+    assert.equal(await evaluate(`[...document.querySelectorAll('#ritmoDiscador .rd-faixa')].some(f => f.textContent.includes('A soma das URAs (1.669) passou do teto de 1.500'))`), true);
+    assert.match(await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="120"] .rd-acao').textContent`), /Desce para 1\.270 se a próxima leitura confirmar/);
+    assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="120"] .rd-fader-alvo').dataset.alvo`), '1270');
+    assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="87"] .rd-tubo-vazio').textContent`), 'ninguém logado');
+    assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="123"] .rd-canal-abrir').textContent`), 'Criar regra');
+    for (let attempt = 0; attempt < 50 && ritmoAssistindo !== true; attempt++) await delay(20);
+    assert.equal(ritmoAssistindo, true, 'A aba visível pede leituras ao main');
+    await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="120"] .rd-canal-abrir').click()`);
+    await waitFor(`!!document.querySelector('#ritmoDiscador .rd-gaveta input[name="desce"]')`);
+    assert.deepEqual(await evaluate(`['desce', 'sobe', 'passo', 'minimo', 'maximo'].map(k => document.querySelector('#ritmoDiscador .rd-gaveta input[name="' + k + '"]').value)`), ['80', '45', '100', '800', '1600']);
+    assert.equal(await evaluate(`document.activeElement.getAttribute('aria-label')`), 'Fechar');
+    await delay(300);
+    await fs.writeFile(path.resolve(__dirname, '../out/ritmo-discador.png'), (await window.webContents.capturePage()).toPNG());
+    await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+    await waitFor(`!document.querySelector('#ritmoDiscador .rd-gaveta') && document.activeElement?.dataset.id === '120'`);
 
     // A limpeza local usa somente arquivos temporários; nenhum banco real é aberto.
     const localFiles = [path.join(userData, 'lista A.xlsx'), path.join(userData, 'lista B.xlsx')];
@@ -233,6 +258,8 @@ app.whenReady().then(async () => {
     }
     selectedPaths = localFiles;
     await evaluate(`document.getElementById('update-overlay').classList.remove('visible'); document.querySelector('[data-tab-name="local"]').click(); document.getElementById('resetLocalBtn').click()`);
+    for (let attempt = 0; attempt < 50 && ritmoAssistindo !== false; attempt++) await delay(20);
+    assert.equal(ritmoAssistindo, false, 'Fora da aba, o Ritmo do Discador para de pedir leituras');
     await evaluate(`document.getElementById('fillLivre5Checkbox').click(); document.getElementById('backupCheckbox').click()`);
     await waitFor(`document.getElementById('backupCheckbox').checked`);
     assert.equal(savedUiSettings.fillLivre5, true);
@@ -460,3 +487,32 @@ app.whenReady().then(async () => {
     if (userData) await fs.rm(userData, { recursive: true, force: true }).catch(() => {});
     app.exit(exitCode);
 });
+
+/** Painel do Ritmo do Discador no formato do main, com operadores e a série do dia gerados aqui. */
+function painelRitmoSintetico() {
+    const agora = Date.now(), inicio = new Date(agora); inicio.setHours(8, 0, 0, 0);
+    const iso = minutosAtras => new Date(agora - minutosAtras * 60000).toISOString();
+    const operadores = plano => plano.flatMap(([estado, detalhe, quantidade, segundos], grupo) => Array.from({ length: quantidade }, (_, i) => ({ id: grupo * 100 + i, nome: `Operador ${grupo * 100 + i}`, estado, detalhe, segundos: segundos + i * 17 })));
+    const contagem = ops => ({ falando: ops.filter(o => o.estado === 'falando').length, livres: ops.filter(o => o.estado === 'livre').length, pausa: ops.filter(o => o.estado === 'pausa').length, outros: ops.filter(o => o.estado === 'outro').length, logados: ops.length });
+    const serie = (base, agressividade) => {
+        const pontos = [];
+        for (let t = inicio.getTime(), i = 0; t <= Math.min(agora, inicio.getTime() + 10 * 3600e3); t += 5 * 60000, i++) pontos.push({ t, ocupacao: base == null ? null : Math.min(1, Math.max(0.1, base + Math.sin(i / 5) * 0.18)), agressividade: agressividade(i) });
+        return pontos;
+    };
+    const c6 = operadores([['falando', 'RECEPTIVO', 21, 30], ['falando', 'ATIVO', 2, 50], ['livre', '', 2, 20], ['pausa', 'PAUSA ADM', 2, 640]]);
+    const mp = operadores([['falando', 'ATIVO', 2, 80], ['livre', '', 2, 40]]);
+    const servico = (id, nome, extra) => ({ id, nome, modo: 'URA', emExecucao: true, agressividade: 1, limite: 100, regra: null, pausado: null, contagem: contagem([]), ocupacao: null, decisao: { tipo: 'semregra' }, operadores: [], parceiros: [], serie: [], ...extra });
+    return { configurado: true, login: { saved: true, login: 'synthetic', canSave: true }, admin: true, ativa: true, simulacao: false, lidoEm: new Date(agora).toISOString(), lendo: false, conectado: true, erro: null, intervaloSegundos: 30, limitePausa: 0.5, teto: 1500, tetoCallcenter: 99, soma: 1669,
+        servicos: [
+            servico(120, 'C6 BANK PT1', { agressividade: 1370, limite: 1600, regra: { desce: 80, sobe: 45, passo: 100, minimo: 800, maximo: 1600 }, contagem: contagem(c6), ocupacao: 23 / 27, decisao: { tipo: 'pendente', dir: -1, alvo: 1270 }, operadores: c6, parceiros: [123], serie: serie(0.7, i => (i < 40 ? 1270 : i < 70 ? 1370 : 1470) - (i > 90 ? 100 : 0)) }),
+            servico(123, 'C6 BANK PT3', { modo: 'POWER', agressividade: 99, contagem: contagem(c6), ocupacao: 23 / 27, operadores: c6, parceiros: [120], serie: serie(0.7, () => 99) }),
+            servico(52, 'MERCADO PAGO 3', { modo: 'POWER', agressividade: 80, regra: { desce: 100, sobe: 25, passo: 5, minimo: 5, maximo: 50 }, pausado: { de: 45, para: 80, em: iso(6) }, contagem: contagem(mp), ocupacao: 0.5, decisao: { tipo: 'pausado' }, operadores: mp, serie: serie(0.5, () => 45) }),
+            servico(87, 'PAGBANK 1', { modo: 'POWER', regra: { desce: 90, sobe: 40, passo: 1, minimo: 1, maximo: 10 }, decisao: { tipo: 'semgente' }, serie: serie(null, () => 1) }),
+        ],
+        eventos: [
+            { id: 'r1', em: iso(240), tipo: 'sistema', servicoId: null, servico: '', texto: 'Automação ligada neste PC por Davi, em simulação' },
+            { id: 'r2', em: iso(200), tipo: 'simulacao', servicoId: 120, servico: 'C6 BANK PT1', de: 1370, para: 1270, dir: -1, ocupacao: 0.86, texto: 'C6 BANK PT1 desceria de 1.370 para 1.270' },
+            { id: 'r3', em: iso(90), tipo: 'ajuste', servicoId: 120, servico: 'C6 BANK PT1', de: 1470, para: 1370, dir: -1, ocupacao: 0.84, texto: 'C6 BANK PT1 desceu de 1.470 para 1.370' },
+            { id: 'r4', em: iso(6), tipo: 'manual', servicoId: 52, servico: 'MERCADO PAGO 3', de: 45, para: 80, texto: 'MERCADO PAGO 3 mudou na Fastway de 45 para 80' },
+        ] };
+}
