@@ -94,6 +94,8 @@ app.whenReady().then(async () => {
     let ritmoAssistindo = null;
     ipcMain.handle('ritmo-discador-state', () => ({ success: true, painel: ritmoPainel }));
     ipcMain.handle('ritmo-discador-assistir', (_event, { ativo }) => { ritmoAssistindo = ativo; return { success: true }; });
+    const ritmoAtivacoes = [];
+    ipcMain.handle('ritmo-discador-ativa', (_event, { ligar }) => { ritmoAtivacoes.push(ligar); ritmoPainel.ativa = ligar; return { success: true, painel: ritmoPainel }; });
     ipcMain.handle('select-file', () => selectedPaths);
     ipcMain.on('start-limpeza-colunas', (_event, paths) => { startCount++; pathsReceived = paths; });
     window = new BrowserWindow({
@@ -242,6 +244,26 @@ app.whenReady().then(async () => {
     await fs.writeFile(path.resolve(__dirname, '../out/ritmo-discador.png'), (await window.webContents.capturePage()).toPNG());
     await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
     await waitFor(`!document.querySelector('#ritmoDiscador .rd-gaveta') && document.activeElement?.dataset.id === '120'`);
+    // Desligar é direto; ligar passa por um modal que mostra os serviços com regra e só liga ao confirmar.
+    const chaveAtiva = `[...document.querySelectorAll('#ritmoDiscador .rd-switch')].find(s => s.textContent.includes('Ativa neste PC')).querySelector('input')`;
+    assert.equal(await evaluate(`[...document.querySelectorAll('#ritmoDiscador .rd-switch')].some(s => s.textContent.includes('Simulação'))`), false);
+    await evaluate(`${chaveAtiva}.click()`);
+    await waitFor(`!${chaveAtiva}.checked`);
+    await evaluate(`${chaveAtiva}.click()`);
+    await waitFor(`!!document.querySelector('#ritmoDiscador .rd-modal')`);
+    assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-modal h2').textContent`), 'Ligar a automação neste PC?');
+    assert.equal(await evaluate(`document.querySelectorAll('#ritmoDiscador .rd-modal-lista li').length`), 3);
+    assert.equal(await evaluate(`document.activeElement.textContent`), 'Cancelar', 'O foco começa no botão seguro');
+    await delay(400);
+    await fs.writeFile(path.resolve(__dirname, '../out/ritmo-discador-modal.png'), (await window.webContents.capturePage()).toPNG());
+    await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
+    await waitFor(`!document.querySelector('#ritmoDiscador .rd-modal')`);
+    assert.deepEqual(ritmoAtivacoes, [false], 'Cancelar não liga');
+    await evaluate(`${chaveAtiva}.click()`);
+    await waitFor(`!!document.querySelector('#ritmoDiscador .rd-modal')`);
+    await evaluate(`[...document.querySelectorAll('#ritmoDiscador .rd-modal button')].find(b => b.textContent.includes('Ligar automação')).click()`);
+    await waitFor(`!document.querySelector('#ritmoDiscador .rd-modal') && ${chaveAtiva}.checked`);
+    assert.deepEqual(ritmoAtivacoes, [false, true]);
 
     // A limpeza local usa somente arquivos temporários; nenhum banco real é aberto.
     const localFiles = [path.join(userData, 'lista A.xlsx'), path.join(userData, 'lista B.xlsx')];
@@ -502,7 +524,7 @@ function painelRitmoSintetico() {
     const c6 = operadores([['falando', 'RECEPTIVO', 21, 30], ['falando', 'ATIVO', 2, 50], ['livre', '', 2, 20], ['pausa', 'PAUSA ADM', 2, 640]]);
     const mp = operadores([['falando', 'ATIVO', 2, 80], ['livre', '', 2, 40]]);
     const servico = (id, nome, extra) => ({ id, nome, modo: 'URA', emExecucao: true, agressividade: 1, limite: 100, regra: null, pausado: null, contagem: contagem([]), ocupacao: null, decisao: { tipo: 'semregra' }, operadores: [], parceiros: [], serie: [], ...extra });
-    return { configurado: true, login: { saved: true, login: 'synthetic', canSave: true }, admin: true, ativa: true, simulacao: false, lidoEm: new Date(agora).toISOString(), lendo: false, conectado: true, erro: null, intervaloSegundos: 30, limitePausa: 0.5, teto: 1500, tetoCallcenter: 99, soma: 1669,
+    return { configurado: true, login: { saved: true, login: 'synthetic', canSave: true }, admin: true, ativa: true, lidoEm: new Date(agora).toISOString(), lendo: false, conectado: true, erro: null, intervaloSegundos: 30, limitePausa: 0.5, teto: 1500, tetoCallcenter: 99, soma: 1669,
         servicos: [
             servico(120, 'C6 BANK PT1', { agressividade: 1370, limite: 1600, regra: { desce: 80, sobe: 45, passo: 100, minimo: 800, maximo: 1600 }, contagem: contagem(c6), ocupacao: 23 / 27, decisao: { tipo: 'pendente', dir: -1, alvo: 1270 }, operadores: c6, parceiros: [123], serie: serie(0.7, i => (i < 40 ? 1270 : i < 70 ? 1370 : 1470) - (i > 90 ? 100 : 0)) }),
             servico(123, 'C6 BANK PT3', { modo: 'POWER', agressividade: 99, contagem: contagem(c6), ocupacao: 23 / 27, operadores: c6, parceiros: [120], serie: serie(0.7, () => 99) }),
@@ -510,8 +532,7 @@ function painelRitmoSintetico() {
             servico(87, 'PAGBANK 1', { modo: 'POWER', regra: { desce: 90, sobe: 40, passo: 1, minimo: 1, maximo: 10 }, decisao: { tipo: 'semgente' }, serie: serie(null, () => 1) }),
         ],
         eventos: [
-            { id: 'r1', em: iso(240), tipo: 'sistema', servicoId: null, servico: '', texto: 'Automação ligada neste PC por Davi, em simulação' },
-            { id: 'r2', em: iso(200), tipo: 'simulacao', servicoId: 120, servico: 'C6 BANK PT1', de: 1370, para: 1270, dir: -1, ocupacao: 0.86, texto: 'C6 BANK PT1 desceria de 1.370 para 1.270' },
+            { id: 'r1', em: iso(240), tipo: 'sistema', servicoId: null, servico: '', texto: 'Automação ligada neste PC por Davi: os ajustes valem na Fastway.' },
             { id: 'r3', em: iso(90), tipo: 'ajuste', servicoId: 120, servico: 'C6 BANK PT1', de: 1470, para: 1370, dir: -1, ocupacao: 0.84, texto: 'C6 BANK PT1 desceu de 1.470 para 1.370' },
             { id: 'r4', em: iso(6), tipo: 'manual', servicoId: 52, servico: 'MERCADO PAGO 3', de: 45, para: 80, texto: 'MERCADO PAGO 3 mudou na Fastway de 45 para 80' },
         ] };
