@@ -15,10 +15,11 @@ const ops = (falando, livres = 0, pausa = 0, outros = 0) => [
     ...Array.from({ length: falando }, () => ({ estado: 'falando' })), ...Array.from({ length: livres }, () => ({ estado: 'livre' })),
     ...Array.from({ length: pausa }, () => ({ estado: 'pausa' })), ...Array.from({ length: outros }, () => ({ estado: 'outro' }))];
 
-test('ocupação é falando ÷ logados fora de pausa: livres e outros entram no total, pausa não', () => {
+test('ocupação é em atendimento ÷ (em atendimento + livres), como no painel da Fastway', () => {
     const c = contar(ops(15, 3, 8, 1));
     assert.deepEqual(c, { falando: 15, livres: 3, pausa: 8, outros: 1, logados: 27 });
-    assert.equal(ocupacao(c), 15 / 19);
+    assert.equal(ocupacao(c), 15 / 18);
+    assert.equal(Math.round(ocupacao(contar(ops(7, 2, 2, 3))) * 100), 78, 'painel do C6: 7 em atendimento, 2 em pausa, 14 logados = 78%');
     assert.equal(ocupacao(contar(ops(6, 0, 3))), 1, '6 falando e 3 em pausa: 100%, não 67%');
     assert.equal(ocupacao(contar(ops(0, 0, 4))), null, 'todos em pausa: sem ocupação');
     assert.equal(ocupacao(contar([])), null);
@@ -64,6 +65,11 @@ test('decisão: lotado desce, ocioso sobe, só ajusta na segunda leitura e respe
     assert.deepEqual(decidir({ ...base, contagem: contar(ops(9, 1)) }), { tipo: 'pendente', dir: -1, alvo: 40 });
     assert.deepEqual(decidir({ ...base, contagem: contar(ops(9, 1)), pendente: -1 }), { tipo: 'ajustar', dir: -1, alvo: 40 });
     assert.deepEqual(decidir({ ...base, contagem: contar(ops(9, 1)), pendente: 1 }), { tipo: 'pendente', dir: -1, alvo: 40 }, 'direção trocada recomeça a contagem');
+    const faixa = { ...base, regra: { ...REGRA, sobe: 60, desce: 90 } };
+    assert.equal(decidir({ ...faixa, contagem: contar(ops(6, 4)) }).tipo, 'mantem', '60% exatos mantém');
+    assert.equal(decidir({ ...faixa, contagem: contar(ops(9, 1)) }).tipo, 'mantem', '90% exatos mantém');
+    assert.equal(decidir({ ...faixa, contagem: contar(ops(5, 4)) }).tipo, 'pendente', '56% sobe');
+    assert.equal(decidir({ ...faixa, contagem: contar(ops(10, 1)) }).tipo, 'pendente', '91% desce');
     assert.deepEqual(decidir({ ...base, contagem: contar(ops(2, 8)) }), { tipo: 'pendente', dir: 1, alvo: 60 });
     assert.deepEqual(decidir({ ...base, contagem: contar(ops(6, 4)) }), { tipo: 'mantem' });
     assert.deepEqual(decidir({ ...base, agressividade: 20, contagem: contar(ops(10)) }), { tipo: 'limite', dir: -1 });
@@ -189,12 +195,41 @@ test('motor: falha ao ajustar não é repetida e a decisão recomeça', async ()
     assert.equal(servico(52).decisao.tipo, 'pendente');
 });
 
-test('motor: ajuste aceito que não aparece na Fastway vira aviso, não pausa', async () => {
+test('motor: ajuste que a Fastway demora a mostrar não vira falha nem mudança manual', async () => {
+    const { fastway, ler, servico, motor, cfg } = montar();
+    fastway.aplica = false;
+    await ler(); await ler(); // ajusta 50 → 40, mas a Fastway ainda mostra 50
+    await ler();
+    assert.deepEqual(servico(52).decisao, { tipo: 'confirmando', de: 50, alvo: 40 });
+    assert.equal(servico(52).agressividade, 40, 'mostra o valor ajustado');
+    await ler();
+    assert.deepEqual(fastway.ajustes, [[52, 40]], 'esperando não ajusta de novo');
+    fastway.servicos[0].agressividade = 40; // agora a Fastway reflete
+    await ler();
+    assert.equal(cfg.pausados[52], undefined, 'o atraso não conta como mudança manual');
+    assert.equal(servico(52).decisao.tipo, 'pendente');
+    assert.equal(motor.painel().eventos.filter(e => e.tipo !== 'ajuste').length, 0, 'nem falha nem manual');
+});
+
+test('motor: ajuste aceito que não aparece na Fastway depois do prazo vira aviso, não pausa', async () => {
     const { fastway, ler, servico, motor } = montar();
     fastway.aplica = false;
-    await ler(); await ler(); await ler();
+    await ler(); await ler(); // ajusta; cada leitura do teste anda 30 s
+    for (let i = 0; i < 3; i++) await ler(); // 30, 60 e 90 s depois do ajuste
+    assert.ok(!motor.painel().eventos.some(e => e.tipo === 'falha'), 'dentro de 2 min só espera');
+    await ler();
     assert.equal(servico(52).pausado, null);
-    assert.ok(motor.painel().eventos.some(e => e.tipo === 'falha' && /continua 50/.test(e.texto)));
+    assert.ok(motor.painel().eventos.some(e => e.tipo === 'falha' && /depois de 2 min a agressividade continua 50/.test(e.texto)));
+    assert.deepEqual(fastway.ajustes, [[52, 40]]);
+});
+
+test('motor: URA esperando a Fastway conta no teto pelo valor ajustado', async () => {
+    const { fastway, ler, motor } = montar({ teto: 100000 });
+    fastway.servicos[0].modo = 'URA';
+    fastway.aplica = false;
+    await ler(); await ler();
+    await ler();
+    assert.equal(motor.painel().soma, 60, '40 ajustado (Fastway ainda mostra 50) + 20 do MP1');
 });
 
 test('motor: Fastway fora do ar marca desconectado e mantém a última leitura', async () => {
