@@ -4,12 +4,12 @@ import './fluxos.css';
 import './ritmoDiscador.css';
 import { KeyIcon, SpinnerIcon } from './icons';
 
-// Mesmo formato do painel montado em src/main/ritmoDiscador (ocupação = falando ÷ logados fora de pausa).
+// Mesmo formato do painel montado em src/main/ritmoDiscador (ocupação = falando ÷ (falando + livres), como na Fastway).
 type Resp = { success: boolean; message?: string; painel?: Painel };
 type Regra = { desce: number; sobe: number; passo: number; minimo: number; maximo: number };
 type Contagem = { falando: number; livres: number; pausa: number; outros: number; logados: number };
 type Operador = { id: number; nome: string; estado: 'falando' | 'livre' | 'pausa' | 'outro'; detalhe: string; segundos: number };
-type Decisao = { tipo: 'semregra' | 'parado' | 'pausado' | 'semgente' | 'mantem' | 'limite' | 'muitaPausa' | 'teto' | 'pendente' | 'ajustou' | 'falhou'; dir?: -1 | 1; alvo?: number; de?: number; mensagem?: string; teto?: 'ura' | 'callcenter' };
+type Decisao = { tipo: 'semregra' | 'parado' | 'pausado' | 'semgente' | 'mantem' | 'limite' | 'muitaPausa' | 'teto' | 'pendente' | 'ajustou' | 'confirmando' | 'falhou'; dir?: -1 | 1; alvo?: number; de?: number; mensagem?: string; teto?: 'ura' | 'callcenter' };
 type Pausado = { de: number; para: number; em: string };
 type Ponto = { t: number; ocupacao: number | null; agressividade: number };
 type Servico = { id: number; nome: string; modo: string; emExecucao: boolean; agressividade: number; limite: number; regra: Regra | null; pausado: Pausado | null;
@@ -32,11 +32,12 @@ const ABA = 'ritmoDiscador';
 const CAMPOS: Campo[] = ['desce', 'sobe', 'passo', 'minimo', 'maximo'];
 // Mesmos critérios de src/main/ritmoDiscador/regras.js: URA divide o teto geral; call center ativo (POWER) tem teto por serviço.
 const ehCallcenter = (modo: string) => modo.trim().toUpperCase() === 'POWER';
-const SUBTITULO = 'Ajusta a agressividade de cada serviço pela ocupação dos operadores: falando ÷ logados fora de pausa.';
-const disponiveis = (c: Contagem) => c.logados - c.pausa;
-// "14 de 18 disponíveis falando · 3 em pausa": quem está em pausa não entra na conta.
-const textoOcupacao = (c: Contagem) => `${c.falando} de ${disponiveis(c)} disponíveis falando${c.pausa ? ` · ${c.pausa} em pausa fora da conta` : ''}`;
-const semOcupacao = (c: Contagem) => (c.logados ? 'todos em pausa' : 'ninguém logado');
+const SUBTITULO = 'Ajusta a agressividade de cada serviço pela ocupação dos operadores: em atendimento ÷ (em atendimento + livres), como no painel da Fastway.';
+const disponiveis = (c: Contagem) => c.falando + c.livres;
+// "7 de 9 falando (7 falando + 2 livres) · 2 em pausa e 3 em outro estado fora da conta", como no painel da Fastway.
+const foraDaConta = (c: Contagem) => [c.pausa && `${c.pausa} em pausa`, c.outros && `${c.outros} em outro estado`].filter(Boolean).join(' e ');
+const textoOcupacao = (c: Contagem) => `${c.falando} de ${disponiveis(c)} falando (${c.livres} ${c.livres === 1 ? 'livre' : 'livres'})${foraDaConta(c) ? ` · ${foraDaConta(c)} fora da conta` : ''}`;
+const semOcupacao = (c: Contagem) => (c.logados ? 'ninguém disponível' : 'ninguém logado');
 const PAUSA_LONGA = 600; // passou de 10 min em pausa: fica vermelho na lista
 const numero = new Intl.NumberFormat('pt-BR');
 const fmt = (v: number | undefined) => numero.format(v ?? 0);
@@ -296,12 +297,13 @@ function proxima(s: Servico, painel: Painel): { tom: Tom; icone: NomeIcone; text
     switch (d.tipo) {
         case 'pendente': return pendente(s, painel);
         case 'ajustou': return { tom: 'info', icone: seta, texto: <>{desce ? 'Desceu' : 'Subiu'}{d.de != null && <> de <Num v={d.de} /></>} para <Num v={d.alvo} /> agora.</> };
-        case 'mantem': return { tom: 'ok', icone: 'equal', texto: r ? `Dentro da faixa (${r.sobe}–${r.desce}%). Mantém.` : 'Dentro da faixa. Mantém.' };
+        case 'confirmando': return { tom: 'info', icone: 'refresh', texto: <>Ajustado para <Num v={d.alvo} />; esperando a Fastway mostrar o novo valor (ainda aparece <Num v={d.de} />).</> };
+        case 'mantem': return { tom: 'ok', icone: 'equal', texto: r ? `Dentro da faixa (${r.sobe}% a ${r.desce}%). Mantém.` : 'Dentro da faixa. Mantém.' };
         case 'limite': return { tom: 'none', icone: seta, texto: desce ? <>Lotado, mas já está no mínimo (<Num v={r?.minimo} />).</> : <>Ocioso, mas já está no máximo (<Num v={r?.maximo} />).</> };
         case 'muitaPausa': return { tom: 'warn', icone: 'users', texto: `Ocioso, mas ${textoPausa(painel.limitePausa)} dos logados está em pausa. Não sobe.` };
         case 'teto': return { tom: 'warn', icone: 'up', texto: d.teto === 'callcenter' ? <>Ocioso, mas call center ativo vai no máximo até <Num v={painel.tetoCallcenter} />. Não sobe.</>
             : <>Ocioso, mas a soma das URAs já chegou no teto (<Num v={painel.teto} />). Não sobe.</> };
-        case 'semgente': return { tom: 'none', icone: 'userOff', texto: s.contagem.logados ? 'Todos em pausa. Não mexe.' : 'Ninguém logado. Não mexe.' };
+        case 'semgente': return { tom: 'none', icone: 'userOff', texto: s.contagem.logados ? 'Ninguém falando nem livre (todos em pausa ou outro estado). Não mexe.' : 'Ninguém logado. Não mexe.' };
         case 'semregra': return { tom: 'none', icone: 'slash', texto: 'Sem regra. A automação não mexe neste serviço.' };
         case 'parado': return { tom: 'none', icone: 'stop', texto: 'Serviço parado na Fastway. Não mexe.' };
         case 'pausado': return { tom: 'warn', icone: 'pause', texto: s.pausado ? <><b>Pausado</b>: mudou na Fastway de <Num v={s.pausado.de} /> para <Num v={s.pausado.para} /> às {horaIso(s.pausado.em)}.</>
@@ -313,7 +315,7 @@ function proxima(s: Servico, painel: Painel): { tom: Tom; icone: NomeIcone; text
 
 function pendente(s: Servico, painel: Painel): { tom: Tom; icone: NomeIcone; texto: ReactNode } {
     const d = s.decisao, r = s.regra, desce = d.dir === -1, icone: NomeIcone = desce ? 'down' : 'up';
-    const faixa = desce ? <><b>Lotado</b>{r && ` (≥ ${r.desce}%)`}</> : <><b>Ocioso</b>{r && ` (≤ ${r.sobe}%)`}</>;
+    const faixa = desce ? <><b>Lotado</b>{r && ` (acima de ${r.desce}%)`}</> : <><b>Ocioso</b>{r && ` (abaixo de ${r.sobe}%)`}</>;
     if (!painel.ativa) return { tom: 'none', icone, texto: <>{faixa}. {desce ? 'Desceria' : 'Subiria'} para <Num v={d.alvo} />, mas a automação está desligada neste PC.</> };
     return { tom: 'info', icone, texto: <>{faixa}. {desce ? 'Desce' : 'Sobe'} para <Num v={d.alvo} /> se a próxima leitura confirmar <Conf /></> };
 }
@@ -400,7 +402,7 @@ function GavetaServico({ servico: s, painel, criar, busy, recebidoEm, onFechar, 
             <div className="rd-gaveta-corpo">
                 <section className="rd-gsec"><h3 className="rd-sec">Agora</h3>
                     <BarraOcupacao servico={s} />
-                    <p className="rd-hint rd-agora-txt">{disponiveis(c) ? <><b className="rd-mono">{pct(s.ocupacao)}</b> · {textoOcupacao(c)}</> : (c.logados ? 'Todos em pausa' : 'Ninguém logado')}</p>
+                    <p className="rd-hint rd-agora-txt">{disponiveis(c) ? <><b className="rd-mono">{pct(s.ocupacao)}</b> · {textoOcupacao(c)}</> : (c.logados ? 'Ninguém disponível' : 'Ninguém logado')}</p>
                     <Contagens c={c} />
                     <div className="rd-agora-acao"><Proxima servico={s} painel={painel} />
                         {s.pausado && painel.admin && <button className="rd-btn rd-btn--sm" disabled={busy} onClick={onRetomar}><Icone nome="play" />Retomar</button>}</div>
@@ -428,13 +430,13 @@ function BarraOcupacao({ servico: s }: { servico: Servico }) {
 
 type Valores = Record<Campo, string>;
 const ROTULOS: Record<Campo, { rotulo: string; sufixo?: string }> = {
-    desce: { rotulo: 'Desce quando ocupação ≥', sufixo: '%' }, sobe: { rotulo: 'Sobe quando ocupação ≤', sufixo: '%' },
+    desce: { rotulo: 'Desce quando ocupação passa de', sufixo: '%' }, sobe: { rotulo: 'Sobe quando ocupação fica abaixo de', sufixo: '%' },
     passo: { rotulo: 'Passo por ajuste' }, minimo: { rotulo: 'Mínimo' }, maximo: { rotulo: 'Máximo' },
 };
 function regraPadrao(s: Servico, tetoCallcenter: number): Regra {
     const a = Math.max(1, s.agressividade), teto = ehCallcenter(s.modo) ? Math.min(s.limite, tetoCallcenter) : s.limite;
     const maximo = Math.max(1, Math.min(teto, Math.round(a * 1.5)));
-    return { desce: 90, sobe: 40, passo: Math.max(1, Math.round(a * 0.1)), minimo: Math.min(maximo, Math.max(1, Math.round(a * 0.5))), maximo };
+    return { desce: 90, sobe: 60, passo: Math.max(1, Math.round(a * 0.1)), minimo: Math.min(maximo, Math.max(1, Math.round(a * 0.5))), maximo };
 }
 const paraValores = (r: Regra): Valores => ({ desce: String(r.desce), sobe: String(r.sobe), passo: String(r.passo), minimo: String(r.minimo), maximo: String(r.maximo) });
 const paraRegra = (v: Valores): Regra => ({ desce: Number(v.desce || NaN), sobe: Number(v.sobe || NaN), passo: Number(v.passo || NaN), minimo: Number(v.minimo || NaN), maximo: Number(v.maximo || NaN) });
@@ -443,8 +445,8 @@ const mesmaRegra = (a: Regra, b: Regra | null) => !!b && CAMPOS.every(k => a[k] 
 // Mesmas mensagens de src/main/ritmoDiscador/regras.js; o main confere de novo ao salvar.
 function validar(r: Regra, limite: number, tetoCallcenter: number | null): Validacao {
     if (!CAMPOS.every(k => Number.isInteger(r[k]))) return { erro: 'Preencha todos os campos com números inteiros.', campo: CAMPOS.find(k => !Number.isInteger(r[k])) };
-    if (r.desce < 1 || r.desce > 100) return { erro: '“Desce quando” vai de 1% a 100%.', campo: 'desce' };
-    if (r.sobe < 0 || r.sobe >= r.desce) return { erro: '“Sobe quando” precisa ser menor que “desce quando”, senão as faixas se cruzam.', campo: 'sobe' };
+    if (r.desce < 1 || r.desce > 100) return { erro: '“Desce acima de” vai de 1% a 100%.', campo: 'desce' };
+    if (r.sobe < 0 || r.sobe >= r.desce) return { erro: '“Sobe abaixo de” precisa ser menor que “desce acima de”, senão as faixas se cruzam.', campo: 'sobe' };
     if (r.passo < 1) return { erro: 'O passo precisa ser pelo menos 1.', campo: 'passo' };
     if (r.minimo < 1 || r.minimo > r.maximo) return { erro: 'O mínimo precisa ser pelo menos 1 e não pode passar do máximo.', campo: 'minimo' };
     if (tetoCallcenter != null && r.maximo > tetoCallcenter) return { erro: `Serviço de call center ativo vai no máximo até ${tetoCallcenter}.`, campo: 'maximo' };
