@@ -15,10 +15,12 @@ const ops = (falando, livres = 0, pausa = 0, outros = 0) => [
     ...Array.from({ length: falando }, () => ({ estado: 'falando' })), ...Array.from({ length: livres }, () => ({ estado: 'livre' })),
     ...Array.from({ length: pausa }, () => ({ estado: 'pausa' })), ...Array.from({ length: outros }, () => ({ estado: 'outro' }))];
 
-test('ocupação é falando ÷ logados: livres, pausa e outros só entram no total', () => {
+test('ocupação é falando ÷ logados fora de pausa: livres e outros entram no total, pausa não', () => {
     const c = contar(ops(15, 3, 8, 1));
     assert.deepEqual(c, { falando: 15, livres: 3, pausa: 8, outros: 1, logados: 27 });
-    assert.equal(ocupacao(c), 15 / 27);
+    assert.equal(ocupacao(c), 15 / 19);
+    assert.equal(ocupacao(contar(ops(6, 0, 3))), 1, '6 falando e 3 em pausa: 100%, não 67%');
+    assert.equal(ocupacao(contar(ops(0, 0, 4))), null, 'todos em pausa: sem ocupação');
     assert.equal(ocupacao(contar([])), null);
 });
 
@@ -71,7 +73,8 @@ test('decisão: lotado desce, ocioso sobe, só ajusta na segunda leitura e respe
 
 test('decisão: com mais da metade em pausa não sobe; sem regra, parado, pausado e sem gente não mexem', () => {
     const base = { regra: REGRA, agressividade: 50, emExecucao: true, pausado: null };
-    assert.deepEqual(decidir({ ...base, contagem: contar(ops(2, 1, 7)) }), { tipo: 'muitaPausa', dir: 1 });
+    assert.deepEqual(decidir({ ...base, contagem: contar(ops(1, 3, 7)) }), { tipo: 'muitaPausa', dir: 1 }, '25% dos disponíveis, mas 7 de 11 em pausa');
+    assert.equal(decidir({ ...base, contagem: contar(ops(0, 0, 5)) }).tipo, 'semgente', 'todos em pausa não mexe');
     assert.deepEqual(decidir({ ...base, contagem: contar(ops(9, 0, 1)) }).tipo, 'pendente', 'pausa não impede descer');
     assert.equal(decidir({ ...base, regra: null, contagem: contar(ops(9, 1)) }).tipo, 'semregra');
     assert.equal(decidir({ ...base, emExecucao: false, contagem: contar([]) }).tipo, 'parado');
