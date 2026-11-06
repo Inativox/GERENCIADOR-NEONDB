@@ -77,6 +77,35 @@ test('consulta de lista da Receita envia a lista, as situações e as chaves de 
         ['receita-situacao-start', { fileId: 'lista-2', keep: ['ativa'], removeMei: true, csv: true }]]);
 });
 
+test('ritmo do discador chama os canais do main e repassa as leituras', async () => {
+    const ipcRenderer = new EventEmitter(), invoked = [];
+    ipcRenderer.invoke = async (...args) => { invoked.push(args); return { success: true }; };
+    let api;
+    loadModule('preload.js', { electron: { ipcRenderer, contextBridge: { exposeInMainWorld: (_, value) => { api = value; } } } });
+    const regra = { desce: 90, sobe: 40, passo: 5, minimo: 5, maximo: 50 };
+    await api.ritmoDiscadorState();
+    await api.ritmoDiscadorAssistir(true);
+    await api.ritmoDiscadorAssistir('sim');
+    await api.ritmoDiscadorLer();
+    await api.ritmoDiscadorLogin('enzo', 'segredo');
+    await api.ritmoDiscadorAtiva(true);
+    await api.ritmoDiscadorSimulacao(false);
+    await api.ritmoDiscadorRegra(52, regra);
+    await api.ritmoDiscadorRegra(52, null);
+    await api.ritmoDiscadorRetomar(52);
+    await api.ritmoDiscadorTeto(1500);
+    assert.deepEqual(JSON.parse(JSON.stringify(invoked)), [['ritmo-discador-state'], ['ritmo-discador-assistir', { ativo: true }], ['ritmo-discador-assistir', { ativo: false }],
+        ['ritmo-discador-ler'], ['ritmo-discador-login', { login: 'enzo', password: 'segredo' }], ['ritmo-discador-ativa', { ligar: true }], ['ritmo-discador-simulacao', { ligar: false }],
+        ['ritmo-discador-regra', { servicoId: 52, regra }], ['ritmo-discador-regra', { servicoId: 52, regra: null }], ['ritmo-discador-retomar', { servicoId: 52 }], ['ritmo-discador-teto', { valor: 1500 }]]);
+    const recebidos = [];
+    const sair = api.onRitmoDiscadorUpdate(painel => recebidos.push(painel.servicos.length));
+    ipcRenderer.emit('ritmo-discador-update', {}, { servicos: [1, 2, 3] });
+    sair();
+    ipcRenderer.emit('ritmo-discador-update', {}, { servicos: [] });
+    assert.deepEqual(recebidos, [3]);
+    assert.equal(ipcRenderer.listenerCount('ritmo-discador-update'), 0);
+});
+
 test('alerta de mailing chama os canais do main e repassa atualizações e foco', async () => {
     const ipcRenderer = new EventEmitter(), invoked = [];
     ipcRenderer.invoke = async (...args) => { invoked.push(args); return { success: true }; };
