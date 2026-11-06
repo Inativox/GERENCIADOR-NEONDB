@@ -1,6 +1,6 @@
 /**
  * Handlers do Ritmo do Discador: ajusta a agressividade de cada serviço da Fastway pela ocupação dos operadores.
- * Lê a cada 30 s enquanto a automação está ativa neste PC ou a aba está aberta. Qualquer usuário vê;
+ * Lê a cada 15 s enquanto a automação está ativa neste PC ou a aba está aberta. Qualquer usuário vê;
  * só admin muda regras ou liga a automação. O login é o login Fastway salvo no Gerenciador.
  */
 const { app, ipcMain } = require('electron');
@@ -14,7 +14,7 @@ const { MotorRitmo } = require('../ritmoDiscador/motor');
 const { Diario } = require('../ritmoDiscador/diario');
 const { validarRegra, LIMITE_PAUSA, TETO_PADRAO, TETO_CALLCENTER } = require('../ritmoDiscador/regras');
 
-const INTERVALO_MS = 30 * 1000;
+const INTERVALO_MS = 15 * 1000; // de início a início de leitura; uma volta leva ~12 s
 const CHAVE = 'ritmo_discador'; // por PC: só um PC deve ficar com a automação ativa
 const store = new (require('../settingsWriteRetry')(Store))();
 const validacao = message => Object.assign(new Error(message), { code: 'RITMO_VALIDACAO' });
@@ -74,6 +74,7 @@ async function laco(atual) {
     while (atual.ativo && sessao === atual) {
         if (!mesmasCredenciais(logins.get(atual.owner), atual.credenciais)) { sincronizar(true); return; } // login trocado ou esquecido
         if (!precisaLer(atual)) { await esperar(atual, null); continue; } // ninguém olhando e automação desligada: dorme até alguém acordar
+        const inicio = Date.now();
         try {
             await atual.motor.ler();
         } catch (erro) {
@@ -81,7 +82,7 @@ async function laco(atual) {
         }
         if (!atual.ativo || sessao !== atual) return;
         enviarAoPainel();
-        await esperar(atual, INTERVALO_MS);
+        await esperar(atual, Math.max(1000, INTERVALO_MS - (Date.now() - inicio)));
     }
 }
 
