@@ -81,7 +81,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ritmoDiscadorLer: () => ipcRenderer.invoke('ritmo-discador-ler'),
       ritmoDiscadorLogin: (login, password) => ipcRenderer.invoke('ritmo-discador-login', { login, password }),
       ritmoDiscadorAtiva: (ligar) => ipcRenderer.invoke('ritmo-discador-ativa', { ligar: ligar === true }),
-      ritmoDiscadorSimulacao: (ligar) => ipcRenderer.invoke('ritmo-discador-simulacao', { ligar: ligar === true }),
       ritmoDiscadorRegra: (servicoId, regra) => ipcRenderer.invoke('ritmo-discador-regra', { servicoId, regra }),
       ritmoDiscadorRetomar: (servicoId) => ipcRenderer.invoke('ritmo-discador-retomar', { servicoId }),
       ritmoDiscadorTeto: (valor) => ipcRenderer.invoke('ritmo-discador-teto', { valor }),
