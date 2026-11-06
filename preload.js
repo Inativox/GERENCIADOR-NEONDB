@@ -76,6 +76,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
           ipcRenderer.on('alerta-mailing-update', listener);
           return () => ipcRenderer.removeListener('alerta-mailing-update', listener);
       },
+      ritmoDiscadorState: () => ipcRenderer.invoke('ritmo-discador-state'),
+      ritmoDiscadorAssistir: (ativo) => ipcRenderer.invoke('ritmo-discador-assistir', { ativo: ativo === true }),
+      ritmoDiscadorLer: () => ipcRenderer.invoke('ritmo-discador-ler'),
+      ritmoDiscadorLogin: (login, password) => ipcRenderer.invoke('ritmo-discador-login', { login, password }),
+      ritmoDiscadorAtiva: (ligar) => ipcRenderer.invoke('ritmo-discador-ativa', { ligar: ligar === true }),
+      ritmoDiscadorSimulacao: (ligar) => ipcRenderer.invoke('ritmo-discador-simulacao', { ligar: ligar === true }),
+      ritmoDiscadorRegra: (servicoId, regra) => ipcRenderer.invoke('ritmo-discador-regra', { servicoId, regra }),
+      ritmoDiscadorRetomar: (servicoId) => ipcRenderer.invoke('ritmo-discador-retomar', { servicoId }),
+      ritmoDiscadorTeto: (valor) => ipcRenderer.invoke('ritmo-discador-teto', { valor }),
+      onRitmoDiscadorUpdate: (callback) => subscribe('ritmo-discador-update', callback),
       onAlertaMailingFoco: (callback) => {
           const listener = (_event, foco) => callback(foco);
           ipcRenderer.on('alerta-mailing-foco', listener);
