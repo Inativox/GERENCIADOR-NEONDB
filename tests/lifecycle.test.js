@@ -25,6 +25,7 @@ test('reabrir janela não duplica controles IPC e janela fechada é ignorada', (
         'electron-updater': { autoUpdater: {} },
         './cnpj': { getCurrentLockedKeys: () => [] },
         './alertaMailing': { manterNaBandeja: () => false, sincronizar() {} },
+        './ritmoDiscador': { sincronizar() {} },
     });
     auth.register();
     auth.createMainWindow();
@@ -61,6 +62,7 @@ function closingFixture({ crashed = false, naBandeja = false } = {}) {
         'electron-updater': { autoUpdater: {} },
         './cnpj': { getCurrentLockedKeys: () => [] },
         './alertaMailing': { manterNaBandeja: () => naBandeja, sincronizar() {} },
+        './ritmoDiscador': { sincronizar() {} },
     });
     let busy = false, prevented = 0;
     state.flowManager = { isBusy: () => busy, activeStage: () => 'upload' };
@@ -141,7 +143,7 @@ test('atualização pronta avisa sem forçar encerramento durante tarefa', () =>
         './keyfile': {}, './state': { mainWindow: { webContents: { send: (...args) => messages.push(args) } } },
         './database/cache': noopHandler,
     };
-    for (const name of ['auth', 'files', 'limpeza', 'cnpj', 'enriquecimento', 'blocklist', 'monitoramento', 'relacionamento', 'limpezaColunas', 'fluxos', 'receitaSituacao', 'importarMailing', 'alertaMailing']) dependencies[`./handlers/${name}`] = noopHandler;
+    for (const name of ['auth', 'files', 'limpeza', 'cnpj', 'enriquecimento', 'blocklist', 'monitoramento', 'relacionamento', 'limpezaColunas', 'fluxos', 'receitaSituacao', 'importarMailing', 'alertaMailing', 'ritmoDiscador']) dependencies[`./handlers/${name}`] = noopHandler;
     loadModule('src/main/index.js', dependencies);
     autoUpdater.emit('update-downloaded', { version: '2.0.0' });
     assert.equal(forcedQuit, 0);
@@ -177,6 +179,7 @@ test('aberta com o Windows pelo alerta, a janela principal nasce escondida na ba
         'electron-updater': { autoUpdater: {} },
         './cnpj': { getCurrentLockedKeys: () => [] },
         './alertaMailing': { manterNaBandeja: () => false, sincronizar() {} },
+        './ritmoDiscador': { sincronizar() {} },
     });
     auth.register();
     auth.createMainWindow({ hidden: true });
