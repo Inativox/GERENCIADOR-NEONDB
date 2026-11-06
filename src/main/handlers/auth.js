@@ -79,6 +79,7 @@ function createMainWindow({ hidden = false } = {}) {
     const { autoUpdater } = require('electron-updater');
     const { releaseApiLock, getCurrentLockedKeys, setCurrentLockedKeys } = require('./cnpj');
     const alertaMailing = require('./alertaMailing');
+    const ritmoDiscador = require('./ritmoDiscador');
 
     const mainWindow = new BrowserWindow({
         width: 1400,
@@ -125,6 +126,7 @@ function createMainWindow({ hidden = false } = {}) {
         if (state.currentUser) {
             mainWindow.webContents.send('user-info', state.currentUser);
             alertaMailing.sincronizar();
+            ritmoDiscador.sincronizar(); // com a automação ativa neste PC, ajusta mesmo sem abrir a aba
 
             if (state.currentUser.role === 'admin') {
                 const dbConnectionString = store.get('db_connection_string');
