@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Regras do Ritmo do Discador: estado dos operadores, ocupação e a decisão de subir ou descer a agressividade.
- * Ocupação = falando ÷ logados (livres, pausa e outros só entram no total).
+ * Ocupação = falando ÷ (logados − em pausa): quem está em pausa não está disponível e fica fora da conta.
  */
 const LIMITE_PAUSA = 0.5; // com mais da metade em pausa a regra nunca sobe: falta gente, não ligação
 const CAMPOS = ['desce', 'sobe', 'passo', 'minimo', 'maximo'];
@@ -40,7 +40,9 @@ function contar(operadores) {
     return c;
 }
 
-const ocupacao = c => (c.logados ? c.falando / c.logados : null);
+/** Disponíveis = logados fora de pausa (falando, livres e outros). Sem ninguém disponível não há ocupação. */
+const disponiveis = c => c.logados - c.pausa;
+const ocupacao = c => (disponiveis(c) > 0 ? c.falando / disponiveis(c) : null);
 
 /** Confere a regra digitada. Devolve { regra } normalizada ou { erro }; passar do limite de chamadas é só aviso. */
 function validarRegra(entrada, limite = null, modo = '') {
@@ -95,4 +97,4 @@ function folgaDe(modo, agressividade, teto, soma) {
     return Infinity;
 }
 
-module.exports = { LIMITE_PAUSA, TETO_PADRAO, TETO_CALLCENTER, ehUra, ehCallcenter, somaUra, folgaDe, estadoDoOperador, operadoresDe, contar, ocupacao, validarRegra, decidir };
+module.exports = { disponiveis, LIMITE_PAUSA, TETO_PADRAO, TETO_CALLCENTER, ehUra, ehCallcenter, somaUra, folgaDe, estadoDoOperador, operadoresDe, contar, ocupacao, validarRegra, decidir };
