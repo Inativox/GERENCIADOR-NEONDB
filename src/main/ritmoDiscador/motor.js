@@ -7,6 +7,8 @@
 const { operadoresDe, contar, ocupacao, decidir, somaUra, folgaDe, ehUra, TETO_CALLCENTER } = require('./regras');
 
 const EM_EXECUCAO = 'EM EXECUÇÃO';
+// A Fastway leva uns 15–30 s para mostrar um ajuste no ListarServicos: até esse prazo o valor antigo é atraso, não falha.
+const PRAZO_CONFIRMACAO_MS = 2 * 60 * 1000;
 const numero = new Intl.NumberFormat('pt-BR');
 const pct = valor => (valor == null ? '—' : `${Math.round(valor * 100)}%`);
 
@@ -43,8 +45,8 @@ class MotorRitmo {
         try {
             const todos = await this.cliente.listarServicos();
             const regras = this.armazem.regras();
-            // O teto geral vale para a soma de todas as URAs em execução, com ou sem regra.
-            this.soma = somaUra(todos.map(x => ({ ...x, emExecucao: x.status === EM_EXECUCAO })));
+            // O teto geral vale para a soma de todas as URAs em execução, com ou sem regra (ajuste ainda não refletido conta pelo novo valor).
+            this.soma = somaUra(todos.map(x => ({ ...x, agressividade: this.valorCrido(x), emExecucao: x.status === EM_EXECUCAO })));
             const lista = [];
             for (const s of todos.filter(x => x.status === EM_EXECUCAO || regras[x.id])) {
                 const emExecucao = s.status === EM_EXECUCAO;
@@ -69,10 +71,11 @@ class MotorRitmo {
 
     async avaliar(s, emExecucao, operadores, regra) {
         const ativa = this.armazem.ativa(), contagem = contar(operadores), occ = ocupacao(contagem);
-        let agressividade = s.agressividade, pausado = this.armazem.pausados()[s.id] || null;
-        if (ativa && regra && emExecucao && !pausado && agressividade != null) pausado = this.conferirMudanca(s, agressividade);
-        if (ativa) this.ultimos.set(s.id, agressividade);
-        let decisao = decidir({ regra, agressividade, contagem, emExecucao, pausado, pendente: ativa ? this.pendentes.get(s.id) ?? null : null, folga: folgaDe(s.modo, agressividade, this.armazem.teto(), this.soma) });
+        let agressividade = s.agressividade, pausado = this.armazem.pausados()[s.id] || null, esperando = null;
+        if (ativa && regra && emExecucao && !pausado && agressividade != null) ({ pausado = null, esperando = null } = this.conferirMudanca(s, agressividade));
+        if (esperando) agressividade = esperando.para; // mostra o valor ajustado enquanto a Fastway não reflete
+        else if (ativa) this.ultimos.set(s.id, agressividade);
+        let decisao = esperando ? { tipo: 'confirmando', de: esperando.de, alvo: esperando.para } : decidir({ regra, agressividade, contagem, emExecucao, pausado, pendente: ativa ? this.pendentes.get(s.id) ?? null : null, folga: folgaDe(s.modo, agressividade, this.armazem.teto(), this.soma) });
         if (decisao.tipo === 'teto') decisao = { ...decisao, teto: ehUra(s.modo) ? 'ura' : 'callcenter' };
         if (decisao.tipo === 'pendente' && ativa) this.pendentes.set(s.id, decisao.dir);
         else this.pendentes.delete(s.id);
@@ -85,26 +88,37 @@ class MotorRitmo {
             contagem, ocupacao: occ, decisao, operadores, parceiros: [] };
     }
 
-    /** Agressividade diferente da última vista sem ter sido a automação: pausa o serviço até alguém retomar. */
+    /** Valor que vale para o serviço: o do ajuste feito se a Fastway ainda mostra o anterior dentro do prazo. */
+    valorCrido(s) {
+        const esperado = this.esperados.get(s.id);
+        return esperado && s.agressividade === esperado.de && this.dentroDoPrazo(esperado) ? esperado.para : s.agressividade;
+    }
+    dentroDoPrazo(esperado) { return this.relogio().getTime() - esperado.em < PRAZO_CONFIRMACAO_MS; }
+
+    /**
+     * Confere a agressividade lida contra o que a automação fez. Ainda o valor antigo dentro do prazo: espera ({ esperando }).
+     * Diferente da última vista sem ter sido a automação: pausa o serviço até alguém retomar ({ pausado }).
+     */
     conferirMudanca(s, atual) {
         const esperado = this.esperados.get(s.id);
-        this.esperados.delete(s.id);
         let de = this.ultimos.get(s.id);
         if (esperado) {
-            if (atual === esperado.para) return null;
+            if (atual === esperado.de && this.dentroDoPrazo(esperado)) return { esperando: esperado };
+            this.esperados.delete(s.id);
+            if (atual === esperado.para) return {};
             if (atual === esperado.de) {
                 this.registrar({ tipo: 'falha', servicoId: s.id, servico: s.nome, de: esperado.de, para: esperado.para,
-                    texto: `A Fastway aceitou o ajuste para ${numero.format(esperado.para)}, mas a agressividade continua ${numero.format(atual)}.` });
-                return null;
+                    texto: `A Fastway aceitou o ajuste para ${numero.format(esperado.para)}, mas depois de ${PRAZO_CONFIRMACAO_MS / 60000} min a agressividade continua ${numero.format(atual)}.` });
+                return {};
             }
             de = esperado.para;
-        } else if (de == null || de === atual) return null;
+        } else if (de == null || de === atual) return {};
         const pausado = { de, para: atual, em: this.relogio().toISOString() };
         this.armazem.pausar(s.id, pausado);
         this.pendentes.delete(s.id);
         this.registrar({ tipo: 'manual', servicoId: s.id, servico: s.nome, de, para: atual,
             texto: `A agressividade mudou na Fastway de ${numero.format(de)} para ${numero.format(atual)} sem ser pela automação. Ajustes pausados neste serviço até alguém retomar.` });
-        return pausado;
+        return { pausado };
     }
 
     async ajustar(s, decisao, occ) {
@@ -118,7 +132,7 @@ class MotorRitmo {
             return { tipo: 'falhou', ...base, mensagem: erro.message };
         }
         console.warn(`ritmo do discador: ${s.nome} (#${s.id}) ${decisao.dir < 0 ? 'desceu' : 'subiu'} ${dePara}`);
-        this.esperados.set(s.id, { de: s.agressividade, para: decisao.alvo });
+        this.esperados.set(s.id, { de: s.agressividade, para: decisao.alvo, em: this.relogio().getTime() });
         this.ultimos.set(s.id, decisao.alvo);
         this.registrar({ ...evento, tipo: 'ajuste', texto: `${decisao.dir < 0 ? 'Desceu' : 'Subiu'} ${dePara}.` });
         return { tipo: 'ajustou', ...base };
