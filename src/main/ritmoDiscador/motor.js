@@ -21,7 +21,7 @@ function marcarParceiros(servicos) {
 
 class MotorRitmo {
     /**
-     * armazem: configuração deste PC ({ regras(), pausados(), ativa(), simulacao(), teto(), pausar(id, info), retomar(id) }).
+     * armazem: configuração deste PC ({ regras(), pausados(), ativa(), teto(), pausar(id, info), retomar(id) }).
      * diario: Diario do dia (eventos e série).
      */
     constructor({ cliente, armazem, diario, relogio = () => new Date() }) {
@@ -111,10 +111,6 @@ class MotorRitmo {
         const base = { dir: decisao.dir, de: s.agressividade, alvo: decisao.alvo };
         const dePara = `de ${numero.format(s.agressividade)} para ${numero.format(decisao.alvo)} (ocupação ${pct(occ)})`;
         const evento = { servicoId: s.id, servico: s.nome, de: s.agressividade, para: decisao.alvo, dir: decisao.dir, ocupacao: occ };
-        if (this.armazem.simulacao()) {
-            this.registrar({ ...evento, tipo: 'simulacao', texto: `Simulação: ${decisao.dir < 0 ? 'desceria' : 'subiria'} ${dePara}.` });
-            return { tipo: 'simulou', ...base };
-        }
         try {
             await this.cliente.ajustarAgressividade(s.id, decisao.alvo);
         } catch (erro) {
