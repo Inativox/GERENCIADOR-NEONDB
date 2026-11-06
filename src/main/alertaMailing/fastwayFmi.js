@@ -121,6 +121,28 @@ function createFastwayFmi({ baseUrl, logon, senha, http = require('axios'), inte
         pararServico: servicoId => get('servico/index.php', { api_comando: 'PararServico', servico_id: servicoId }, false),
         /** Inicia o serviço. Altera a Fastway: nunca é repetida automaticamente. */
         iniciarServico: servicoId => get('servico/index.php', { api_comando: 'IniciarServico', servico_id: servicoId }, false),
+        /** Todos os serviços, com status, agressividade e limite de chamadas (Ritmo do Discador). */
+        async listarServicos() {
+            const dados = await get('servico/index.php', { api_comando: 'ListarServicos' });
+            const numeroOuNulo = valor => (valor == null || valor === '' ? null : inteiro(valor));
+            return (dados.SERVICOS || []).map(s => ({
+                id: inteiro(s.id), nome: String(s.nome || `Serviço ${s.id}`).trim(), status: String(s.status || '').trim(), modo: String(s.modo_operacao || '').trim(),
+                agressividade: numeroOuNulo(s.ritmo_agressividade), limite: numeroOuNulo(s.limite_chamadas),
+            }));
+        },
+        /**
+         * Operadores logados no serviço. A Fastway devolve também hash de senha, token e CPF de cada operador:
+         * só os campos de estado saem daqui, o resto nunca fica em memória nem vai para a tela ou o log.
+         */
+        async listarLogados(servicoId) {
+            const dados = await get('operador/index.php', { api_comando: 'ListarLogados', servico_id: servicoId });
+            return (Array.isArray(dados.Operadores) ? dados.Operadores : []).map(o => ({
+                id: inteiro(o.id), nome: String(o.nome || o.logon || `Operador ${o.id}`).trim(), status: String(o.status || '').trim(),
+                complemento: String(o.status_complemento || '').trim(), segundos: o.tempo_status_segundos, horaStatus: String(o.hora_status || ''),
+            }));
+        },
+        /** Muda a agressividade do serviço. Altera a Fastway: nunca é repetida automaticamente. */
+        ajustarAgressividade: (servicoId, valor) => get('servico/index.php', { api_comando: 'AjustarAgressividade', servico_id: servicoId, agressividade: valor }, false),
         async listarMailings() {
             const dados = await get('mailing/index.php', { api_comando: 'Listar' });
             return (dados.Mailings || []).map(m => ({
