@@ -89,13 +89,12 @@ test('ritmo do discador chama os canais do main e repassa as leituras', async ()
     await api.ritmoDiscadorLer();
     await api.ritmoDiscadorLogin('enzo', 'segredo');
     await api.ritmoDiscadorAtiva(true);
-    await api.ritmoDiscadorSimulacao(false);
     await api.ritmoDiscadorRegra(52, regra);
     await api.ritmoDiscadorRegra(52, null);
     await api.ritmoDiscadorRetomar(52);
     await api.ritmoDiscadorTeto(1500);
     assert.deepEqual(JSON.parse(JSON.stringify(invoked)), [['ritmo-discador-state'], ['ritmo-discador-assistir', { ativo: true }], ['ritmo-discador-assistir', { ativo: false }],
-        ['ritmo-discador-ler'], ['ritmo-discador-login', { login: 'enzo', password: 'segredo' }], ['ritmo-discador-ativa', { ligar: true }], ['ritmo-discador-simulacao', { ligar: false }],
+        ['ritmo-discador-ler'], ['ritmo-discador-login', { login: 'enzo', password: 'segredo' }], ['ritmo-discador-ativa', { ligar: true }],
         ['ritmo-discador-regra', { servicoId: 52, regra }], ['ritmo-discador-regra', { servicoId: 52, regra: null }], ['ritmo-discador-retomar', { servicoId: 52 }], ['ritmo-discador-teto', { valor: 1500 }]]);
     const recebidos = [];
     const sair = api.onRitmoDiscadorUpdate(painel => recebidos.push(painel.servicos.length));
