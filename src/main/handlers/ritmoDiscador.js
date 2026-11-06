@@ -1,7 +1,7 @@
 /**
  * Handlers do Ritmo do Discador: ajusta a agressividade de cada serviço da Fastway pela ocupação dos operadores.
  * Lê a cada 30 s enquanto a automação está ativa neste PC ou a aba está aberta. Qualquer usuário vê;
- * só admin muda regras, liga a automação ou tira da simulação. O login é o login Fastway salvo no Gerenciador.
+ * só admin muda regras ou liga a automação. O login é o login Fastway salvo no Gerenciador.
  */
 const { app, ipcMain } = require('electron');
 const path = require('node:path');
@@ -29,7 +29,7 @@ const objeto = valor => (valor && typeof valor === 'object' && !Array.isArray(va
 function config() {
     const salvo = objeto(store.get(CHAVE));
     const teto = Number.isInteger(salvo.teto) && salvo.teto > 0 ? salvo.teto : TETO_PADRAO;
-    return { ativa: salvo.ativa === true, simulacao: salvo.simulacao !== false, teto, regras: objeto(salvo.regras), pausados: objeto(salvo.pausados) };
+    return { ativa: salvo.ativa === true, teto, regras: objeto(salvo.regras), pausados: objeto(salvo.pausados) };
 }
 function gravar(mudar) {
     const atual = config();
@@ -41,7 +41,6 @@ const armazem = {
     regras: () => config().regras,
     pausados: () => config().pausados,
     ativa: () => config().ativa && ehAdmin(),
-    simulacao: () => config().simulacao,
     teto: () => config().teto, // soma máxima da agressividade das URAs em execução
     pausar: (id, info) => gravar(c => { c.pausados[id] = info; }),
     retomar: id => gravar(c => { delete c.pausados[id]; }),
@@ -50,7 +49,7 @@ const armazem = {
 // --- painel ---------------------------------------------------------------------------------------------
 function dadosDoPainel() {
     const login = sessao ? logins.summary(sessao.owner) : { saved: false, login: null, canSave: false };
-    const base = { login, admin: ehAdmin(), ativa: armazem.ativa(), simulacao: armazem.simulacao(), teto: armazem.teto(), tetoCallcenter: TETO_CALLCENTER, soma: null, intervaloSegundos: INTERVALO_MS / 1000, limitePausa: LIMITE_PAUSA };
+    const base = { login, admin: ehAdmin(), ativa: armazem.ativa(), teto: armazem.teto(), tetoCallcenter: TETO_CALLCENTER, soma: null, intervaloSegundos: INTERVALO_MS / 1000, limitePausa: LIMITE_PAUSA };
     if (!sessao?.motor) return { ...base, configurado: false, lidoEm: null, lendo: false, conectado: true, erro: null, servicos: [], eventos: [] };
     return { ...base, configurado: true, ...sessao.motor.painel() };
 }
@@ -148,19 +147,11 @@ const usuario = () => state.currentUser.username;
 
 function ligarAutomacao(ligar) {
     const motor = motorAtivo();
-    gravar(c => { c.ativa = ligar; if (ligar) c.simulacao = true; }); // sempre volta em simulação
+    gravar(c => { c.ativa = ligar; });
     motor.esquecer();
-    motor.registrar({ tipo: 'sistema', texto: ligar ? `Automação ligada neste PC por ${usuario()}, em simulação.` : `Automação desligada neste PC por ${usuario()}. A agressividade ficou como estava.` });
+    motor.registrar({ tipo: 'sistema', texto: ligar ? `Automação ligada neste PC por ${usuario()}: os ajustes valem na Fastway.` : `Automação desligada neste PC por ${usuario()}. A agressividade ficou como estava.` });
     console.warn(`ritmo do discador: automação ${ligar ? 'LIGADA' : 'desligada'} neste PC`);
     acordar();
-}
-
-function ligarSimulacao(ligar) {
-    const motor = motorAtivo();
-    if (!config().ativa) throw validacao('Ligue a automação neste PC primeiro.');
-    gravar(c => { c.simulacao = ligar; });
-    motor.registrar({ tipo: 'sistema', texto: ligar ? `Simulação ligada por ${usuario()}: nada vai para a Fastway.` : `Simulação desligada por ${usuario()}: os ajustes passam a valer na Fastway.` });
-    console.warn(`ritmo do discador: simulação ${ligar ? 'ligada' : 'DESLIGADA'}`);
 }
 
 function salvarRegra(input) {
@@ -230,7 +221,6 @@ function register() {
     ipcMain.handle('ritmo-discador-ler', protect(() => { motorAtivo(); acordar(); }));
     ipcMain.handle('ritmo-discador-login', protect((input, owner) => salvarLogin(owner, input)));
     ipcMain.handle('ritmo-discador-ativa', protect(input => ligarAutomacao(input?.ligar === true), { soAdmin: true }));
-    ipcMain.handle('ritmo-discador-simulacao', protect(input => ligarSimulacao(input?.ligar === true), { soAdmin: true }));
     ipcMain.handle('ritmo-discador-regra', protect(salvarRegra, { soAdmin: true }));
     ipcMain.handle('ritmo-discador-retomar', protect(retomar, { soAdmin: true }));
     ipcMain.handle('ritmo-discador-teto', protect(salvarTeto, { soAdmin: true }));
