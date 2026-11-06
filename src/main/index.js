@@ -27,6 +27,7 @@ const fluxos = require('./handlers/fluxos');
 const receitaSituacao = require('./handlers/receitaSituacao');
 const importarMailing = require('./handlers/importarMailing');
 const alertaMailing = require('./handlers/alertaMailing');
+const ritmoDiscador = require('./handlers/ritmoDiscador');
 
 // Cache/BD
 const cache = require('./database/cache');
@@ -72,6 +73,7 @@ fluxos.register();
 receitaSituacao.register();
 importarMailing.register();
 alertaMailing.register();
+ritmoDiscador.register();
 cache.register();
 
 // Ciclo de vida do app
