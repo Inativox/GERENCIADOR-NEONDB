@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Regras do Ritmo do Discador: estado dos operadores, ocupação e a decisão de subir ou descer a agressividade.
- * Ocupação = falando ÷ (logados − em pausa): quem está em pausa não está disponível e fica fora da conta.
+ * Ocupação = em atendimento ÷ (em atendimento + livres), a mesma conta do painel da Fastway: pausa e outros estados ficam fora.
  */
 const LIMITE_PAUSA = 0.5; // com mais da metade em pausa a regra nunca sobe: falta gente, não ligação
 const CAMPOS = ['desce', 'sobe', 'passo', 'minimo', 'maximo'];
@@ -40,8 +40,8 @@ function contar(operadores) {
     return c;
 }
 
-/** Disponíveis = logados fora de pausa (falando, livres e outros). Sem ninguém disponível não há ocupação. */
-const disponiveis = c => c.logados - c.pausa;
+/** Disponíveis = falando + livres (como o "Em atendimento %" da Fastway). Sem ninguém disponível não há ocupação. */
+const disponiveis = c => c.falando + c.livres;
 const ocupacao = c => (disponiveis(c) > 0 ? c.falando / disponiveis(c) : null);
 
 /** Confere a regra digitada. Devolve { regra } normalizada ou { erro }; passar do limite de chamadas é só aviso. */
@@ -53,8 +53,8 @@ function validarRegra(entrada, limite = null, modo = '') {
         if (!Number.isInteger(valor)) return { erro: 'Preencha todos os campos com números inteiros.' };
         regra[campo] = valor;
     }
-    if (regra.desce < 1 || regra.desce > 100) return { erro: '“Desce quando” vai de 1% a 100%.' };
-    if (regra.sobe < 0 || regra.sobe >= regra.desce) return { erro: '“Sobe quando” precisa ser menor que “desce quando”, senão as faixas se cruzam.' };
+    if (regra.desce < 1 || regra.desce > 100) return { erro: '“Desce acima de” vai de 1% a 100%.' };
+    if (regra.sobe < 0 || regra.sobe >= regra.desce) return { erro: '“Sobe abaixo de” precisa ser menor que “desce acima de”, senão as faixas se cruzam.' };
     if (regra.passo < 1) return { erro: 'O passo precisa ser pelo menos 1.' };
     if (regra.minimo < 1 || regra.minimo > regra.maximo) return { erro: 'O mínimo precisa ser pelo menos 1 e não pode passar do máximo.' };
     if (ehCallcenter(modo) && regra.maximo > TETO_CALLCENTER) return { erro: `Serviço de call center ativo vai no máximo até ${TETO_CALLCENTER}.` };
@@ -74,8 +74,9 @@ function decidir({ regra, agressividade, contagem, emExecucao, pausado, pendente
     if (agressividade == null) return { tipo: 'semgente' };
     const occ = ocupacao(contagem);
     if (occ == null) return { tipo: 'semgente' };
-    const pct = occ * 100;
-    const dir = pct >= regra.desce ? -1 : pct <= regra.sobe ? 1 : 0;
+    // Faixa fechada: de “sobe” a “desce” (ex.: 60% a 90%) mantém; só sobe abaixo e só desce acima. Arredonda para não errar na borda (7/9).
+    const pct = Math.round(occ * 10000) / 100;
+    const dir = pct > regra.desce ? -1 : pct < regra.sobe ? 1 : 0;
     if (!dir) return { tipo: 'mantem' };
     if (dir > 0 && contagem.pausa / contagem.logados > LIMITE_PAUSA) return { tipo: 'muitaPausa', dir };
     if (dir > 0 ? agressividade >= regra.maximo : agressividade <= regra.minimo) return { tipo: 'limite', dir };
