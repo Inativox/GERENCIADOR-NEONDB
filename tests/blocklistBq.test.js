@@ -67,3 +67,22 @@ test('nenhum código do app consulta ou grava a blocklist no Neon', () => {
         assert.doesNotMatch(source, /(FROM|INTO)\s+blocklist\b/i, path.relative(base, file));
     }
 });
+
+test('block por operação carrega só os vigentes da lista escolhida, sem o zero da frente', async () => {
+    const bq = fakeBq(() => ({ rows: [{ fone: '51982267180' }, { fone: '' }, { fone: '1133334444' }] }));
+    const phones = await blocklistBq.loadOperationBlock(bq, 3);
+    assert.deepEqual([...phones], ['51982267180', '1133334444']);
+    const [call] = bq.calls;
+    assert.match(call.query, /FROM `mbtech-bronze\.blocklist\.fastway_espelho`/);
+    assert.match(call.query, /LTRIM\(fone, '0'\)/);
+    assert.match(call.query, /removido_em IS NULL/);
+    assert.match(call.query, /validade >= CURRENT_DATE\('America\/Sao_Paulo'\)/);
+    assert.equal(call.params[0].parameterValue.value, '3');
+    assert.ok(call.maxBytesBilled);
+});
+
+test('block por operação recusa lista fora de C6, Mercado Pago/PagBank e Santander', async () => {
+    assert.deepEqual(blocklistBq.OPERATION_BLOCKS.map(item => item.id), [2, 3, 4]);
+    await assert.rejects(blocklistBq.loadOperationBlock(fakeBq(), 1), /operação/);
+    assert.equal(blocklistBq.operationBlock('4').name, 'Santander');
+});

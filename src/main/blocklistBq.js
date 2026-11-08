@@ -65,4 +65,34 @@ async function stats(bq, { signal } = {}) {
     return data;
 }
 
-module.exports = { TABLE, LOOKUP_CHUNK, INSERT_CHUNK, findBlocked, addPhones, stats, digits };
+/**
+ * Block por operação da Fastway (números que não atendem ou caem na caixa postal), espelhada
+ * pelo hub em mbtech-bronze.blocklist.fastway_espelho. Listas: C6 = 2, Mercado Pago e PagBank = 3
+ * (dividem), Santander = 4. "Vigente" segue a regra do hub: não removido e validade >= hoje.
+ */
+const OPERATION_TABLE = '`mbtech-bronze.blocklist.fastway_espelho`';
+const OPERATION_BLOCKS = Object.freeze([
+    Object.freeze({ id: 2, name: 'C6' }),
+    Object.freeze({ id: 3, name: 'Mercado Pago e PagBank' }),
+    Object.freeze({ id: 4, name: 'Santander' }),
+]);
+
+function operationBlock(id) {
+    return OPERATION_BLOCKS.find(item => item.id === Number(id)) || null;
+}
+
+/** Set com os telefones vigentes da operação, só DDD + número (o espelho grava com zero na frente). */
+async function loadOperationBlock(bq, operacaoId, { signal } = {}) {
+    const operation = operationBlock(operacaoId);
+    if (!operation) throw new Error('Escolha a operação da block de números ruins.');
+    const phones = new Set();
+    await run(bq, `SELECT DISTINCT LTRIM(fone, '0') AS fone FROM ${OPERATION_TABLE}
+        WHERE operacao_id = @operacao AND removido_em IS NULL
+          AND validade >= CURRENT_DATE('America/Sao_Paulo')`,
+    [scalar('operacao', 'INT64', operation.id)], { signal, onPage: async rows => {
+        for (const row of rows) { const fone = String(row.fone ?? '').replace(/\D/g, ''); if (fone) phones.add(fone); }
+    } });
+    return phones;
+}
+
+module.exports = { TABLE, LOOKUP_CHUNK, INSERT_CHUNK, OPERATION_BLOCKS, operationBlock, loadOperationBlock, findBlocked, addPhones, stats, digits };

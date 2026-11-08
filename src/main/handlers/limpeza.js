@@ -99,7 +99,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
     const logBuffer = [];
     const log = (msg) => logBuffer.push(msg);
     const progress = (pct) => event.sender.send("progress", { id, progress: pct });
-    const { backup, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, keepCnaes, findCnaes, cleaningDate } = options;
+    const { backup, checkBlocklist, removeLandlines, checkNumerosInvalidos, fillLivre5, keepCnaes, findCnaes, cleaningDate, operationBlockPhones } = options;
 
     const cleanClientName = (name) => {
         if (!name || typeof name !== 'string') return name;
@@ -164,6 +164,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
     let removedByBlocklist = 0;
     let removedInvalidPhonesNumber = 0; // adicionado por enzo
     let removedDdiCount = 0;
+    let removedByOperationBlock = 0;
     let cleanedPhones = 0;
     let dirtyPhones = 0;
 
@@ -206,6 +207,12 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
             if (ddiRemoved) removedDdiCount++;
             row[idx] = phone ? Number(phone) : null;
         });
+        // Número ruim da operação sai só da célula; a empresa fica se tiver outro telefone.
+        if (operationBlockPhones) {
+            foneIdxs.forEach(idx => {
+                if (row[idx] != null && operationBlockPhones.has(String(row[idx]))) { row[idx] = null; removedByOperationBlock++; }
+            });
+        }
         if (removeLandlines) {
             foneIdxs.forEach(idx => {
                 const v = row[idx] ? String(row[idx]).trim() : "";
@@ -235,7 +242,7 @@ async function processFile(fileObj, rootSet, options, event, crossList = createC
         await saveCsvCopy(file, result.rows, log);
         progress(100);
         if (!foneIdxs.length) log('Sem colunas fone: ajuste e exclusão de linhas sem contato não foram aplicados.');
-        log(`✅ ${path.basename(file)}\n   • Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae} | Blocklist: ${removedByBlocklist}${keepCnaes ? ` | Fora da lista de CNAEs: ${removedOutsideCnaes} (sem CNAE na Receita: ${withoutReceitaCnae})` : ''}\n   • CNPJs repetidos: ${result.stats.repeatedDocuments} | Telefones repetidos: ${result.stats.repeatedPhones}\n   • Telefones sujos: ${dirtyPhones} | Números inválidos (BD): ${removedInvalidPhonesNumber}\n   • Linhas sem telefone: ${result.stats.withoutPhones} | Fones fixos: ${cleanedPhones} | DDIs removidos: ${removedDdiCount}\n   • Total final: ${result.rows.length - 1}`);
+        log(`✅ ${path.basename(file)}\n   • Pela Raiz: ${removedByRoot} | CNAE: ${removedByCnae} | Blocklist: ${removedByBlocklist}${keepCnaes ? ` | Fora da lista de CNAEs: ${removedOutsideCnaes} (sem CNAE na Receita: ${withoutReceitaCnae})` : ''}\n   • CNPJs repetidos: ${result.stats.repeatedDocuments} | Telefones repetidos: ${result.stats.repeatedPhones}\n   • Telefones sujos: ${dirtyPhones} | Números inválidos (BD): ${removedInvalidPhonesNumber}${operationBlockPhones ? ` | Números ruins da operação: ${removedByOperationBlock}` : ''}\n   • Linhas sem telefone: ${result.stats.withoutPhones} | Fones fixos: ${cleanedPhones} | DDIs removidos: ${removedDdiCount}\n   • Total final: ${result.rows.length - 1}`);
         return { processed: true, logs: logBuffer, removedOutsideCnaes };
     };
 
@@ -369,11 +376,20 @@ function register() {
             if (args.isAutoRoot && rootSource === 'neon' && !state.pool) throw new Error('Conecte ao banco do Gerenciador para carregar a raiz do Banco de Dados.');
             if (args.checkNumerosInvalidos && !state.pool) throw new Error('Conecte ao banco do Gerenciador para usar o filtro de números inválidos.');
             if (args.checkBlocklist && !state.bqReceitaService?.configured?.()) throw new Error('Configure o acesso ao BigQuery (credencial em Fluxos) para usar a blocklist.');
+            const operationBlock = args.removeOperationBlock ? blocklistBq.operationBlock(args.operationBlockId) : null;
+            if (args.removeOperationBlock && !operationBlock) throw new Error('Escolha a operação da block de números ruins.');
+            if (operationBlock && !state.bqReceitaService?.configured?.()) throw new Error('Configure o acesso ao BigQuery (credencial em Fluxos) para usar a block de números ruins.');
             const cleaningDate = new Intl.DateTimeFormat('pt-BR', {
                 timeZone: 'America/Sao_Paulo'
             }).format(new Date());
             const findCnaes = (documents, onProgress) => state.receitaCnaeService.lookupCnaes(documents, { onProgress });
-            const cleaningOptions = { ...args, cleaningDate, keepCnaes, findCnaes, blocklistBq: args.checkBlocklist ? state.bqReceitaService.client() : null };
+            let operationBlockPhones = null;
+            if (operationBlock) {
+                log(`Block de números ruins: carregando ${operationBlock.name} (lista ${operationBlock.id} da Fastway) no BigQuery...`);
+                operationBlockPhones = await blocklistBq.loadOperationBlock(state.bqReceitaService.client(), operationBlock.id);
+                log(`✅ Block de números ruins carregada: ${operationBlock.name} · ${operationBlockPhones.size.toLocaleString('pt-BR')} telefones vigentes. Sai só o número; a linha fica se tiver outro telefone.`);
+            }
+            const cleaningOptions = { ...args, cleaningDate, keepCnaes, findCnaes, operationBlockPhones, blocklistBq: args.checkBlocklist ? state.bqReceitaService.client() : null };
             const crossList = createCrossListContext();
             log('Cruzamento do lote ativo: mantém a primeira ocorrência de CNPJ/telefone. Ajuste de fones obrigatório.');
             logSystemAction(state.currentUser.username, 'Limpeza Local', `Iniciou limpeza de ${args.cleanFiles.length} arquivos.`);

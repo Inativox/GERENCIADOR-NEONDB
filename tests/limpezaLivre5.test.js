@@ -92,3 +92,26 @@ test('avisa e continua a limpeza quando livre5 nao existe', async (t) => {
     assert.equal(lerDados(caminho)[1][1], 'Empresa');
     assert.ok(resultado.logs.some(log => log.includes('não possui a coluna "livre5"')));
 });
+
+test('block de números ruins da operação tira só o número; linha sem nenhum fone sai', async (t) => {
+    const caminho = criarPlanilha(t, 'c6_ruins.xlsx', [
+        ['cnpj', 'fone1', 'fone2'],
+        ['12345678000199', '(51) 98226-7180', '11999998888'],
+        ['98765432000188', '51982267181', ''],
+        ['11222333000144', '11977776666', '']
+    ]);
+
+    const resultado = await processFile(
+        { path: caminho, id: 'arquivo-ruins' },
+        new Set(),
+        opcoes({ operationBlockPhones: new Set(['51982267180', '51982267181']) }),
+        event
+    );
+
+    const dados = lerDados(caminho);
+    assert.deepEqual(dados.slice(1).map(linha => [String(linha[0]), linha[1]]), [
+        ['12345678000199', 11999998888],
+        ['11222333000144', 11977776666]
+    ]);
+    assert.ok(resultado.logs.some(log => log.includes('Números ruins da operação: 2')));
+});
