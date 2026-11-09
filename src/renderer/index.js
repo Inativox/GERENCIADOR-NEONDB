@@ -440,7 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         'Limpeza de Colunas': {
             title: 'Limpeza de Colunas',
-            description: 'Reduz suas planilhas a NOME, CPF e FONE1. Converte telefone e CNPJ de notação científica para número inteiro e remove o ,00 do final. Entra .xlsx e sai .xlsx, sem alterar os arquivos originais.'
+            description: 'Aceita qualquer cabeçalho e gera a lista no padrão C6 (nome, cpf, livre1 a livre7 e fone1 a fone8), em .xlsx e num .csv adicional. Converte telefone e CNPJ de notação científica, remove o ,00 e o DDI 55, e tira . , ( ) - / do nome, sem alterar os arquivos originais.'
         }
     };
 
