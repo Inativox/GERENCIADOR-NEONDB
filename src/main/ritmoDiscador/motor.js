@@ -21,6 +21,14 @@ function marcarParceiros(servicos) {
     }
 }
 
+/** Por que o ajuste andou menos que o passo: bateu no mínimo, no máximo, no teto das URAs ou no teto do call center. */
+function corteDoPasso(s, decisao, regra) {
+    if (Math.abs(decisao.alvo - s.agressividade) >= regra.passo) return null;
+    if (decisao.dir < 0) return 'minimo';
+    if (decisao.alvo === regra.maximo) return 'maximo';
+    return ehUra(s.modo) ? 'tetoUra' : 'tetoCallcenter';
+}
+
 class MotorRitmo {
     /**
      * armazem: configuração deste PC ({ regras(), pausados(), ativa(), teto(), pausar(id, info), retomar(id) }).
@@ -80,7 +88,7 @@ class MotorRitmo {
         if (decisao.tipo === 'pendente' && ativa) this.pendentes.set(s.id, decisao.dir);
         else this.pendentes.delete(s.id);
         if (decisao.tipo === 'ajustar') {
-            decisao = await this.ajustar(s, decisao, occ);
+            decisao = await this.ajustar(s, decisao, { occ, contagem, regra });
             if (decisao.tipo === 'ajustou') { if (ehUra(s.modo)) this.soma += decisao.alvo - agressividade; agressividade = decisao.alvo; }
         }
         this.diario.ponto(s.id, { t: this.relogio().getTime(), ocupacao: occ, agressividade: agressividade ?? 0 });
@@ -116,15 +124,17 @@ class MotorRitmo {
         const pausado = { de, para: atual, em: this.relogio().toISOString() };
         this.armazem.pausar(s.id, pausado);
         this.pendentes.delete(s.id);
-        this.registrar({ tipo: 'manual', servicoId: s.id, servico: s.nome, de, para: atual,
+        this.registrar({ tipo: 'manual', servicoId: s.id, servico: s.nome, modo: s.modo, de, para: atual,
             texto: `A agressividade mudou na Fastway de ${numero.format(de)} para ${numero.format(atual)} sem ser pela automação. Ajustes pausados neste serviço até alguém retomar.` });
         return { pausado };
     }
 
-    async ajustar(s, decisao, occ) {
+    async ajustar(s, decisao, { occ, contagem, regra }) {
         const base = { dir: decisao.dir, de: s.agressividade, alvo: decisao.alvo };
         const dePara = `de ${numero.format(s.agressividade)} para ${numero.format(decisao.alvo)} (ocupação ${pct(occ)})`;
-        const evento = { servicoId: s.id, servico: s.nome, de: s.agressividade, para: decisao.alvo, dir: decisao.dir, ocupacao: occ };
+        // Detalhe para o histórico: quem estava em cada estado, a faixa da regra e por que o passo foi menor, se foi.
+        const evento = { servicoId: s.id, servico: s.nome, modo: s.modo, de: s.agressividade, para: decisao.alvo, dir: decisao.dir, ocupacao: occ,
+            contagem: { ...contagem }, faixa: { sobe: regra.sobe, desce: regra.desce, passo: regra.passo }, corte: corteDoPasso(s, decisao, regra) };
         try {
             await this.cliente.ajustarAgressividade(s.id, decisao.alvo);
         } catch (erro) {
