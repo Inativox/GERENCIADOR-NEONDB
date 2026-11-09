@@ -33,13 +33,21 @@ async function lerSaida(caminho) {
     await workbook.xlsx.readFile(caminho);
     const aba = workbook.worksheets[0];
     const linhas = [];
+    // nome, cpf e fone1 do layout C6 (colunas 1, 2 e 9)
     aba.eachRow((linha) => {
-        linhas.push([linha.getCell(1).value, linha.getCell(2).value, linha.getCell(3).value]);
+        linhas.push([linha.getCell(1).value, linha.getCell(2).value, linha.getCell(9).value]);
     });
     return { aba, linhas };
 }
 
-test('limparArquivo mantem so as tres colunas e renomeia os cabecalhos', async () => {
+/** Lê o CSV adicional como array de arrays de texto. */
+function lerCsv(caminho) {
+    const texto = fs.readFileSync(caminho, 'utf8');
+    assert.ok(texto.startsWith('﻿'), 'CSV com BOM para o Excel abrir acentuado');
+    return texto.slice(1).trim().split('\r\n').map(linha => linha.slice(1, -1).split('";"'));
+}
+
+test('limparArquivo gera o layout C6 de 8 telefones a partir do cabecalho antigo', async () => {
     const entrada = await criarFixture(
         'base.xlsx',
         ['ID', 'Nome do Negócio', 'Lixo', 'CNPJ', 'Telefone Celular', 'Mais Lixo'],
@@ -51,10 +59,60 @@ test('limparArquivo mantem so as tres colunas e renomeia os cabecalhos', async (
     assert.strictEqual(resultado.ok, true);
     assert.strictEqual(resultado.linhas, 1);
 
-    const { linhas } = await lerSaida(resultado.caminhoSaida);
-    assert.deepStrictEqual(linhas[0], ['NOME', 'CPF', 'FONE1']);
+    const { aba, linhas } = await lerSaida(resultado.caminhoSaida);
+    assert.deepStrictEqual(aba.getRow(1).values.slice(1), ['nome', 'cpf', 'livre1', 'chave', 'livre3', 'livre4', 'livre5', 'livre7',
+        'fone1', 'fone2', 'fone3', 'fone4', 'fone5', 'fone6', 'fone7', 'fone8']);
     // o DDI 55 sai; o CNPJ mantém os 14 dígitos
     assert.deepStrictEqual(linhas[1], ['Padaria Sol', 4252011000110, 21998364849]);
+    assert.strictEqual(aba.getCell('H2').value, 'C6', 'livre7 leva o nome da operação, como no fluxo C6');
+});
+
+test('limparArquivo aceita qualquer cabecalho e junta todos os telefones em fone1 a fone8', async () => {
+    const entrada = await criarFixture(
+        'qualquer.xlsx',
+        ['Razão Social', 'Documento', 'Whatsapp', 'Tel. Fixo', 'Celular 2', 'E-mail', 'UF', 'Cidade', 'Obs'],
+        [['J.R. Comércio (Filial) - Auto/Peças, LTDA.', '04.252.011/0001-10', '(21) 99836-4849', '(21) 3333-4444', '5521998364849', 'a@b.com', 'RJ', 'Rio de Janeiro', 'x']]
+    );
+
+    const resultado = await limparArquivo(entrada);
+
+    assert.strictEqual(resultado.ok, true);
+    assert.match(resultado.colunas, /nome ← "Razão Social" · cpf ← "Documento"/);
+    assert.match(resultado.colunas, /fones ← "Whatsapp", "Tel\. Fixo", "Celular 2"/);
+    const { aba } = await lerSaida(resultado.caminhoSaida);
+    // . , ( ) - / saem do nome; o celular repetido (com DDI) entra uma vez só
+    assert.deepStrictEqual(aba.getRow(2).values.slice(1), ['JR Comércio Filial Auto Peças LTDA', 4252011000110, , 'a@b.com', , 'RJ - Rio de Janeiro', , 'C6', 21998364849, 2133334444]);
+});
+
+test('limparArquivo reconhece as colunas pelo conteudo quando o cabecalho nao diz nada', async () => {
+    const entrada = await criarFixture(
+        'semnome.xlsx',
+        ['A', 'B', 'C', 'D'],
+        [['Padaria Sol', '12345678000199', '11987654321', 'id-1'], ['Mercado Lua', '04252011000110', '1133334444', 'id-2']]
+    );
+
+    const resultado = await limparArquivo(entrada);
+
+    assert.strictEqual(resultado.ok, true);
+    assert.strictEqual(resultado.colunas, 'nome ← "A" (pelo conteúdo) · cpf ← "B" (pelo conteúdo) · fones ← "C" (pelo conteúdo)');
+    const { linhas } = await lerSaida(resultado.caminhoSaida);
+    assert.deepStrictEqual(linhas.slice(1), [['Padaria Sol', 12345678000199, 11987654321], ['Mercado Lua', 4252011000110, 1133334444]]);
+});
+
+test('limparArquivo gera o CSV adicional com o mesmo layout e o CNPJ com zero a esquerda', async () => {
+    const entrada = await criarFixture(
+        'csv.xlsx',
+        ['Nome do Negócio', 'CNPJ', 'Telefone Celular'],
+        [['=Padaria Sol', 4252011000110, 5521998364849]]
+    );
+
+    const resultado = await limparArquivo(entrada);
+
+    assert.strictEqual(resultado.caminhoCsv, resultado.caminhoSaida.replace(/\.xlsx$/, '.csv'));
+    const linhas = lerCsv(resultado.caminhoCsv);
+    assert.strictEqual(linhas[0].join(';'), 'nome;cpf;livre1;chave;livre3;livre4;livre5;livre7;fone1;fone2;fone3;fone4;fone5;fone6;fone7;fone8');
+    // começa com = vira texto (o Excel não executa); o CNPJ guarda o zero que no número só existe pela máscara
+    assert.deepStrictEqual(linhas[1], ["'=Padaria Sol", '04252011000110', '', '', '', '', '', 'C6', '21998364849', '', '', '', '', '', '', '']);
 });
 
 test('limparArquivo grava CPF e FONE1 como numero com formato', async () => {
@@ -71,20 +129,19 @@ test('limparArquivo grava CPF e FONE1 como numero com formato', async () => {
     assert.strictEqual(typeof linhas[1][2], 'number');
     // o formato precisa estar na célula de dados, não só na definição da coluna
     assert.strictEqual(aba.getCell('B2').numFmt, '00000000000000');
-    assert.strictEqual(aba.getCell('C2').numFmt, '0');
+    assert.strictEqual(aba.getCell('I2').numFmt, '0');
 });
 
-test('limparArquivo pula o arquivo quando falta uma coluna', async () => {
-    const entrada = await criarFixture(
-        'faltando.xlsx',
-        ['Nome do Negócio', 'CNPJ'],
-        [['Padaria Sol', '12345678000199']]
-    );
+test('limparArquivo pula o arquivo quando nao acha telefone nem CNPJ', async () => {
+    const semFone = await criarFixture('faltando.xlsx', ['Nome do Negócio', 'CNPJ'], [['Padaria Sol', '12345678000199']]);
+    const semDocumento = await criarFixture('semdoc.xlsx', ['Nome', 'Celular'], [['Padaria Sol', '11987654321']]);
 
-    const resultado = await limparArquivo(entrada);
+    const [fone, documento] = [await limparArquivo(semFone), await limparArquivo(semDocumento)];
 
-    assert.strictEqual(resultado.ok, false);
-    assert.match(resultado.motivo, /Telefone Celular/);
+    assert.strictEqual(fone.ok, false);
+    assert.match(fone.motivo, /telefone/);
+    assert.strictEqual(documento.ok, false);
+    assert.match(documento.motivo, /CNPJ/);
 });
 
 test('limparArquivo recusa .xls antigo', async () => {
@@ -130,6 +187,10 @@ test('caminhoDisponivel nunca sobrescreve arquivo existente', async () => {
     fs.writeFileSync(primeiro, 'ocupado');
     const segundo = caminhoDisponivel(entrada);
     assert.strictEqual(path.basename(segundo), 'lote_LIMPO_1.xlsx');
+
+    // o .csv de mesmo nome também conta: nenhum dos dois é sobrescrito
+    fs.writeFileSync(segundo.replace(/\.xlsx$/, '.csv'), 'ocupado');
+    assert.strictEqual(path.basename(caminhoDisponivel(entrada)), 'lote_LIMPO_2.xlsx');
 });
 
 test('celula exibida como cientifico vira numero inteiro', async () => {
