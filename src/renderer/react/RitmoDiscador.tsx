@@ -14,7 +14,9 @@ type Pausado = { de: number; para: number; em: string };
 type Ponto = { t: number; ocupacao: number | null; agressividade: number };
 type Servico = { id: number; nome: string; modo: string; emExecucao: boolean; agressividade: number; limite: number; regra: Regra | null; pausado: Pausado | null;
     contagem: Contagem; ocupacao: number | null; decisao: Decisao; operadores: Operador[]; parceiros: number[]; serie: Ponto[] };
-type Evento = { id: string; em: string; tipo: 'ajuste' | 'manual' | 'falha' | 'sistema'; servicoId: number | null; servico: string; de?: number; para?: number; dir?: -1 | 1; ocupacao?: number | null; texto: string };
+type Corte = 'minimo' | 'maximo' | 'tetoUra' | 'tetoCallcenter';
+type Evento = { id: string; em: string; tipo: 'ajuste' | 'manual' | 'falha' | 'sistema'; servicoId: number | null; servico: string; modo?: string; de?: number; para?: number; dir?: -1 | 1;
+    ocupacao?: number | null; contagem?: Contagem; faixa?: { sobe: number; desce: number; passo: number }; corte?: Corte | null; texto: string };
 type Painel = { configurado: boolean; login: { saved: boolean; login: string | null; canSave: boolean }; admin: boolean; ativa: boolean;
     lidoEm: string | null; lendo: boolean; conectado: boolean; erro: string | null; intervaloSegundos: number; limitePausa: number; teto: number; tetoCallcenter: number; soma: number | null; servicos: Servico[]; eventos: Evento[] };
 type API = {
@@ -113,7 +115,7 @@ export function RitmoDiscador() {
                     {atual && <section className="rd-painel"><div className="rd-painel-cab"><h3>{atual.nome} hoje</h3><small>clique num canal para trocar · passe o mouse no gráfico</small></div>
                         <div className="rd-painel-corpo"><Grafico servico={atual} painel={painel} /></div></section>}
                     <section className="rd-painel"><div className="rd-painel-cab"><h3>Ajustes de hoje</h3><small>{resumoEventos(painel.eventos)}</small></div>
-                        <div className="rd-painel-corpo rd-hist-rolagem"><Historico eventos={painel.eventos} filtro={null} /></div></section>
+                        <div className="rd-painel-corpo rd-hist-rolagem"><HistoricoPorCampanha painel={painel} /></div></section>
                 </div>
             </> : <p className="rd-vazio rd-vazio--mesa">Os serviços aparecem aqui assim que estiverem em execução na Fastway ou tiverem regra.</p>}
         </div>
@@ -154,8 +156,8 @@ function useSessao(api: API, receber: (painel: Painel) => void, setMensagem: (te
 }
 
 function resumoEventos(eventos: Evento[]) {
-    const ajustes = eventos.filter(e => e.tipo === 'ajuste').length;
-    return `${ajustes} ${ajustes === 1 ? 'ajuste' : 'ajustes'} na Fastway`;
+    const ajustes = eventos.filter(e => e.tipo === 'ajuste'), campanhas = new Set(ajustes.map(e => e.servicoId)).size;
+    return `${ajustes.length} ${ajustes.length === 1 ? 'ajuste' : 'ajustes'} na Fastway${campanhas ? ` em ${campanhas} ${campanhas === 1 ? 'campanha' : 'campanhas'}` : ''}`;
 }
 
 /* ---------- Cabeçalho, relógio e faixas de aviso ---------- */
@@ -534,15 +536,93 @@ function Historico({ eventos, filtro, max = 40 }: { eventos: Evento[]; filtro: n
     return <ol className="rd-hist">{lista.map(e => <ItemHistorico key={e.id} evento={e} filtrado={filtro != null} />)}</ol>;
 }
 
+const variacao = (de: number, para: number) => `${para >= de ? '+' : '−'}${fmt(Math.abs(para - de))}`;
+const TEXTO_CORTE: Record<Corte, string> = {
+    minimo: 'parou no mínimo da regra', maximo: 'parou no máximo da regra',
+    tetoUra: 'subiu só o que cabia no teto das URAs', tetoCallcenter: 'subiu só até o teto do call center',
+};
+
+// "ocupação 39% · 4 falando, 6 livres, 3 em pausa · abaixo de 60% · subiu só o que cabia no teto das URAs"
+function detalheAjuste(e: Evento, desce: boolean) {
+    const c = e.contagem, f = e.faixa;
+    const pessoas = c ? [`${c.falando} falando`, `${c.livres} ${c.livres === 1 ? 'livre' : 'livres'}`, c.pausa && `${c.pausa} em pausa`, c.outros && `${c.outros} em outro estado`].filter(Boolean).join(', ') : '';
+    const motivo = f ? (desce ? `acima de ${f.desce}%` : `abaixo de ${f.sobe}%`) : '';
+    return [e.ocupacao !== undefined ? `ocupação ${pct(e.ocupacao)}` : '', pessoas, motivo, e.corte ? TEXTO_CORTE[e.corte] : ''].filter(Boolean).join(' · ');
+}
+
 function ItemHistorico({ evento: e, filtrado }: { evento: Evento; filtrado: boolean }) {
-    const quando = <time dateTime={e.em}>{horaIso(e.em)}</time>, dePara = e.de != null && e.para != null ? <span className="rd-de-para">{fmt(e.de)} → {fmt(e.para)}</span> : null;
+    const quando = <time dateTime={e.em}>{horaIso(e.em)}</time>;
+    const dePara = e.de != null && e.para != null ? <span className="rd-de-para">{fmt(e.de)} → {fmt(e.para)}<em>{variacao(e.de, e.para)}</em></span> : null;
     if (e.tipo === 'sistema') return <li data-tone="none">{quando}<Icone nome="power" /><div><p>{e.texto}</p></div></li>;
-    if (e.tipo === 'falha') return <li data-tone="stop">{quando}<Icone nome="alert" /><div><b>{filtrado || !e.servico ? 'A Fastway recusou o ajuste' : e.servico}</b><p>{e.texto}</p></div></li>;
-    if (e.tipo === 'manual') return <li data-tone="warn">{quando}<Icone nome="alert" /><div><b>{filtrado ? 'Mudou na Fastway' : e.servico}</b>
-        <p>{filtrado ? '' : 'mudou na Fastway: '}{dePara} · automação pausada</p></div></li>;
+    if (e.tipo === 'falha') return <li data-tone="stop">{quando}<Icone nome="alert" /><div><b>{filtrado || !e.servico ? 'Falha no ajuste' : e.servico}</b><p>{e.texto}</p></div></li>;
+    if (e.tipo === 'manual') return <li data-tone="warn">{quando}<Icone nome="alert" /><div><b>{filtrado ? 'Mudou direto na Fastway' : e.servico} {dePara}</b>
+        <p>{filtrado ? '' : 'mudou direto na Fastway · '}automação pausada neste serviço até retomar</p></div></li>;
     const desce = e.dir === -1 || (e.dir == null && (e.para ?? 0) < (e.de ?? 0));
     return <li data-tone="info" title={e.texto}>{quando}<Icone nome={desce ? 'down' : 'up'} />
-        <div><b>{filtrado ? (desce ? 'Desce' : 'Sobe') : e.servico}</b><p>{dePara}{e.ocupacao !== undefined && <> · ocupação {pct(e.ocupacao)}</>}</p></div></li>;
+        <div><b>{filtrado ? (desce ? 'Desceu' : 'Subiu') : e.servico} {dePara}</b><p>{detalheAjuste(e, desce)}</p></div></li>;
+}
+
+/* ---------- Ajustes de hoje agrupados por campanha ---------- */
+
+type Grupo = { id: number; nome: string; modo: string; eventos: Evento[]; subidas: number; descidas: number; manuais: number; falhas: number; inicio: number | null; agora: number | null };
+
+function agrupar(eventos: Evento[], servicos: Servico[]) {
+    const grupos = new Map<number, Grupo>(), sistema: Evento[] = [];
+    for (const e of [...eventos].sort((a, b) => Date.parse(a.em) - Date.parse(b.em))) {
+        if (e.servicoId == null) { sistema.push(e); continue; }
+        const g = grupos.get(e.servicoId) ?? { id: e.servicoId, nome: e.servico, modo: e.modo ?? '', eventos: [], subidas: 0, descidas: 0, manuais: 0, falhas: 0, inicio: null, agora: null };
+        grupos.set(e.servicoId, g);
+        g.eventos.push(e);
+        if (e.tipo === 'ajuste') { if ((e.dir ?? Math.sign((e.para ?? 0) - (e.de ?? 0))) < 0) g.descidas++; else g.subidas++; }
+        if (e.tipo === 'manual') g.manuais++;
+        if (e.tipo === 'falha') g.falhas++;
+        if ((e.tipo === 'ajuste' || e.tipo === 'manual') && e.de != null && e.para != null) { g.inicio ??= e.de; g.agora = e.para; }
+    }
+    for (const g of grupos.values()) {
+        const s = servicos.find(x => x.id === g.id);
+        if (s) { g.nome = s.nome; g.modo = s.modo; if (g.agora != null) g.agora = s.agressividade; }
+        g.eventos.reverse();
+    }
+    // Campanhas com mudança de agressividade primeiro, da mais recente para a mais antiga.
+    const lista = [...grupos.values()].sort((a, b) => Number(b.inicio != null) - Number(a.inicio != null) || Date.parse(b.eventos[0].em) - Date.parse(a.eventos[0].em));
+    return { grupos: lista, sistema: sistema.reverse() };
+}
+
+const VISIVEIS = 4;
+
+function HistoricoPorCampanha({ painel }: { painel: Painel }) {
+    const { grupos, sistema } = useMemo(() => agrupar(painel.eventos, painel.servicos), [painel.eventos, painel.servicos]);
+    const [abertos, setAbertos] = useState<Set<number | 'sistema'>>(() => new Set());
+    if (!grupos.length && !sistema.length) return <p className="rd-vazio">Nenhum ajuste hoje.</p>;
+    const alternar = (id: number | 'sistema') => setAbertos(atual => { const novo = new Set(atual); if (novo.has(id)) novo.delete(id); else novo.add(id); return novo; });
+    const itens = (id: number | 'sistema', eventos: Evento[]) => {
+        const todos = abertos.has(id), mostrar = todos ? eventos : eventos.slice(0, VISIVEIS);
+        return <>
+            <ol className="rd-hist">{mostrar.map(e => <ItemHistorico key={e.id} evento={e} filtrado />)}</ol>
+            {eventos.length > VISIVEIS && <button type="button" className="rd-camp-mais" aria-expanded={todos} onClick={() => alternar(id)}>
+                {todos ? 'Mostrar só os últimos' : `Mostrar todos os ${eventos.length} registros`}</button>}
+        </>;
+    };
+    return <div className="rd-camps">
+        {grupos.map(g => {
+            const resumo = [g.subidas && `${g.subidas} ${g.subidas === 1 ? 'subida' : 'subidas'}`, g.descidas && `${g.descidas} ${g.descidas === 1 ? 'descida' : 'descidas'}`,
+                g.manuais && `${g.manuais} ${g.manuais === 1 ? "mudança" : "mudanças"} direto na Fastway`, g.falhas && `${g.falhas} com falha`].filter(Boolean).join(' · ');
+            return <section key={g.id} className="rd-camp" aria-label={g.nome}>
+                <header className="rd-camp-cab">
+                    <div className="rd-camp-nome"><b>{g.nome}</b>{g.modo && <small>{g.modo}</small>}</div>
+                    {g.inicio != null && g.agora != null && <span className="rd-camp-dia" title="Primeiro valor alterado hoje → valor de agora">
+                        <span className="rd-mono">{fmt(g.inicio)} → {fmt(g.agora)}</span>
+                        <em data-tone={g.agora > g.inicio ? 'info' : g.agora < g.inicio ? 'warn' : 'none'}>{g.agora === g.inicio ? '0' : variacao(g.inicio, g.agora)}</em></span>}
+                    {resumo && <p className="rd-camp-resumo">{resumo} · último às {horaIso(g.eventos[0].em)}</p>}
+                </header>
+                {itens(g.id, g.eventos)}
+            </section>;
+        })}
+        {!!sistema.length && <section className="rd-camp rd-camp--sistema" aria-label="Automação">
+            <header className="rd-camp-cab"><div className="rd-camp-nome"><b>Automação</b><small>liga, desliga e teto</small></div></header>
+            {itens('sistema', sistema)}
+        </section>}
+    </div>;
 }
 
 /* ---------- Gráfico do dia: ocupação em cima, agressividade embaixo, das 08h às 18h ---------- */
