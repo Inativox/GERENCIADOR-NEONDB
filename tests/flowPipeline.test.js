@@ -314,28 +314,36 @@ test('generation reads up to 50000 rows without query timeouts and exports the r
 });
 
 for (const extension of ['xlsx', 'csv']) {
-    test(`named export preserves an existing ${extension} and can resume after it is moved`, async t => {
-        const jobDir = await setup(t), config = flow(); config.output.fileName = 'lista rca';
+    test(`named export keeps an existing ${extension} and saves the new list as "(2)"`, async t => {
+        const jobDir = await setup(t), config = flow(); config.output.fileName = 'lista rca'; config.output.csv = true;
         const directory = path.join(jobDir, 'outputs'); await fs.mkdir(directory);
-        const existing = path.join(directory, `lista rca parte1.${extension}`);
+        const existing = path.join(directory, `LISTA RCA parte1.${extension}`); // Windows ignores case
         await fs.writeFile(existing, 'Existing campaign');
-        let generated = 0;
-        const fake = providers([row(1, ['11999990001'])]);
-        const iterate = fake.iterateReceita;
-        fake.iterateReceita = args => { generated++; return iterate(args); };
-        const args = { flow: config, user: { username: 'Davi' }, jobDir, providers: fake };
-        for (let attempt = 0; attempt < 2; attempt++) {
-            await assert.rejects(runFlow(args), { code: 'FLOW_VALIDATION', message: /Já existe um arquivo/ });
-            assert.equal(await fs.readFile(existing, 'utf8'), 'Existing campaign');
-            assert.deepEqual(await fs.readdir(directory), [path.basename(existing)]);
-        }
-        await fs.rename(existing, path.join(directory, `arquivo anterior.${extension}`));
-        const result = await runFlow(args);
-        assert.equal(generated, 1); assert.equal(result.counts.exported, 1);
+        await fs.writeFile(path.join(directory, 'lista rca (2) parte3.xlsx'), 'Another earlier list');
+        const result = await runFlow({ flow: config, user: { username: 'Davi' }, jobDir, providers: providers([row(1, ['11999990001'])]) });
+        assert.equal(result.counts.exported, 1);
+        assert.deepEqual(result.outputs.map(output => path.basename(output.path)), ['lista rca (3) parte1.xlsx', 'lista rca (3) parte1.csv']);
         assert.equal((await readXlsx(result.outputs[0].path)).getCell('A2').value, '00000000000001');
-        assert.equal(await fs.readFile(path.join(directory, `arquivo anterior.${extension}`), 'utf8'), 'Existing campaign');
+        assert.equal(await fs.readFile(existing, 'utf8'), 'Existing campaign');
     });
 }
+
+test('a resumed named export keeps the name it chose, even after the original name is freed', async t => {
+    const jobDir = await setup(t), config = flow(); config.output.fileName = 'lista rca'; config.output.rowsPerFile = 1;
+    const directory = path.join(jobDir, 'outputs'); await fs.mkdir(directory);
+    await fs.writeFile(path.join(directory, 'lista rca parte1.xlsx'), 'Existing campaign');
+    const fake = providers([row(1, ['11999990001']), row(2, ['11999990002'])]);
+    const controller = new AbortController(), map = fake.mapOutputRow;
+    let mapped = 0, cancel = true;
+    // Cancel while the second part is being written: part 1 is already confirmed as "lista rca (2) parte1".
+    fake.mapOutputRow = (...args) => { if (cancel && ++mapped === 2) controller.abort(); return map(...args); };
+    const args = { flow: config, user: { username: 'Davi' }, jobDir, providers: fake };
+    await assert.rejects(runFlow({ ...args, signal: controller.signal }), error => error.code === 'FLOW_CANCELLED');
+    await fs.rm(path.join(directory, 'lista rca parte1.xlsx'));
+    cancel = false;
+    const result = await runFlow(args);
+    assert.deepEqual(result.outputs.filter(output => output.kind === 'xlsx').map(output => path.basename(output.path)), ['lista rca (2) parte1.xlsx', 'lista rca (2) parte2.xlsx']);
+});
 
 test('bounded pg lookups are read-only and parameterized', async () => {
     const calls = []; const pool = { async query(sql, args) { calls.push({ sql, args }); return { rows: [] }; } };
