@@ -196,7 +196,9 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate(`document.getElementById('columns-start').disabled`), false);
     const output = new ExcelJS.Workbook();
     await output.xlsx.readFile(path.join(userData, 'base & teste_LIMPO.xlsx'));
-    assert.deepEqual(output.worksheets[0].getRow(2).values.slice(1), ['Empresa Sol', 4252011000110, 21998364849]);
+    const colunasC6 = output.worksheets[0];
+    assert.deepEqual(['A2', 'B2', 'H2', 'I2'].map(celula => colunasC6.getCell(celula).value), ['Empresa Sol', 4252011000110, 'C6', 21998364849], 'padrão C6: nome, cpf, livre7 e fone1');
+    assert.ok(fsSync.existsSync(path.join(userData, 'base & teste_LIMPO.csv')), 'gera o CSV adicional');
     await waitFor(`document.getElementById('log').textContent.includes('legado 1999')`);
     assert.ok(await evaluate(`document.querySelectorAll('#log > p').length <= 1000`));
     window.webContents.send('update-ready', { version: '2.0.0' });
