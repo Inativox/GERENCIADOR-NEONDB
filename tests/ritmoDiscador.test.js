@@ -155,6 +155,8 @@ test('motor: mostra serviços em execução e os com regra; ajusta só na segund
     const ajustes = motor.painel().eventos.filter(e => e.tipo === 'ajuste');
     assert.equal(ajustes.length, 1);
     assert.match(ajustes[0].texto, /^Desceu de 50 para 40 \(ocupação 90%\)\.$/);
+    assert.deepEqual({ modo: ajustes[0].modo, contagem: ajustes[0].contagem, faixa: ajustes[0].faixa, corte: ajustes[0].corte },
+        { modo: 'POWER', contagem: { falando: 9, livres: 1, pausa: 0, outros: 0, logados: 10 }, faixa: { sobe: 40, desce: 80, passo: 10 }, corte: null }, 'o histórico guarda o detalhe do ajuste');
 });
 
 test('motor: com a automação desligada só mostra a decisão, sem acumular leituras nem ajustar', async () => {
@@ -275,6 +277,7 @@ test('motor: call center ativo (POWER) vai no máximo até 99 por serviço, inde
     fastway.logados[52] = estados(1, 9);
     await ler(); await ler();
     assert.deepEqual(fastway.ajustes, [[52, 99]], 'o passo de 10 vira 4: para no 99');
+    assert.equal(motor.painel().eventos.find(e => e.tipo === 'ajuste').corte, 'maximo', 'o histórico diz que o passo foi cortado');
     assert.equal(motor.soma, 20, 'o call center não entra na soma das URAs');
     fastway.servicos[0].agressividade = 99;
     await ler();
