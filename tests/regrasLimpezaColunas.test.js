@@ -5,12 +5,15 @@ const {
     desembrulhar,
     textoDe,
     normalizarCabecalho,
-    acharCabecalho,
     normalizarDigitos,
     ehCientificoTruncado,
     removerDdi,
-    ALVOS,
+    mapearColunas,
+    linhaC6,
+    limparNome,
 } = require('../src/main/regrasLimpezaColunas');
+
+const indices = mapa => Object.fromEntries(Object.entries(mapa).map(([campo, v]) => [campo, Array.isArray(v) ? v.map(f => f.indice) : v.indice]));
 
 test('desembrulhar tira o embrulho do ExcelJS', () => {
     assert.strictEqual(desembrulhar(null), null);
@@ -31,25 +34,44 @@ test('normalizarCabecalho tira acento, caixa e espaco sobrando', () => {
     assert.strictEqual(normalizarCabecalho('﻿Nome do Negócio'), 'NOME DO NEGOCIO');
 });
 
-test('acharCabecalho casa por exato mesmo com BOM na primeira celula', () => {
-    assert.strictEqual(acharCabecalho(['﻿Nome do Negócio', 'X'], ALVOS.NOME), 0);
+test('mapearColunas casa pelo cabecalho mesmo com BOM, acento e caixa diferentes', () => {
+    assert.deepStrictEqual(indices(mapearColunas(['﻿Nome do Negócio', 'cnpj', 'TELEFONE CELULAR'])), { fones: [2], cpf: 1, nome: 0 });
+    assert.deepStrictEqual(indices(mapearColunas(['nome', 'cpf', 'livre1', 'chave', 'livre3', 'livre4', 'livre5', 'livre7', 'fone1', 'fone2'])),
+        { fones: [8, 9], cpf: 1, nome: 0, chave: 3, livre1: 2, livre3: 4, livre4: 5 }, 'planilha já no padrão C6 passa direto');
 });
 
-test('acharCabecalho acha por exato, por especifico e por generico', () => {
-    assert.strictEqual(acharCabecalho(['ID', 'Nome do Negócio', 'CNPJ'], ALVOS.NOME), 1);
-    assert.strictEqual(acharCabecalho(['ID', 'Negócio Principal'], ALVOS.NOME), 1);
-    assert.strictEqual(acharCabecalho(['ID', 'Nome Fantasia'], ALVOS.NOME), 1);
-    assert.strictEqual(acharCabecalho(['Telefone Fixo', 'Celular do Contato'], ALVOS.FONE1), 1);
-    assert.strictEqual(acharCabecalho(['A', 'B'], ALVOS.CPF), -1);
+test('mapearColunas prefere o cabecalho mais confiavel e ignora o CPF do socio', () => {
+    const mapa = mapearColunas(['Nome Fantasia', 'CPF do Sócio', 'Razão Social', 'CNPJ', 'Celular']);
+    assert.deepStrictEqual(indices(mapa), { fones: [4], cpf: 3, nome: 2 });
 });
 
-test('acharCabecalho prefere o match exato ao generico', () => {
-    const cabecalhos = ['Nome Fantasia', 'Nome do Negócio'];
-    assert.strictEqual(acharCabecalho(cabecalhos, ALVOS.NOME), 1);
+test('mapearColunas acha pelo conteudo o que o cabecalho nao resolve', () => {
+    const amostra = [['x1', 'Padaria Sol', '04.252.011/0001-10', '(21) 99836-4849'], ['x2', 'Bar do Zé', '12345678000199', '5521998364849'], ['x3', 'Loja', '', '']];
+    const mapa = mapearColunas(['Código', 'Coluna 1', 'Coluna 2', 'Coluna 3'], amostra);
+    assert.deepStrictEqual(indices(mapa), { fones: [3], cpf: 2, nome: 1 });
+    assert.strictEqual(mapa.cpf.por, 'conteúdo');
 });
 
-test('acharCabecalho ignora celulas vazias do cabecalho', () => {
-    assert.strictEqual(acharCabecalho([null, '', 'CNPJ'], ALVOS.CPF), 2);
+test('mapearColunas recusa planilha sem documento ou sem telefone', () => {
+    assert.throws(() => mapearColunas(['Nome', 'Celular'], [['Padaria', '11987654321']]), /CNPJ/);
+    assert.throws(() => mapearColunas(['Nome', 'CNPJ'], [['Padaria', '04252011000110']]), /telefone/);
+});
+
+test('limparNome tira . , ( ) - / e espaco sobrando', () => {
+    assert.strictEqual(limparNome('J.R. Comércio (Filial) - Auto/Peças, LTDA.'), 'JR Comércio Filial Auto Peças LTDA');
+    assert.strictEqual(limparNome('  Padaria   Sol  '), 'Padaria Sol');
+    assert.strictEqual(limparNome(null), '');
+});
+
+test('linhaC6 tira DDI, repete telefone uma vez so e corta no oitavo', () => {
+    const fones = ['5521998364849', '21998364849', ...Array.from({ length: 8 }, (_, i) => `2133334${String(i).padStart(3, '0')}`)];
+    const mapa = { nome: { indice: 0 }, cpf: { indice: 1 }, fones: fones.map((_, i) => ({ indice: i + 2 })) };
+    const linha = linhaC6(['Padaria Sol', '04.252.011/0001-10', ...fones], mapa);
+    assert.strictEqual(linha.cpf, '04252011000110');
+    assert.deepStrictEqual(linha.fones, ['21998364849', ...Array.from({ length: 7 }, (_, i) => `2133334${String(i).padStart(3, '0')}`)]);
+    assert.strictEqual(linha.sobrando, 1);
+    assert.strictEqual(linha.ddis, 1);
+    assert.strictEqual(linha.livres.livre7, 'C6');
 });
 
 test('normalizarDigitos limpa telefone em varios formatos', () => {
