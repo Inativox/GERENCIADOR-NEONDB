@@ -234,6 +234,18 @@ app.whenReady().then(async () => {
     assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="120"] .rd-fader-alvo').dataset.alvo`), '1270');
     assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="87"] .rd-tubo-vazio').textContent`), 'ninguém logado');
     assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="123"] .rd-canal-abrir').textContent`), 'Criar regra');
+    // Ajustes de hoje: agrupados por campanha, com o saldo do dia e o detalhe de cada ajuste.
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#ritmoDiscador .rd-camp-nome b')].map(b => b.textContent)`), ['MERCADO PAGO 3', 'C6 BANK PT1', 'Automação']);
+    const c6 = `[...document.querySelectorAll('#ritmoDiscador .rd-camp')].find(c => c.querySelector('.rd-camp-nome b').textContent === 'C6 BANK PT1')`;
+    assert.equal(await evaluate(`${c6}.querySelector('.rd-camp-dia').textContent`), '1.000 → 1.370+370');
+    assert.match(await evaluate(`${c6}.querySelector('.rd-camp-resumo').textContent`), /^4 subidas · 1 descida · último às /);
+    assert.equal(await evaluate(`${c6}.querySelectorAll('.rd-hist li').length`), 4, 'mostra os 4 últimos');
+    assert.equal(await evaluate(`${c6}.querySelectorAll('.rd-hist li')[1].querySelector('p').textContent`), 'ocupação 40% · 4 falando, 6 livres, 3 em pausa, 2 em outro estado · abaixo de 60% · subiu só o que cabia no teto das URAs');
+    await evaluate(`${c6}.querySelector('.rd-camp-mais').click()`);
+    await waitFor(`${c6}.querySelectorAll('.rd-hist li').length === 5`);
+    await evaluate(`document.querySelector('#ritmoDiscador .rd-hist-rolagem').scrollIntoView({ block: 'end' })`);
+    await delay(300);
+    await fs.writeFile(path.resolve(__dirname, '../out/ritmo-discador-ajustes.png'), (await window.webContents.capturePage()).toPNG());
     for (let attempt = 0; attempt < 50 && ritmoAssistindo !== true; attempt++) await delay(20);
     assert.equal(ritmoAssistindo, true, 'A aba visível pede leituras ao main');
     await evaluate(`document.querySelector('#ritmoDiscador .rd-canal[data-id="120"] .rd-canal-abrir').click()`);
@@ -533,6 +545,8 @@ function painelRitmoSintetico() {
         ],
         eventos: [
             { id: 'r1', em: iso(240), tipo: 'sistema', servicoId: null, servico: '', texto: 'Automação ligada neste PC por Davi: os ajustes valem na Fastway.' },
+            ...[[200, 1000, 1140], [180, 1140, 1280], [150, 1280, 1400], [120, 1400, 1470]].map(([min, de, para], i) => ({ id: 'rc' + i, em: iso(min), tipo: 'ajuste', servicoId: 120, servico: 'C6 BANK PT1', modo: 'URA',
+                de, para, dir: 1, ocupacao: 0.4, contagem: { falando: 4, livres: 6, pausa: 3, outros: 2, logados: 15 }, faixa: { sobe: 60, desce: 90, passo: 140 }, corte: para - de < 140 ? 'tetoUra' : null, texto: '' })),
             { id: 'r3', em: iso(90), tipo: 'ajuste', servicoId: 120, servico: 'C6 BANK PT1', de: 1470, para: 1370, dir: -1, ocupacao: 0.84, texto: 'C6 BANK PT1 desceu de 1.470 para 1.370' },
             { id: 'r4', em: iso(6), tipo: 'manual', servicoId: 52, servico: 'MERCADO PAGO 3', de: 45, para: 80, texto: 'MERCADO PAGO 3 mudou na Fastway de 45 para 80' },
         ] };
