@@ -102,7 +102,7 @@ export function LimpezaColunas() {
 
     return <div className="columns-app">
         <header className="columns-heading">
-            <div><h1>Limpeza de Colunas</h1><p>Padronize suas planilhas em NOME, CPF e FONE1.</p></div>
+            <div><h1>Limpeza de Colunas</h1><p>Qualquer cabeçalho entra; sai no padrão C6, com até 8 telefones.</p></div>
             <span className={`columns-status columns-status--${phase}`} role="status"><span />{status}</span>
         </header>
 
@@ -115,11 +115,11 @@ export function LimpezaColunas() {
         <div className="columns-workspace">
             <section className="columns-panel" aria-labelledby="columns-files-title">
                 <div className="columns-panel-heading"><span className="columns-step">01</span><h2 id="columns-files-title">Arquivos de entrada</h2><span className="columns-format">.XLSX</span></div>
-                <p className="columns-description">Cada planilha gera um arquivo <code>_LIMPO.xlsx</code> na mesma pasta. O original é preservado.</p>
+                <p className="columns-description">Cada planilha gera <code>_LIMPO.xlsx</code> e <code>_LIMPO.csv</code> na mesma pasta. Nome, CNPJ e telefones são reconhecidos pelo cabeçalho ou pelo conteúdo, e o nome perde <code>. , ( ) - /</code>. O original é preservado.</p>
                 <button className="columns-select" id="columns-select" onClick={selectFiles} disabled={busy}><FileIcon />{selecting ? 'Selecionando...' : 'Selecionar planilhas'}</button>
                 {files.length ? <ul className="columns-files" aria-label="Planilhas selecionadas">{files.map((file, index) => <li key={file}><span className="columns-file-number">{String(index + 1).padStart(2, '0')}</span><FileIcon /><span className="columns-file-name" title={file}>{basename(file)}</span><button className="columns-remove" disabled={busy} aria-label={`Remover ${basename(file)}`} onClick={() => setFiles(previous => previous.filter(item => item !== file))}>×</button></li>)}</ul> : <div className="columns-empty"><FileIcon /><strong>Nenhuma planilha selecionada</strong><span>Selecione um ou mais arquivos XLSX para começar.</span></div>}
                 {error && <p className="columns-error" role="alert">{error}</p>}
-                <div className="columns-action"><button className="columns-start" id="columns-start" onClick={start} disabled={!files.length || busy}>{phase === 'running' ? 'Limpeza em andamento...' : 'Iniciar limpeza'}<span aria-hidden="true">→</span></button><span>Saída: NOME · CPF · FONE1</span></div>
+                <div className="columns-action"><button className="columns-start" id="columns-start" onClick={start} disabled={!files.length || busy}>{phase === 'running' ? 'Limpeza em andamento...' : 'Iniciar limpeza'}<span aria-hidden="true">→</span></button><span>Saída: padrão C6 · XLSX + CSV</span></div>
                 <details className="columns-help"><summary>Cuidados com números em notação científica</summary><p>Use o XLSX original. Se o arquivo já contém texto como <code>5,52199E+12</code> com dígitos perdidos, o campo ficará em branco e será informado na atividade. Alterar a formatação não recupera dígitos que já foram truncados.</p></details>
             </section>
 
