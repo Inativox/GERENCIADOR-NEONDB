@@ -15,6 +15,10 @@ async function run() {
             result.processados++;
             result.primeiraSaida ||= output.caminhoSaida;
             log(`${nome} -> OK (${output.linhas.toLocaleString('pt-BR')} linhas, ${output.ddisRemovidos.toLocaleString('pt-BR')} DDIs removidos)`);
+            log(`Colunas: ${output.colunas}`);
+            if (output.semNome) log('⚠️ Nenhuma coluna de nome encontrada: a coluna "nome" saiu vazia.');
+            if (output.fonesSobrando) log(`ℹ️ ${output.fonesSobrando.toLocaleString('pt-BR')} telefone(s) além do 8º por linha ficaram de fora (o padrão C6 vai até fone8).`);
+            log(`📄 CSV adicional: ${path.basename(output.caminhoCsv)}`);
             if (output.truncados) {
                 log(`⚠️ ${output.truncados.toLocaleString('pt-BR')} número(s) em notação científica truncada ficaram em branco. Os dígitos perdidos não existem no arquivo; use o XLSX original com as colunas formatadas como Texto antes de exportar.`);
             }
