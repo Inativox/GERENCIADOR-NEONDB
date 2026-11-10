@@ -74,7 +74,7 @@ test('decisão: lotado desce, ocioso sobe, só ajusta na segunda leitura e respe
     assert.deepEqual(decidir({ ...base, contagem: contar(ops(6, 4)) }), { tipo: 'mantem' });
     assert.deepEqual(decidir({ ...base, agressividade: 20, contagem: contar(ops(10)) }), { tipo: 'limite', dir: -1 });
     assert.deepEqual(decidir({ ...base, agressividade: 95, contagem: contar(ops(1, 9)) }), { tipo: 'pendente', dir: 1, alvo: 100 }, 'o passo para no máximo');
-    assert.deepEqual(decidir({ ...base, agressividade: 300, contagem: contar(ops(1, 9)) }), { tipo: 'limite', dir: 1 }, 'acima do máximo nunca sobe');
+    assert.deepEqual(decidir({ ...base, agressividade: 300, contagem: contar(ops(1, 9)) }), { tipo: 'acimaDoMaximo', dir: -1, alvo: 100 }, 'acima do máximo nunca sobe: desce para ele');
 });
 
 test('decisão: com mais da metade em pausa não sobe; sem regra, parado, pausado e sem gente não mexem', () => {
@@ -157,6 +157,38 @@ test('motor: mostra serviços em execução e os com regra; ajusta só na segund
     assert.match(ajustes[0].texto, /^Desceu de 50 para 40 \(ocupação 90%\)\.$/);
     assert.deepEqual({ modo: ajustes[0].modo, contagem: ajustes[0].contagem, faixa: ajustes[0].faixa, corte: ajustes[0].corte },
         { modo: 'POWER', contagem: { falando: 9, livres: 1, pausa: 0, outros: 0, logados: 10 }, faixa: { sobe: 40, desce: 80, passo: 10 }, corte: null }, 'o histórico guarda o detalhe do ajuste');
+});
+
+test('decidir: acima do máximo da regra desce direto para ele, sem esperar leitura nem olhar a ocupação', () => {
+    const base = { regra: { ...REGRA, maximo: 30 }, agressividade: 50, emExecucao: true, pausado: null };
+    assert.deepEqual(decidir({ ...base, contagem: contar(ops(6, 4)) }), { tipo: 'acimaDoMaximo', dir: -1, alvo: 30 }, 'mesmo dentro da faixa');
+    assert.deepEqual(decidir({ ...base, contagem: contar(ops(1, 9)) }), { tipo: 'acimaDoMaximo', dir: -1, alvo: 30 }, 'mesmo ocioso');
+    assert.equal(decidir({ ...base, agressividade: 30, contagem: contar(ops(1, 9)) }).tipo, 'limite', 'no máximo novo, segue a regra normal');
+    assert.equal(decidir({ ...base, pausado: { de: 30, para: 50 }, contagem: contar(ops(6, 4)) }).tipo, 'pausado', 'pausado não mexe');
+    assert.equal(decidir({ ...base, emExecucao: false, contagem: contar([]) }).tipo, 'parado');
+});
+
+test('motor: baixar o máximo da regra desce o serviço para o novo máximo já na próxima leitura', async () => {
+    const { fastway, ler, servico, motor, cfg } = montar();
+    fastway.logados[52] = estados(6, 4); // 60%: dentro da faixa, a ocupação sozinha não mexeria
+    cfg.regras[52] = { ...REGRA, maximo: 30 };
+    await ler();
+    assert.deepEqual(fastway.ajustes, [[52, 30]], 'uma leitura só basta');
+    assert.deepEqual(servico(52).decisao, { tipo: 'ajustou', dir: -1, de: 50, alvo: 30, motivo: 'maximo' });
+    const evento = motor.painel().eventos.find(e => e.tipo === 'ajuste');
+    assert.equal(evento.texto, 'Desceu de 50 para 30 (novo máximo da regra).');
+    assert.equal(evento.motivo, 'maximo');
+    await ler();
+    assert.equal(servico(52).pausado, null, 'o próprio ajuste não conta como mudança manual');
+    assert.deepEqual(fastway.ajustes, [[52, 30]]);
+});
+
+test('motor: acima do máximo com a automação desligada só mostra, não ajusta', async () => {
+    const { fastway, ler, servico, cfg } = montar({ ativa: false });
+    cfg.regras[52] = { ...REGRA, maximo: 30 };
+    await ler(); await ler();
+    assert.deepEqual(fastway.ajustes, []);
+    assert.equal(servico(52).decisao.tipo, 'acimaDoMaximo');
 });
 
 test('motor: com a automação desligada só mostra a decisão, sem acumular leituras nem ajustar', async () => {
