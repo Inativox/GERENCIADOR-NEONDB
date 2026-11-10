@@ -85,6 +85,8 @@ class MotorRitmo {
         else if (ativa) this.ultimos.set(s.id, agressividade);
         let decisao = esperando ? { tipo: 'confirmando', de: esperando.de, alvo: esperando.para } : decidir({ regra, agressividade, contagem, emExecucao, pausado, pendente: ativa ? this.pendentes.get(s.id) ?? null : null, folga: folgaDe(s.modo, agressividade, this.armazem.teto(), this.soma) });
         if (decisao.tipo === 'teto') decisao = { ...decisao, teto: ehUra(s.modo) ? 'ura' : 'callcenter' };
+        // Acima do máximo da regra só desce com a automação ligada neste PC; desligada, só mostra.
+        if (decisao.tipo === 'acimaDoMaximo' && ativa) decisao = { ...decisao, tipo: 'ajustar', motivo: 'maximo' };
         if (decisao.tipo === 'pendente' && ativa) this.pendentes.set(s.id, decisao.dir);
         else this.pendentes.delete(s.id);
         if (decisao.tipo === 'ajustar') {
@@ -130,11 +132,12 @@ class MotorRitmo {
     }
 
     async ajustar(s, decisao, { occ, contagem, regra }) {
-        const base = { dir: decisao.dir, de: s.agressividade, alvo: decisao.alvo };
-        const dePara = `de ${numero.format(s.agressividade)} para ${numero.format(decisao.alvo)} (ocupação ${pct(occ)})`;
+        const motivo = decisao.motivo ?? null; // 'maximo': o máximo da regra baixou para menos do que estava
+        const base = { dir: decisao.dir, de: s.agressividade, alvo: decisao.alvo, ...(motivo ? { motivo } : {}) };
+        const dePara = `de ${numero.format(s.agressividade)} para ${numero.format(decisao.alvo)} ${motivo === 'maximo' ? '(novo máximo da regra)' : `(ocupação ${pct(occ)})`}`;
         // Detalhe para o histórico: quem estava em cada estado, a faixa da regra e por que o passo foi menor, se foi.
-        const evento = { servicoId: s.id, servico: s.nome, modo: s.modo, de: s.agressividade, para: decisao.alvo, dir: decisao.dir, ocupacao: occ,
-            contagem: { ...contagem }, faixa: { sobe: regra.sobe, desce: regra.desce, passo: regra.passo }, corte: corteDoPasso(s, decisao, regra) };
+        const evento = { servicoId: s.id, servico: s.nome, modo: s.modo, de: s.agressividade, para: decisao.alvo, dir: decisao.dir, ocupacao: occ, motivo,
+            contagem: { ...contagem }, faixa: { sobe: regra.sobe, desce: regra.desce, passo: regra.passo }, corte: motivo ? null : corteDoPasso(s, decisao, regra) };
         try {
             await this.cliente.ajustarAgressividade(s.id, decisao.alvo);
         } catch (erro) {
