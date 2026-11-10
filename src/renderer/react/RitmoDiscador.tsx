@@ -9,14 +9,14 @@ type Resp = { success: boolean; message?: string; painel?: Painel };
 type Regra = { desce: number; sobe: number; passo: number; minimo: number; maximo: number };
 type Contagem = { falando: number; livres: number; pausa: number; outros: number; logados: number };
 type Operador = { id: number; nome: string; estado: 'falando' | 'livre' | 'pausa' | 'outro'; detalhe: string; segundos: number };
-type Decisao = { tipo: 'semregra' | 'parado' | 'pausado' | 'semgente' | 'mantem' | 'limite' | 'muitaPausa' | 'teto' | 'pendente' | 'ajustou' | 'confirmando' | 'falhou'; dir?: -1 | 1; alvo?: number; de?: number; mensagem?: string; teto?: 'ura' | 'callcenter' };
+type Decisao = { tipo: 'semregra' | 'parado' | 'pausado' | 'semgente' | 'mantem' | 'limite' | 'muitaPausa' | 'teto' | 'pendente' | 'ajustou' | 'confirmando' | 'falhou' | 'acimaDoMaximo'; dir?: -1 | 1; alvo?: number; de?: number; mensagem?: string; motivo?: 'maximo'; teto?: 'ura' | 'callcenter' };
 type Pausado = { de: number; para: number; em: string };
 type Ponto = { t: number; ocupacao: number | null; agressividade: number };
 type Servico = { id: number; nome: string; modo: string; emExecucao: boolean; agressividade: number; limite: number; regra: Regra | null; pausado: Pausado | null;
     contagem: Contagem; ocupacao: number | null; decisao: Decisao; operadores: Operador[]; parceiros: number[]; serie: Ponto[] };
 type Corte = 'minimo' | 'maximo' | 'tetoUra' | 'tetoCallcenter';
 type Evento = { id: string; em: string; tipo: 'ajuste' | 'manual' | 'falha' | 'sistema'; servicoId: number | null; servico: string; modo?: string; de?: number; para?: number; dir?: -1 | 1;
-    ocupacao?: number | null; contagem?: Contagem; faixa?: { sobe: number; desce: number; passo: number }; corte?: Corte | null; texto: string };
+    ocupacao?: number | null; contagem?: Contagem; faixa?: { sobe: number; desce: number; passo: number }; corte?: Corte | null; motivo?: 'maximo' | null; texto: string };
 type Painel = { configurado: boolean; login: { saved: boolean; login: string | null; canSave: boolean }; admin: boolean; ativa: boolean;
     lidoEm: string | null; lendo: boolean; conectado: boolean; erro: string | null; intervaloSegundos: number; limitePausa: number; teto: number; tetoCallcenter: number; soma: number | null; servicos: Servico[]; eventos: Evento[] };
 type API = {
@@ -298,7 +298,8 @@ function proxima(s: Servico, painel: Painel): { tom: Tom; icone: NomeIcone; text
     const d = s.decisao, r = s.regra, desce = d.dir === -1, seta: NomeIcone = desce ? 'down' : 'up';
     switch (d.tipo) {
         case 'pendente': return pendente(s, painel);
-        case 'ajustou': return { tom: 'info', icone: seta, texto: <>{desce ? 'Desceu' : 'Subiu'}{d.de != null && <> de <Num v={d.de} /></>} para <Num v={d.alvo} /> agora.</> };
+        case 'ajustou': return { tom: 'info', icone: seta, texto: <>{desce ? 'Desceu' : 'Subiu'}{d.de != null && <> de <Num v={d.de} /></>} para <Num v={d.alvo} /> agora{d.motivo === 'maximo' ? ': é o novo máximo da regra' : ''}.</> };
+        case 'acimaDoMaximo': return { tom: 'warn', icone: 'down', texto: <>Acima do máximo da regra (<Num v={d.alvo} />). Desce direto para ele quando a automação estiver ligada neste PC.</> };
         case 'confirmando': return { tom: 'info', icone: 'refresh', texto: <>Ajustado para <Num v={d.alvo} />; esperando a Fastway mostrar o novo valor (ainda aparece <Num v={d.de} />).</> };
         case 'mantem': return { tom: 'ok', icone: 'equal', texto: r ? `Dentro da faixa (${r.sobe}% a ${r.desce}%). Mantém.` : 'Dentro da faixa. Mantém.' };
         case 'limite': return { tom: 'none', icone: seta, texto: desce ? <>Lotado, mas já está no mínimo (<Num v={r?.minimo} />).</> : <>Ocioso, mas já está no máximo (<Num v={r?.maximo} />).</> };
@@ -546,7 +547,7 @@ const TEXTO_CORTE: Record<Corte, string> = {
 function detalheAjuste(e: Evento, desce: boolean) {
     const c = e.contagem, f = e.faixa;
     const pessoas = c ? [`${c.falando} falando`, `${c.livres} ${c.livres === 1 ? 'livre' : 'livres'}`, c.pausa && `${c.pausa} em pausa`, c.outros && `${c.outros} em outro estado`].filter(Boolean).join(', ') : '';
-    const motivo = f ? (desce ? `acima de ${f.desce}%` : `abaixo de ${f.sobe}%`) : '';
+    const motivo = e.motivo === 'maximo' ? `o máximo da regra baixou para ${fmt(e.para)}` : f ? (desce ? `acima de ${f.desce}%` : `abaixo de ${f.sobe}%`) : '';
     return [e.ocupacao !== undefined ? `ocupação ${pct(e.ocupacao)}` : '', pessoas, motivo, e.corte ? TEXTO_CORTE[e.corte] : ''].filter(Boolean).join(' · ');
 }
 
