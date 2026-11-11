@@ -72,6 +72,9 @@ function decidir({ regra, agressividade, contagem, emExecucao, pausado, pendente
     if (!emExecucao) return { tipo: 'parado' };
     if (pausado) return { tipo: 'pausado' };
     if (agressividade == null) return { tipo: 'semgente' };
+    // O máximo da regra baixou para menos do que está agora: desce direto para ele, sem esperar
+    // duas leituras e sem depender da ocupação (é a regra que mudou, não o movimento).
+    if (agressividade > regra.maximo) return { tipo: 'acimaDoMaximo', dir: -1, alvo: regra.maximo };
     const occ = ocupacao(contagem);
     if (occ == null) return { tipo: 'semgente' };
     // Faixa fechada: de “sobe” a “desce” (ex.: 60% a 90%) mantém; só sobe abaixo e só desce acima. Arredonda para não errar na borda (7/9).

@@ -29,9 +29,13 @@ test('worker mantém saída e original, reporta progresso e recusa lote concorre
     assert.deepEqual(await fs.readFile(input), original);
     const output = new ExcelJS.Workbook();
     await output.xlsx.readFile(result.primeiraSaida);
-    assert.deepEqual(output.worksheets[0].getRow(2).values.slice(1), ['Empresa Sol', 4252011000110, 21998364849]);
-    assert.equal(output.worksheets[0].getCell('B2').numFmt, '00000000000000');
+    const aba = output.worksheets[0];
+    assert.deepEqual([aba.getCell('A2').value, aba.getCell('B2').value, aba.getCell('H2').value, aba.getCell('I2').value], ['Empresa Sol', 4252011000110, 'C6', 21998364849]);
+    assert.equal(aba.getCell('B2').numFmt, '00000000000000');
     assert.ok(messages.some(event => event.type === 'log' && event.message.includes('PULADO')));
+    assert.ok(messages.some(event => event.type === 'log' && event.message === 'Colunas: nome ← "Nome do Negócio" · cpf ← "CNPJ" · fones ← "Telefone Celular"'));
+    assert.ok(messages.some(event => event.type === 'log' && event.message === '📄 CSV adicional: base_LIMPO.csv'));
+    assert.ok((await fs.readFile(path.join(directory, 'base_LIMPO.csv'), 'utf8')).includes('"Empresa Sol";"04252011000110"'));
     assert.ok(messages.some(event => event.type === 'progress' && event.current === 2 && event.total === 2));
     const next = await runLimpezaColunas([input], () => {});
     assert.equal(next.processados, 1);

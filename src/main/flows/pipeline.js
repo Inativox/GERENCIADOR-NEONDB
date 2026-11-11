@@ -576,6 +576,17 @@ async function uploadWithLoginRetry({ providers, file, campaignId, signal, updat
     }
 }
 
+// What follows the name in a part file: " parte1.xlsx" or, for a repeated name, " (2) parte1.csv".
+const NAMED_PART = /^(?: \([1-9]\d*\))? parte[1-9]\d*\.(xlsx|csv)$/i;
+
+/** First of "lista", "lista (2)", "lista (3)"... with no part file in the folder (Windows names ignore case). */
+async function freeOutputName(directory, baseName) {
+    const taken = (await fsp.readdir(directory)).map(name => name.toLowerCase());
+    const used = candidate => taken.some(name => name.startsWith(`${candidate.toLowerCase()} parte`) && /^[1-9]\d*\.(xlsx|csv)$/.test(name.slice(candidate.length + ' parte'.length)));
+    if (!used(baseName)) return baseName;
+    for (let copy = 2; ; copy++) if (!used(`${baseName} (${copy})`)) return `${baseName} (${copy})`;
+}
+
 async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPerFile, commit, update, onProgress }) {
     const directory = path.resolve(flow.output?.directory || path.join(jobDir, 'outputs'));
     await fsp.mkdir(directory, { recursive: true });
@@ -588,12 +599,21 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
     for (const output of saved.outputs) await fsp.access(output.path);
     const previous = await readJson(pendingPath);
     // Historical snapshots keep their original naming when resumed.
-    const outputName = flow.output?.fileName == null ? null : resolveOutputName(flow.output, flow.name);
-    // Delete only our own pending files inside the chosen destination.
+    const baseName = flow.output?.fileName == null ? null : resolveOutputName(flow.output, flow.name);
+    // Delete only our own pending files inside the chosen destination ("lista parte1" or "lista (2) parte1").
     for (const file of previous?.files || []) {
         const name = path.basename(file);
-        const namedPart = outputName && name.startsWith(`${outputName} parte`) && /^[1-9]\d*\.(xlsx|csv)$/.test(name.slice(`${outputName} parte`.length));
+        const namedPart = baseName && name.startsWith(baseName) && NAMED_PART.test(name.slice(baseName.length));
         if (!confirmedPaths.has(file) && path.dirname(path.resolve(file)) === directory && (namedPart || name.startsWith(`fluxo_${checkpoint.id}_`))) await fsp.rm(file, { force: true });
+    }
+    // A name already used in the folder gets " (2)", " (3)"... so an earlier list is never overwritten.
+    // The choice is saved with the export cache: a resumed run keeps writing under the same name.
+    let outputName = baseName;
+    if (baseName && saved.outputName) outputName = saved.outputName;
+    else if (baseName && !saved.outputs.length) {
+        outputName = await freeOutputName(directory, baseName);
+        saved = { ...saved, outputName };
+        await atomicJson(cachePath, saved);
     }
     const { context, format, map, headers } = outputFormat(flow, providers, checkpoint);
     const attempt = crypto.randomBytes(6).toString('hex');
@@ -658,7 +678,7 @@ async function exportFiles({ checkpoint, flow, jobDir, signal, providers, rowsPe
         abort(signal);
         outputs.push({ path: active.xlsx, kind: 'xlsx', rows: active.rows });
         if (active.csv) outputs.push({ path: active.csv, kind: 'csv', rows: active.rows });
-        await atomicJson(cachePath, { identity, inputOffset, processed, outputs });
+        await atomicJson(cachePath, { identity, inputOffset, processed, outputs, outputName });
         for (const output of outputs) confirmedPaths.add(output.path);
         active = null;
     }

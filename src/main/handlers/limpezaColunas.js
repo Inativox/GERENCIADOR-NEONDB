@@ -1,5 +1,5 @@
 /**
- * Handler da aba de Limpeza de Colunas: reduz planilhas a NOME, CPF e FONE1.
+ * Handler da aba de Limpeza de Colunas: gera as planilhas no padrão C6 (layout de 8 telefones), em .xlsx e .csv.
  */
 const { ipcMain } = require('electron');
 
