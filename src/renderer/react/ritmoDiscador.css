@@ -90,8 +90,9 @@
 .rd-mesa.is-antigo { opacity: .6; filter: saturate(.4); }
 .rd-canal { position: relative; display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 14px 12px 12px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); cursor: pointer; transition: border-color .15s, box-shadow .2s; }
 .rd-canal:hover { border-color: var(--border-hover); }
-.rd-canal:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
-.rd-canal[aria-current="true"] { border-color: var(--accent-blue); box-shadow: 0 0 0 1px var(--accent-blue); }
+/* Foco por dentro da borda (por fora era cortado pela rolagem da mesa); clicar seleciona sem contorno, o gráfico de baixo mostra qual é. */
+.rd-canal:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -1px; }
+.rd-canal[aria-current="true"]:focus-visible { outline: none; }
 .rd-canal[data-estado="pausado"] { border-color: color-mix(in srgb, var(--accent-yellow) 55%, var(--border-color)); }
 .rd-canal[data-estado="semregra"] .rd-fader, .rd-canal[data-estado="parado"] .rd-medidores { opacity: .45; }
 .rd-canal > * { min-width: 0; }
@@ -311,3 +312,68 @@
 @media (prefers-reduced-motion: reduce) {
     .rd-app *, .rd-app *::before, .rd-app *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- Mailing (o Alerta de Mailing dentro da mesa) ---------- */
+
+/* Cabeçalho: o ritmo e o mailing em dois grupos, separados por um fio. */
+.rd-ctl-grupo { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.rd-ctl-grupo--mailing { gap: 10px 14px; padding-left: 18px; border-left: 1px solid var(--border-color); }
+.rd-ctl-rotulo { display: inline-flex; align-items: center; gap: 6px; color: var(--text-primary); font-size: 12px; font-weight: 600; }
+.rd-ctl-rotulo .rd-ic { width: 14px; height: 14px; color: var(--text-muted); }
+.rd-anel-frente--mailing { stroke: var(--accent-yellow); }
+@container (max-width: 1100px) { .rd-ctl-grupo--mailing { padding-left: 0; border-left: 0; } }
+
+/* Avisos: um bloco só, uma linha por serviço. */
+.rd-avisos { display: block; padding: 2px 6px 2px 14px; border-color: var(--border-color); background: var(--bg-card); }
+.rd-avisos ul { display: grid; margin: 0; padding: 0; list-style: none; }
+.rd-avisos li { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 4px 0; border-top: 1px solid var(--border-color); }
+.rd-avisos li:first-child { border-top: 0; }
+.rd-avisos li > .rd-ic { color: var(--tone); }
+.rd-avisos p { display: flex; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.rd-avisos p b { font-weight: 600; }
+.rd-aviso-tit { color: var(--tone); font-weight: 600; }
+.rd-avisos .rd-aviso-txt { color: var(--text-secondary); }
+
+/* Canal: a lista do serviço logo abaixo da próxima ação, no mesmo pé. */
+/* O alerta de mailing pinta a borda do canal. */
+.rd-canal[data-mail="warn"] { --rd-mail-borda: var(--accent-yellow); }
+.rd-canal[data-mail="stop"] { --rd-mail-borda: var(--accent-red); }
+.rd-canal[data-mail] { border-color: color-mix(in srgb, var(--rd-mail-borda) 50%, var(--border-color)); }
+.rd-canal[data-mail]:focus-visible { outline-color: var(--rd-mail-borda); }
+.rd-mail { --tone: var(--text-muted); display: grid; gap: 6px; padding-top: 10px; border-top: 1px dashed var(--border-color); }
+.rd-mail[data-tone="warn"] { --tone: var(--accent-yellow); }
+.rd-mail[data-tone="stop"] { --tone: var(--accent-red); }
+.rd-mail-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.rd-mail-arq { overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.rd-mail-cab b { flex: 0 0 auto; color: var(--text-primary); font: 500 11.5px var(--font-mono); font-variant-numeric: tabular-nums; }
+.rd-mail-barra { height: 4px; overflow: hidden; border-radius: 2px; background: var(--bg-element-hover); }
+.rd-mail-barra i { display: block; height: 100%; border-radius: inherit; background: var(--tone); transition: width .6s var(--rd-ease); }
+.rd-mail:not([data-tone="warn"]):not([data-tone="stop"]) .rd-mail-barra i { background: color-mix(in srgb, var(--text-secondary) 70%, transparent); }
+.rd-mail-pe { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rd-mail-estado { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-muted); font-size: 11px; }
+.rd-mail[data-tone="warn"] .rd-mail-estado, .rd-mail[data-tone="stop"] .rd-mail-estado { color: var(--tone); font-weight: 600; }
+.rd-mail-estado .rd-ic { width: 13px; height: 13px; }
+.rd-vagas { display: inline-flex; flex: 0 0 auto; gap: 3px; color: var(--text-secondary); }
+.rd-mail[data-tone="stop"] .rd-vagas, .rd-mail[data-tone="warn"] .rd-vagas { color: var(--tone); }
+.rd-vagas i { width: 9px; height: 4px; border-radius: 2px; background: var(--bg-element-hover); }
+.rd-vagas i.u { background: currentColor; }
+.rd-medidores--so-mailing { grid-template-columns: 1fr; }
+
+/* Gaveta */
+.rd-hbar[data-tone="warn"] .rd-hbar-fill--mail { background: var(--accent-yellow); }
+.rd-hbar[data-tone="stop"] .rd-hbar-fill--mail { background: var(--accent-red); }
+.rd-hbar-fill--mail { background: color-mix(in srgb, var(--text-secondary) 70%, transparent); }
+.rd-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: 12px; }
+.rd-kv dt { color: var(--text-secondary); }
+.rd-kv dd { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; color: var(--text-primary); font-weight: 500; font-variant-numeric: tabular-nums; }
+.rd-kv dd small { color: var(--text-muted); font: 11px var(--font-sans); }
+.rd-kv .rd-vagas i { width: 12px; height: 5px; }
+.rd-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Painel de baixo e histórico do mailing */
+.rd-coluna { display: grid; gap: 14px; min-width: 0; }
+.rd-painel-acoes { display: flex; align-items: center; gap: 2px 4px; }
+.rd-painel-acoes small { margin-right: 6px; }
+.rd-hist-servico { margin-left: 8px; color: var(--text-muted); font-weight: 500; }
+.rd-hist--mailing li[data-status="resolvida"], .rd-hist--mailing li[data-status="dispensada"] { opacity: .62; }
+.rd-hist--mailing .rd-hist-fim { margin-top: 2px; color: var(--text-muted); font-size: 11px; }
