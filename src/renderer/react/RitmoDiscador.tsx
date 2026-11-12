@@ -3,6 +3,8 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import './fluxos.css';
 import './ritmoDiscador.css';
 import { KeyIcon, SpinnerIcon } from './icons';
+import { useMailing, MailingCabecalho, MailingFaixas, MailingCanal, CanalSoMailing, MailingGaveta, MailingGavetaHoje, MailingHoje, tomDaLinha } from './MailingDoRitmo';
+import type { Mailing } from './MailingDoRitmo';
 
 // Mesmo formato do painel montado em src/main/ritmoDiscador (ocupação = falando ÷ (falando + livres), como na Fastway).
 type Resp = { success: boolean; message?: string; painel?: Painel };
@@ -34,7 +36,7 @@ const ABA = 'ritmoDiscador';
 const CAMPOS: Campo[] = ['desce', 'sobe', 'passo', 'minimo', 'maximo'];
 // Mesmos critérios de src/main/ritmoDiscador/regras.js: URA divide o teto geral; call center ativo (POWER) tem teto por serviço.
 const ehCallcenter = (modo: string) => modo.trim().toUpperCase() === 'POWER';
-const SUBTITULO = 'Ajusta a agressividade de cada serviço pela ocupação dos operadores: em atendimento ÷ (em atendimento + livres), como no painel da Fastway.';
+const SUBTITULO = 'Ajusta a agressividade de cada serviço pela ocupação dos operadores (em atendimento ÷ (em atendimento + livres), como no painel da Fastway) e acompanha o mailing de cada um.';
 const disponiveis = (c: Contagem) => c.falando + c.livres;
 // "7 de 9 falando (7 falando + 2 livres) · 2 em pausa e 3 em outro estado fora da conta", como no painel da Fastway.
 const foraDaConta = (c: Contagem) => [c.pausa && `${c.pausa} em pausa`, c.outros && `${c.outros} em outro estado`].filter(Boolean).join(' e ');
@@ -69,6 +71,8 @@ export function RitmoDiscador() {
     const locked = useRef(false);
     const receber = (dados: Painel) => { setPainel(dados); setRecebidoEm(Date.now()); };
     useSessao(api, receber, setMensagem);
+    // Clique na notificação do mailing: abre a gaveta do serviço que avisou.
+    const mailing = useMailing(id => { setSelecionado(id); setGaveta({ id, criar: false }); });
 
     async function acao(run: () => Promise<Resp>) {
         if (locked.current) return false;
@@ -99,28 +103,35 @@ export function RitmoDiscador() {
     const atual = painel.servicos.find(s => s.id === selecionado) ?? painel.servicos[0];
     const aberto = gaveta ? painel.servicos.find(s => s.id === gaveta.id) : undefined;
     const retomar = (s: Servico) => void acao(() => api.ritmoDiscadorRetomar(s.id));
+    // Serviços parados que só o mailing conhece entram na mesa como canal parado.
+    const soMailing = (mailing.painel?.configurado ? mailing.painel.linhas : []).filter(l => !painel.servicos.some(s => s.id === l.servicoId));
     return <div className="flows-app rd-app" aria-busy={busy}>
         <div className="rd-mesa-area">
             <Cabecalho painel={painel} busy={busy} onLer={() => void acao(() => api.ritmoDiscadorLer())}
                 onAtiva={ligar => { if (ligar) setConfirmarAtivacao(true); else void acao(() => api.ritmoDiscadorAtiva(false)); }}
-                onTeto={valor => acao(() => api.ritmoDiscadorTeto(valor))} />
+                onTeto={valor => acao(() => api.ritmoDiscadorTeto(valor))} mailing={mailing} />
             <Faixas painel={painel} busy={busy} mensagem={mensagem} onRetomar={retomar} />
-            {painel.servicos.length ? <>
+            <MailingFaixas mailing={mailing} />
+            {painel.servicos.length || soMailing.length ? <>
                 <section className={`rd-mesa${painel.conectado ? '' : ' is-antigo'}`} aria-label="Serviços">
                     {painel.servicos.map(s => <Canal key={s.id} servico={s} painel={painel} atual={s.id === atual?.id} busy={busy}
                         onSelecionar={() => setSelecionado(s.id)} onRetomar={() => retomar(s)}
-                        onAbrir={() => { setSelecionado(s.id); setGaveta({ id: s.id, criar: !s.regra && painel.admin }); }} />)}
+                        onAbrir={() => { setSelecionado(s.id); setGaveta({ id: s.id, criar: !s.regra && painel.admin }); }} mailing={mailing} />)}
+                    {soMailing.map(l => <CanalSoMailing key={l.servicoId} linha={l} reciclador={!!mailing.painel?.reciclador} />)}
                 </section>
                 <div className="rd-baixo">
                     {atual && <section className="rd-painel"><div className="rd-painel-cab"><h3>{atual.nome} hoje</h3><small>clique num canal para trocar · passe o mouse no gráfico</small></div>
                         <div className="rd-painel-corpo"><Grafico servico={atual} painel={painel} /></div></section>}
-                    <section className="rd-painel"><div className="rd-painel-cab"><h3>Ajustes de hoje</h3><small>{resumoEventos(painel.eventos)}</small></div>
-                        <div className="rd-painel-corpo rd-hist-rolagem"><HistoricoPorCampanha painel={painel} /></div></section>
+                    <div className="rd-coluna">
+                        <section className="rd-painel"><div className="rd-painel-cab"><h3>Ajustes de hoje</h3><small>{resumoEventos(painel.eventos)}</small></div>
+                            <div className="rd-painel-corpo rd-hist-rolagem"><HistoricoPorCampanha painel={painel} /></div></section>
+                        <MailingHoje mailing={mailing} />
+                    </div>
                 </div>
             </> : <p className="rd-vazio rd-vazio--mesa">Os serviços aparecem aqui assim que estiverem em execução na Fastway ou tiverem regra.</p>}
         </div>
         {aberto && <GavetaServico servico={aberto} painel={painel} criar={gaveta?.criar ?? false} busy={busy} recebidoEm={recebidoEm} onFechar={fecharGaveta}
-            onRetomar={() => retomar(aberto)} onRegra={regra => salvarRegra(aberto, regra)} />}
+            onRetomar={() => retomar(aberto)} onRegra={regra => salvarRegra(aberto, regra)} mailing={mailing} />}
         {confirmarAtivacao && <ConfirmarAtivacao painel={painel} busy={busy} onCancelar={() => setConfirmarAtivacao(false)}
             onConfirmar={() => { setConfirmarAtivacao(false); void acao(() => api.ritmoDiscadorAtiva(true)); }} />}
     </div>;
@@ -162,17 +173,20 @@ function resumoEventos(eventos: Evento[]) {
 
 /* ---------- Cabeçalho, relógio e faixas de aviso ---------- */
 
-function Cabecalho({ painel, busy, onLer, onAtiva, onTeto }: { painel: Painel; busy: boolean; onLer(): void; onAtiva(ligar: boolean): void; onTeto(valor: number): Promise<boolean> }) {
+function Cabecalho({ painel, busy, onLer, onAtiva, onTeto, mailing }: { painel: Painel; busy: boolean; onLer(): void; onAtiva(ligar: boolean): void; onTeto(valor: number): Promise<boolean>; mailing: Mailing }) {
     const admin = painel.admin;
     return <header className="rd-topo">
         <div><h1 className="rd-titulo">Ritmo do Discador</h1>
             <p className="rd-sub">{SUBTITULO}</p></div>
         <div className="rd-ctl">
-            <Relogio painel={painel} />
-            <Teto painel={painel} busy={busy} onSalvar={onTeto} />
-            <button className="rd-btn rd-btn--sm" disabled={busy || painel.lendo} onClick={onLer}>
-                {painel.lendo ? <SpinnerIcon /> : <Icone nome="refresh" />}{painel.lendo ? 'Lendo…' : 'Ler agora'}</button>
-            <Chave rotulo="Ativa neste PC" dica={admin ? 'Só um PC deve ficar ativo' : 'Só admin liga ou desliga'} ligado={painel.ativa} desabilitado={!admin || busy} onMudar={onAtiva} />
+            <div className="rd-ctl-grupo" role="group" aria-label="Ritmo">
+                <Relogio painel={painel} />
+                <Teto painel={painel} busy={busy} onSalvar={onTeto} />
+                <button className="rd-btn rd-btn--sm" disabled={busy || painel.lendo} onClick={onLer}>
+                    {painel.lendo ? <SpinnerIcon /> : <Icone nome="refresh" />}{painel.lendo ? 'Lendo…' : 'Ler agora'}</button>
+                <Chave rotulo="Ativa neste PC" dica={admin ? 'Só um PC deve ficar ativo' : 'Só admin liga ou desliga'} ligado={painel.ativa} desabilitado={!admin || busy} onMudar={onAtiva} />
+            </div>
+            <MailingCabecalho mailing={mailing} spinner={<SpinnerIcon />} />
         </div>
     </header>;
 }
@@ -227,10 +241,11 @@ function Faixa({ tom, icone, titulo, texto, papel, children }: { tom: Tom; icone
 
 /* ---------- Canal (uma faixa da mesa por serviço) ---------- */
 
-function Canal({ servico: s, painel, atual, busy, onSelecionar, onAbrir, onRetomar }: { servico: Servico; painel: Painel; atual: boolean; busy: boolean; onSelecionar(): void; onAbrir(): void; onRetomar(): void }) {
+function Canal({ servico: s, painel, atual, busy, onSelecionar, onAbrir, onRetomar, mailing }: { servico: Servico; painel: Painel; atual: boolean; busy: boolean; onSelecionar(): void; onAbrir(): void; onRetomar(): void; mailing: Mailing }) {
+    const linha = mailing.linhaDe(s.id), tomMailing = linha ? tomDaLinha(linha) : null;
     const estado = s.pausado ? 'pausado' : !s.emExecucao ? 'parado' : s.regra ? '' : 'semregra', c = s.contagem;
     const botao = s.regra ? 'Regra e operadores' : painel.admin ? 'Criar regra' : 'Ver operadores';
-    return <article className="rd-canal" data-id={s.id} data-estado={estado || undefined} aria-current={atual} aria-label={s.nome} tabIndex={0}
+    return <article className="rd-canal" data-id={s.id} data-estado={estado || undefined} data-mail={tomMailing === 'warn' || tomMailing === 'stop' ? tomMailing : undefined} aria-current={atual} aria-label={s.nome} tabIndex={0}
         onClick={onSelecionar} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelecionar(); } }}>
         <div className="rd-canal-cab"><h2 className="rd-canal-nome">{s.nome}</h2><p className="rd-canal-meta">#{s.id} · {s.modo}{s.emExecucao ? '' : ' · parado'}</p></div>
         <div className="rd-canal-nums">
@@ -246,6 +261,7 @@ function Canal({ servico: s, painel, atual, busy, onSelecionar, onAbrir, onRetom
             {s.pausado ? <div className="rd-canal-pausa"><span><b>Pausado.</b> Mudou na Fastway de {fmt(s.pausado.de)} para {fmt(s.pausado.para)} às {horaIso(s.pausado.em)}.</span>
                 {painel.admin && <button className="rd-btn rd-btn--sm" disabled={busy} onClick={event => { event.stopPropagation(); onRetomar(); }}><Icone nome="play" />Retomar</button>}</div>
                 : <Proxima servico={s} painel={painel} />}
+            <MailingCanal linha={linha} reciclador={!!mailing.painel?.reciclador} />
             <button className="rd-btn rd-btn--sm rd-btn--ghost rd-canal-abrir" onClick={event => { event.stopPropagation(); onAbrir(); }}>{botao}<Icone nome="chevron" /></button>
         </div>
     </article>;
@@ -386,8 +402,8 @@ function ConfirmarAtivacao({ painel, busy, onConfirmar, onCancelar }: { painel: 
 
 /* ---------- Gaveta com o detalhe do serviço ---------- */
 
-function GavetaServico({ servico: s, painel, criar, busy, recebidoEm, onFechar, onRetomar, onRegra }: { servico: Servico; painel: Painel; criar: boolean; busy: boolean; recebidoEm: number;
-    onFechar(): void; onRetomar(): void; onRegra(regra: Regra | null): Promise<boolean> }) {
+function GavetaServico({ servico: s, painel, criar, busy, recebidoEm, onFechar, onRetomar, onRegra, mailing }: { servico: Servico; painel: Painel; criar: boolean; busy: boolean; recebidoEm: number;
+    onFechar(): void; onRetomar(): void; onRegra(regra: Regra | null): Promise<boolean>; mailing: Mailing }) {
     const fechar = useRef<HTMLButtonElement>(null), onFecharRef = useRef(onFechar);
     onFecharRef.current = onFechar;
     useEffect(() => {
@@ -411,10 +427,12 @@ function GavetaServico({ servico: s, painel, criar, busy, recebidoEm, onFechar, 
                         {s.pausado && painel.admin && <button className="rd-btn rd-btn--sm" disabled={busy} onClick={onRetomar}><Icone nome="play" />Retomar</button>}</div>
                     {parceiros && <p className="rd-hint">Mesmos operadores de {parceiros}. Cada serviço segue a própria regra.</p>}
                 </section>
+                <MailingGaveta mailing={mailing} servicoId={s.id} />
                 <section className="rd-gsec"><h3 className="rd-sec">Regra</h3>
                     <Editor key={s.id} servico={s} admin={painel.admin} criar={criar} busy={busy} parceiros={parceiros} tetoCallcenter={painel.tetoCallcenter ?? 99} onRegra={onRegra} /></section>
                 <section className="rd-gsec"><h3 className="rd-sec">Operadores ({c.logados})</h3><Operadores operadores={s.operadores} recebidoEm={recebidoEm} /></section>
                 <section className="rd-gsec"><h3 className="rd-sec">Ajustes de hoje</h3><Historico eventos={painel.eventos} filtro={s.id} max={12} /></section>
+                <MailingGavetaHoje mailing={mailing} servicoId={s.id} />
             </div>
         </section>
     </>;
