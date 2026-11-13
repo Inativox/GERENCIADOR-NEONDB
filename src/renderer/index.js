@@ -418,10 +418,6 @@ document.addEventListener('DOMContentLoaded', () => {
             title: 'Importar mailing',
             description: 'Envie um CSV para um serviço da Fastway ou consulte a situação cadastral na Receita.'
         },
-        'Alerta de Mailing': {
-            title: 'Alerta de Mailing',
-            description: 'Acompanhe o mailing ativo de cada serviço da Fastway e receba o aviso antes de a lista acabar.'
-        },
         'Enriquecimento': {
             title: 'Enriquecimento de Dados',
             description: 'Amplie suas bases com informações valiosas, como telefones e outros dados de contato, a partir de fontes confiáveis. Maximize o potencial de suas campanhas.'

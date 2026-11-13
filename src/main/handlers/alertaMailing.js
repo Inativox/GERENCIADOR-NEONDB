@@ -89,7 +89,7 @@ function alternarReciclador(ligar = !recicladorLigado()) {
 
 function menuDaBandeja() {
     return Menu.buildFromTemplate([
-        { label: 'Abrir Alerta de Mailing', click: () => abrirPainel() },
+        { label: 'Abrir Ritmo do Discador', click: () => abrirPainel() },
         { label: 'Verificar agora', click: verificarAgora },
         { label: 'Reciclar e parar automaticamente neste PC', type: 'checkbox', checked: recicladorLigado(), click: item => alternarReciclador(item.checked) },
         { label: 'LTDA e PT2 (transbordo): sem reciclagem nem parada automática', enabled: false },

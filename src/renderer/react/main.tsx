@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client';
 import { LimpezaColunas } from './LimpezaColunas';
 import { Fluxos } from './Fluxos';
 import { ImportarMailing } from './ImportarMailing';
-import { AlertaMailing } from './AlertaMailing';
 import { RitmoDiscador } from './RitmoDiscador';
 import './limpezaColunas.css';
 import './fluxos.css';
@@ -25,8 +24,6 @@ function mount() {
     if (flows) createRoot(flows).render(<ColumnsBoundary><Fluxos /></ColumnsBoundary>);
     const mailing = document.getElementById('importar-mailing-react-root');
     if (mailing) createRoot(mailing).render(<ColumnsBoundary><ImportarMailing /></ColumnsBoundary>);
-    const alerta = document.getElementById('alerta-mailing-react-root');
-    if (alerta) createRoot(alerta).render(<ColumnsBoundary><AlertaMailing /></ColumnsBoundary>);
     const ritmo = document.getElementById('ritmo-discador-react-root');
     if (ritmo) createRoot(ritmo).render(<ColumnsBoundary><RitmoDiscador /></ColumnsBoundary>);
 }
