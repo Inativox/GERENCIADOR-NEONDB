@@ -194,7 +194,7 @@ function Cabecalho({ painel, busy, onLer, onAtiva, onTeto, mailing }: { painel: 
 // Soma da agressividade de todos os serviços em execução contra o teto geral: a automação nunca sobe acima dele.
 function Teto({ painel, busy, onSalvar }: { painel: Painel; busy: boolean; onSalvar(valor: number): Promise<boolean> }) {
     const [editando, setEditando] = useState(false), [valor, setValor] = useState(String(painel.teto));
-    const valido = /^d+$/.test(valor) && Number(valor) >= 1;
+    const valido = /^\d+$/.test(valor) && Number(valor) >= 1;
     if (editando) return <form className="rd-teto" onSubmit={async event => { event.preventDefault(); if (valido && await onSalvar(Number(valor))) setEditando(false); }}>
         <label className="rd-teto-campo"><span>Teto das URAs</span><input type="number" inputMode="numeric" min={1} step={1} value={valor} autoFocus disabled={busy}
             aria-label="Teto da agressividade somada das URAs" onChange={event => setValor(event.target.value)}
