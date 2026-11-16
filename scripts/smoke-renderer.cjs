@@ -216,19 +216,12 @@ app.whenReady().then(async () => {
     await delay(300);
     await fs.mkdir(path.resolve(__dirname, '../out'), { recursive: true });
     await fs.writeFile(path.resolve(__dirname, '../out/renderer-smoke.png'), (await window.webContents.capturePage()).toPNG());
-    // A aba do Alerta de Mailing é um mural: o serviço mais grave vem primeiro, maior, e o clique abre o que fazer.
-    await evaluate(`document.querySelector('[data-tab-name="alertaMailing"]').click()`);
-    await waitFor(`document.querySelectorAll('#alertaMailing .alerta-tank').length === 4`);
-    assert.equal(await evaluate(`document.querySelector('#alertaMailing .alerta-tank .alerta-tank-nome').textContent`), 'PAG CADENCIA');
-    assert.equal(await evaluate(`document.querySelector('#alertaMailing .alerta-tank[data-big] .alerta-tank-verbo').textContent`), 'Trocar a lista');
-    assert.equal(await evaluate(`document.querySelectorAll('#alertaMailing .alerta-tank[data-big]').length`), 1);
-    await evaluate(`document.querySelector('#alertaMailing .alerta-tank').click()`);
-    await waitFor(`document.querySelector('#alertaMailing .alerta-sheet .alerta-acao strong')?.textContent === 'Trocar a lista'`);
-    await delay(300);
-    await fs.writeFile(path.resolve(__dirname, '../out/alerta-mailing.png'), (await window.webContents.capturePage()).toPNG());
+    // A aba Alerta de Mailing saiu em 12/11/2026 (f6f8197): o mailing agora aparece dentro do Ritmo do Discador.
     // Ritmo do Discador: um canal por serviço, o alvo da próxima leitura no canal pendente e a regra na gaveta.
     await evaluate(`document.querySelector('[data-tab-name="ritmoDiscador"]').click()`);
-    await waitFor(`document.querySelectorAll('#ritmoDiscador .rd-canal').length === 4`);
+    await waitFor(`document.querySelectorAll('#ritmoDiscador .rd-canal').length === 6`);
+    // Quatro serviços com regra de ritmo e dois que só aparecem pelo mailing (vindos do antigo Alerta de Mailing).
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#ritmoDiscador .rd-canal')].filter(c => c.querySelector('.rd-medidores--so-mailing')).map(c => c.querySelector('.rd-canal-nome').textContent)`), ['PAG CADENCIA', 'MP PRINCIPAL']);
     // Teto geral: a soma acima do teto aparece no cabeçalho e num aviso.
     assert.equal(await evaluate(`document.querySelector('#ritmoDiscador .rd-teto').textContent.includes('URAs 1.669 de 1.500')`), true);
     assert.equal(await evaluate(`[...document.querySelectorAll('#ritmoDiscador .rd-faixa')].some(f => f.textContent.includes('A soma das URAs (1.669) passou do teto de 1.500'))`), true);
